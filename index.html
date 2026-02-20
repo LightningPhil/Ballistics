@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<!--
+  ============================================================================
+  index.html — Shell & DOM Structure for Matilda's Cannon Lab
+  ============================================================================
+
+  ROLE:  Page skeleton, layout containers, all DOM elements for the control
+         panel (sliders, buttons, readouts, energy bar), the simulation
+         canvas, and the tooltip box. Loads all scripts in dependency order.
+
+  SCRIPT LOAD ORDER:
+    1. physics.js   — Pure physics engine (no dependencies)
+    2. renderer.js  — Canvas drawing (reads Physics constants)
+    3. ui.js        — DOM control logic (reads Physics & Renderer refs)
+    4. main.js      — Entry point, wires everything, starts loop
+  ============================================================================
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Matilda's Cannon Lab</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ── Tooltip (positioned absolutely, shared by all triggers) ────────── -->
+  <div id="tooltip"></div>
+
+  <!-- ── App Container: Two-Column Layout ───────────────────────────────── -->
+  <div class="app-container">
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- LEFT: CONTROL PANEL (30%)                                          -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div class="control-panel">
+
+      <!-- Title -->
+      <div class="panel-title">Matilda's Cannon Lab</div>
+      <div class="panel-subtitle">Physics Sandbox</div>
+
+      <!-- ── Planet Quick-Select ─────────────────────────────────────────── -->
+      <div class="section-header">Planet</div>
+      <div class="planet-grid">
+        <button class="planet-btn" data-planet="moon" data-gravity="1.62"
+          data-tip="&lt;b&gt;🌙 The Moon&lt;/b&gt; &lt;i&gt;— g = 1.62 m/s²&lt;/i&gt;&lt;br&gt;&lt;br&gt;With only &lt;b&gt;1/6th of Earth's gravity&lt;/b&gt;, everything flies much farther here.&lt;br&gt;&lt;br&gt;&lt;b&gt;Quick facts:&lt;/b&gt;&lt;ul&gt;&lt;li&gt;No atmosphere at all — zero air resistance&lt;/li&gt;&lt;li&gt;Trajectories are &lt;b&gt;perfect parabolas&lt;/b&gt;&lt;/li&gt;&lt;li&gt;Same launch → &lt;b&gt;6× the range&lt;/b&gt; vs Earth&lt;/li&gt;&lt;li&gt;A golf ball hit here by Alan Shepard in 1971 flew ~200 m&lt;/li&gt;&lt;/ul&gt;">
+          &#x1F319; Moon<br><small>1.62</small>
+        </button>
+        <button class="planet-btn" data-planet="mercury" data-gravity="3.7"
+          data-tip="&lt;b&gt;☿ Mercury&lt;/b&gt; &lt;i&gt;— g = 3.70 m/s²&lt;/i&gt;&lt;br&gt;&lt;br&gt;The smallest planet, but &lt;b&gt;surprisingly dense&lt;/b&gt; — like a giant iron cannonball itself.&lt;br&gt;&lt;br&gt;&lt;b&gt;Quick facts:&lt;/b&gt;&lt;ul&gt;&lt;li&gt;Iron core is &lt;b&gt;85% of its radius&lt;/b&gt;&lt;/li&gt;&lt;li&gt;No atmosphere — like the Moon, trajectories are pristine&lt;/li&gt;&lt;li&gt;Daytime: 430°C · Nighttime: −180°C&lt;/li&gt;&lt;li&gt;38% of Earth's gravity despite being tiny&lt;/li&gt;&lt;/ul&gt;">
+          &#x263F; Mercury<br><small>3.70</small>
+        </button>
+        <button class="planet-btn" data-planet="mars" data-gravity="3.72"
+          data-tip="&lt;b&gt;🔴 Mars&lt;/b&gt; &lt;i&gt;— g = 3.72 m/s²&lt;/i&gt;&lt;br&gt;&lt;br&gt;Nearly the &lt;b&gt;same gravity as Mercury&lt;/b&gt; despite being much bigger — because it's far less dense.&lt;br&gt;&lt;br&gt;&lt;b&gt;Quick facts:&lt;/b&gt;&lt;ul&gt;&lt;li&gt;Atmosphere is thin CO₂ — only 1% of Earth's pressure&lt;/li&gt;&lt;li&gt;Home to &lt;b&gt;Olympus Mons&lt;/b&gt;, the tallest volcano in the solar system (21.9 km)&lt;/li&gt;&lt;li&gt;A cannon here would shoot &lt;b&gt;2.6× farther&lt;/b&gt; than on Earth&lt;/li&gt;&lt;li&gt;Dust storms can engulf the entire planet&lt;/li&gt;&lt;/ul&gt;">
+          &#x1F534; Mars<br><small>3.72</small>
+        </button>
+        <button class="planet-btn" data-planet="venus" data-gravity="8.87"
+          data-tip="&lt;b&gt;♀ Venus&lt;/b&gt; &lt;i&gt;— g = 8.87 m/s²&lt;/i&gt;&lt;br&gt;&lt;br&gt;Earth's &lt;b&gt;twin in size&lt;/b&gt;, but a hellscape on the surface. Shots feel almost like home.&lt;br&gt;&lt;br&gt;&lt;b&gt;Quick facts:&lt;/b&gt;&lt;ul&gt;&lt;li&gt;Surface temp: &lt;b&gt;460°C&lt;/b&gt; — hot enough to melt lead&lt;/li&gt;&lt;li&gt;Atmospheric pressure is &lt;b&gt;90× Earth's&lt;/b&gt;&lt;/li&gt;&lt;li&gt;Rains sulfuric acid (it evaporates before hitting ground)&lt;/li&gt;&lt;li&gt;A day on Venus is longer than its year!&lt;/li&gt;&lt;/ul&gt;">
+          &#x2640; Venus<br><small>8.87</small>
+        </button>
+        <button class="planet-btn" data-planet="uranus" data-gravity="8.69"
+          data-tip="&lt;b&gt;⛢ Uranus&lt;/b&gt; &lt;i&gt;— g = 8.69 m/s²&lt;/i&gt;&lt;br&gt;&lt;br&gt;An &lt;b&gt;ice giant&lt;/b&gt; tilted 98° on its side — it literally rolls around the Sun.&lt;br&gt;&lt;br&gt;&lt;b&gt;Quick facts:&lt;/b&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;63× Earth's volume&lt;/b&gt; but only 89% of our gravity&lt;/li&gt;&lt;li&gt;Made of hydrogen, helium, and water/methane ices&lt;/li&gt;&lt;li&gt;Coldest planet: down to &lt;b&gt;−224°C&lt;/b&gt;&lt;/li&gt;&lt;li&gt;No solid surface — your cannonball sinks into gas!&lt;/li&gt;&lt;/ul&gt;">
+          &#x26E2; Uranus<br><small>8.69</small>
+        </button>
+        <button class="planet-btn active" data-planet="earth" data-gravity="9.81"
+          data-tip="&lt;b&gt;🌍 Earth&lt;/b&gt; &lt;i&gt;— g = 9.81 m/s²&lt;/i&gt;&lt;br&gt;&lt;br&gt;Home! The &lt;b&gt;standard gravity&lt;/b&gt; used in every physics class on the planet.&lt;br&gt;&lt;br&gt;&lt;b&gt;Quick facts:&lt;/b&gt;&lt;ul&gt;&lt;li&gt;g varies from &lt;b&gt;9.78&lt;/b&gt; (equator) to &lt;b&gt;9.83&lt;/b&gt; (poles) — Earth's spin makes it bulge&lt;/li&gt;&lt;li&gt;Only planet with liquid water on the surface&lt;/li&gt;&lt;li&gt;Atmosphere slows projectiles, but we ignore air resistance here&lt;/li&gt;&lt;li&gt;A 45° launch always gives max range (in a vacuum)&lt;/li&gt;&lt;/ul&gt;">
+          &#x1F30D; Earth<br><small>9.81</small>
+        </button>
+        <button class="planet-btn" data-planet="saturn" data-gravity="10.44"
+          data-tip="&lt;b&gt;🪐 Saturn&lt;/b&gt; &lt;i&gt;— g = 10.44 m/s²&lt;/i&gt;&lt;br&gt;&lt;br&gt;The &lt;b&gt;least dense planet&lt;/b&gt; — it would float in a bathtub big enough to hold it!&lt;br&gt;&lt;br&gt;&lt;b&gt;Quick facts:&lt;/b&gt;&lt;ul&gt;&lt;li&gt;Density only &lt;b&gt;0.69 g/cm³&lt;/b&gt; (water is 1.0)&lt;/li&gt;&lt;li&gt;95× heavier than Earth, but gravity is only 6% stronger&lt;/li&gt;&lt;li&gt;Those rings are made of ice chunks — some as big as houses&lt;/li&gt;&lt;li&gt;Winds reach &lt;b&gt;1,800 km/h&lt;/b&gt; — no solid surface here&lt;/li&gt;&lt;/ul&gt;">
+          &#x1FA90; Saturn<br><small>10.44</small>
+        </button>
+        <button class="planet-btn" data-planet="neptune" data-gravity="11.15"
+          data-tip="&lt;b&gt;🔵 Neptune&lt;/b&gt; &lt;i&gt;— g = 11.15 m/s²&lt;/i&gt;&lt;br&gt;&lt;br&gt;The windiest planet — and shots drop &lt;b&gt;14% faster than on Earth&lt;/b&gt;.&lt;br&gt;&lt;br&gt;&lt;b&gt;Quick facts:&lt;/b&gt;&lt;ul&gt;&lt;li&gt;Wind speeds up to &lt;b&gt;2,100 km/h&lt;/b&gt; — the fastest in the solar system&lt;/li&gt;&lt;li&gt;Denser than other gas giants, so gravity is surprisingly strong&lt;/li&gt;&lt;li&gt;Takes &lt;b&gt;165 years&lt;/b&gt; to orbit the Sun&lt;/li&gt;&lt;li&gt;Its blue colour comes from methane absorbing red light&lt;/li&gt;&lt;/ul&gt;">
+          &#x1F535; Neptune<br><small>11.15</small>
+        </button>
+        <button class="planet-btn" data-planet="jupiter" data-gravity="24.79"
+          data-tip="&lt;b&gt;🟠 Jupiter&lt;/b&gt; &lt;i&gt;— g = 24.79 m/s²&lt;/i&gt;&lt;br&gt;&lt;br&gt;The king of planets — &lt;b&gt;2.5× Earth's gravity&lt;/b&gt;. Your cannonball gets yanked down &lt;em&gt;fast&lt;/em&gt;.&lt;br&gt;&lt;br&gt;&lt;b&gt;Quick facts:&lt;/b&gt;&lt;ul&gt;&lt;li&gt;Mass of &lt;b&gt;318 Earths&lt;/b&gt; — more than all other planets combined&lt;/li&gt;&lt;li&gt;The Great Red Spot is a storm &lt;b&gt;bigger than Earth&lt;/b&gt;, raging for 350+ years&lt;/li&gt;&lt;li&gt;Acts as our solar system's &lt;b&gt;asteroid shield&lt;/b&gt;, deflecting debris&lt;/li&gt;&lt;li&gt;Same launch here flies only &lt;b&gt;40%&lt;/b&gt; as far as on Earth&lt;/li&gt;&lt;/ul&gt;">
+          &#x1F7E0; Jupiter<br><small>24.79</small>
+        </button>
+      </div>
+
+      <!-- ── Sliders ─────────────────────────────────────────────────────── -->
+      <div class="section-header">Controls</div>
+      <div class="slider-group">
+
+        <!-- Angle -->
+        <div class="slider-row">
+          <div class="slider-label-row">
+            <span class="slider-label">
+              Launch Angle
+              <span class="tooltip-trigger" data-tip="&lt;b&gt;📐 Launch Angle&lt;/b&gt; &lt;i&gt;— degrees above horizontal&lt;/i&gt;&lt;br&gt;&lt;br&gt;The direction the cannon points. This is the single &lt;b&gt;most important&lt;/b&gt; variable for controlling range.&lt;br&gt;&lt;br&gt;&lt;b&gt;Quick facts:&lt;/b&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;45°&lt;/b&gt; gives maximum range in a vacuum (no air)&lt;/li&gt;&lt;li&gt;Low angles → fast, flat trajectories (like a bullet)&lt;/li&gt;&lt;li&gt;High angles → tall arcs that land close (like a mortar)&lt;/li&gt;&lt;li&gt;Complementary angles (e.g. 30° &amp;amp; 60°) give the &lt;b&gt;same range&lt;/b&gt; but different flight times&lt;/li&gt;&lt;/ul&gt;">?</span>
+            </span>
+            <span class="slider-value" id="val-angle">45°</span>
+          </div>
+          <input type="range" id="slider-angle" title="Launch Angle"
+                 min="5" max="85" value="45" step="1">
+        </div>
+
+        <!-- Mass -->
+        <div class="slider-row">
+          <div class="slider-label-row">
+            <span class="slider-label">
+              Mass
+              <span class="tooltip-trigger" data-tip="&lt;b&gt;⚖️ Mass&lt;/b&gt; &lt;i&gt;— kilograms (kg)&lt;/i&gt;&lt;br&gt;&lt;br&gt;How heavy the cannonball is. A heavier ball is &lt;b&gt;harder to accelerate&lt;/b&gt; but carries more momentum once moving.&lt;br&gt;&lt;br&gt;&lt;b&gt;Quick facts:&lt;/b&gt;&lt;ul&gt;&lt;li&gt;Newton's 2nd Law: &lt;b&gt;F = ma&lt;/b&gt; → double the mass, halve the acceleration&lt;/li&gt;&lt;li&gt;Launch speed: v = √(2Fd/m) — more mass means a &lt;b&gt;slower launch&lt;/b&gt;&lt;/li&gt;&lt;li&gt;Gravity pulls all masses equally — in a vacuum, a feather and a cannonball follow the &lt;b&gt;same arc&lt;/b&gt;&lt;/li&gt;&lt;li&gt;Historical cannonballs ranged from 1 kg (falconet) to 20 kg (siege gun)&lt;/li&gt;&lt;/ul&gt;">?</span>
+            </span>
+            <span class="slider-value" id="val-mass">5.0 kg</span>
+          </div>
+          <input type="range" id="slider-mass" title="Mass"
+                 min="0.5" max="20" value="5" step="0.1">
+        </div>
+
+        <!-- Force -->
+        <div class="slider-row">
+          <div class="slider-label-row">
+            <span class="slider-label">
+              Applied Force
+              <span class="tooltip-trigger" data-tip="&lt;b&gt;💥 Applied Force&lt;/b&gt; &lt;i&gt;— newtons (N)&lt;/i&gt;&lt;br&gt;&lt;br&gt;The push from the gunpowder explosion. More force means more &lt;b&gt;energy transferred&lt;/b&gt; to the ball.&lt;br&gt;&lt;br&gt;&lt;b&gt;Quick facts:&lt;/b&gt;&lt;ul&gt;&lt;li&gt;Work done = &lt;b&gt;Force × Distance&lt;/b&gt; (that distance is the barrel length!)&lt;/li&gt;&lt;li&gt;All that work becomes &lt;b&gt;kinetic energy&lt;/b&gt;: KE = ½mv²&lt;/li&gt;&lt;li&gt;Double the force → &lt;b&gt;1.41× faster&lt;/b&gt; launch (it's a square root relationship)&lt;/li&gt;&lt;li&gt;1 newton ≈ the weight of a small apple on Earth&lt;/li&gt;&lt;/ul&gt;">?</span>
+            </span>
+            <span class="slider-value" id="val-force">500 N</span>
+          </div>
+          <input type="range" id="slider-force" title="Applied Force"
+                 min="50" max="5000" value="500" step="10">
+        </div>
+
+        <!-- Barrel Length -->
+        <div class="slider-row">
+          <div class="slider-label-row">
+            <span class="slider-label">
+              Barrel Length
+              <span class="tooltip-trigger" data-tip="&lt;b&gt;📏 Barrel Length&lt;/b&gt; &lt;i&gt;— metres (m)&lt;/i&gt;&lt;br&gt;&lt;br&gt;How far the ball travels &lt;b&gt;inside the cannon&lt;/b&gt; while being pushed. A longer barrel = more time under acceleration = &lt;b&gt;faster exit&lt;/b&gt;.&lt;br&gt;&lt;br&gt;&lt;b&gt;Quick facts:&lt;/b&gt;&lt;ul&gt;&lt;li&gt;Launch speed: &lt;b&gt;v = √(2Fd/m)&lt;/b&gt; — d is the barrel length&lt;/li&gt;&lt;li&gt;Double the barrel → &lt;b&gt;1.41× faster&lt;/b&gt; launch (same square-root as force)&lt;/li&gt;&lt;li&gt;Real naval cannons had barrels up to 3 m long&lt;/li&gt;&lt;li&gt;Watch the stickmen crew bolt on extra segments when you change this!&lt;/li&gt;&lt;/ul&gt;">?</span>
+            </span>
+            <span class="slider-value" id="val-barrel">2.0 m</span>
+          </div>
+          <input type="range" id="slider-barrel" title="Barrel Length"
+                 min="0.5" max="5" value="2.0" step="0.1">
+        </div>
+
+        <!-- Gravity -->
+        <div class="slider-row">
+          <div class="slider-label-row">
+            <span class="slider-label">
+              Gravity
+              <span class="tooltip-trigger" data-tip="&lt;b&gt;🌐 Gravity&lt;/b&gt; &lt;i&gt;— m/s² (acceleration)&lt;/i&gt;&lt;br&gt;&lt;br&gt;How strongly the planet &lt;b&gt;pulls everything downward&lt;/b&gt;. This slider smoothly morphs the landscape between planets.&lt;br&gt;&lt;br&gt;&lt;b&gt;Quick facts:&lt;/b&gt;&lt;ul&gt;&lt;li&gt;Range is &lt;b&gt;inversely proportional&lt;/b&gt; to gravity: R = v²sin(2θ)/g&lt;/li&gt;&lt;li&gt;Half the gravity → &lt;b&gt;double the range&lt;/b&gt; for the same launch&lt;/li&gt;&lt;li&gt;Gravity doesn't change the &lt;b&gt;horizontal speed&lt;/b&gt; — only the vertical&lt;/li&gt;&lt;li&gt;Use the planet buttons above for presets, or drag freely to explore!&lt;/li&gt;&lt;/ul&gt;">?</span>
+            </span>
+            <span class="slider-value" id="val-gravity">9.81 m/s²</span>
+          </div>
+          <input type="range" id="slider-gravity" title="Gravity"
+                 min="0.5" max="30" value="9.81" step="0.01">
+        </div>
+
+      </div>
+
+      <!-- ── Fire Button ─────────────────────────────────────────────────── -->
+      <button class="btn-fire" id="btn-fire">FIRE!</button>
+
+      <!-- ── Clear Button ────────────────────────────────────────────────── -->
+      <button class="btn-clear" id="btn-clear">&#x1F9F9; Clear Range</button>
+
+      <!-- ── Flight Data ─────────────────────────────────────────────────── -->
+      <div class="section-header">Flight Data</div>
+      <div class="readout-grid" id="flight-data">
+        <span class="readout-label">Velocity</span>
+        <span class="readout-value" id="read-velocity">---</span>
+        <span class="readout-label">Height</span>
+        <span class="readout-value" id="read-height">---</span>
+        <span class="readout-label">Horiz. dist</span>
+        <span class="readout-value" id="read-distance">---</span>
+      </div>
+
+      <!-- ── Energy Readouts ─────────────────────────────────────────────── -->
+      <div class="section-header">Energy</div>
+      <div class="readout-grid">
+        <span class="readout-label">Kinetic (KE)</span>
+        <span class="readout-value ke" id="read-ke">---</span>
+        <span class="readout-label">Potential (PE)</span>
+        <span class="readout-value pe" id="read-pe">---</span>
+        <span class="readout-label">Total (TME)</span>
+        <span class="readout-value tme" id="read-tme">---</span>
+      </div>
+
+      <!-- ── Energy Bar Visualisation ────────────────────────────────────── -->
+      <div class="energy-bar-container" id="energy-bar">
+        <div class="energy-bar-segment energy-bar-ke energy-bar-zero" id="energy-bar-ke"></div>
+        <div class="energy-bar-segment energy-bar-pe energy-bar-zero" id="energy-bar-pe"></div>
+      </div>
+      <div class="energy-bar-legend">
+        <span class="legend-item" data-tip="&lt;b&gt;Kinetic Energy (KE)&lt;/b&gt;&lt;br&gt;&lt;br&gt;The energy of &lt;b&gt;motion&lt;/b&gt;. The faster something moves, the more KE it has.&lt;br&gt;&lt;br&gt;&lt;b&gt;Formula:&lt;/b&gt; KE = ½mv²&lt;ul&gt;&lt;li&gt;Doubling speed gives &lt;b&gt;4×&lt;/b&gt; the kinetic energy&lt;/li&gt;&lt;li&gt;At launch, almost all energy is kinetic&lt;/li&gt;&lt;li&gt;At peak height, KE is at its lowest (only horizontal component)&lt;/li&gt;&lt;li&gt;Watch the bar — KE and PE swap back and forth but &lt;b&gt;total stays constant!&lt;/b&gt;&lt;/li&gt;&lt;/ul&gt;"><span class="legend-dot ke"></span>Kinetic Energy</span>
+        <span class="legend-item" data-tip="&lt;b&gt;Potential Energy (PE)&lt;/b&gt;&lt;br&gt;&lt;br&gt;The energy of &lt;b&gt;height&lt;/b&gt;. The higher something is, the more stored energy it has.&lt;br&gt;&lt;br&gt;&lt;b&gt;Formula:&lt;/b&gt; PE = mgh&lt;ul&gt;&lt;li&gt;Gravity does the storing — lift something up and you've &lt;b&gt;banked energy&lt;/b&gt;&lt;/li&gt;&lt;li&gt;At peak height, PE is at its maximum&lt;/li&gt;&lt;li&gt;When the ball falls, PE converts &lt;b&gt;back into KE&lt;/b&gt;&lt;/li&gt;&lt;li&gt;This swap is the &lt;b&gt;Conservation of Energy&lt;/b&gt; in action!&lt;/li&gt;&lt;/ul&gt;"><span class="legend-dot pe"></span>Potential Energy</span>
+      </div>
+
+      <div class="spacer-lg"></div>
+
+    </div>
+    <!-- end .control-panel -->
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- RIGHT: SIMULATION CANVAS (70%)                                     -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div class="canvas-area">
+      <canvas id="sim-canvas"></canvas>
+    </div>
+
+  </div>
+  <!-- end .app-container -->
+
+  <!-- ── Scripts (dependency order) ─────────────────────────────────────── -->
+  <script src="physics.js"></script>
+  <script src="renderer.js"></script>
+  <script src="ui.js"></script>
+  <script src="main.js"></script>
+
+</body>
+</html>
