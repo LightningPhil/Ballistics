@@ -1,11 +1,11 @@
 /**
  * ============================================================================
- * style.css — All Visual Styling for Matilda's Cannon Lab
+ * style.css — All Visual Styling for Launch Lab
  * ============================================================================
  *
  * ROLE:  Layout (two-column split), control panel styling, slider chrome,
  *        button states, tooltip appearance, telemetry readout formatting,
- *        energy bar, animations, and colour theme.
+ *        energy bar, animations, colour theme, and mode toggle.
  *
  * DESIGN: Worn scientific instrument meets retro arcade.
  *         Dyslexic-friendly: high contrast, clear fonts, generous spacing.
@@ -384,6 +384,11 @@ input[type="range"]::-moz-range-thumb {
   font-size: 11px;
 }
 
+.readout-label[data-tip] {
+  cursor: help;
+  border-bottom: 1px dotted var(--text-dim);
+}
+
 .readout-value {
   text-align: right;
   color: var(--text);
@@ -474,3 +479,288 @@ input[type="range"]::-moz-range-thumb {
 
 .spacer { height: 6px; }
 .spacer-lg { height: 14px; }
+/* ── Mode Toggle ───────────────────────────────────────────────────────────────── */
+
+.mode-toggle {
+  display: flex;
+  gap: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1.5px solid var(--border-bright);
+  flex-shrink: 0; /* prevent collapse in flex column layout */
+}
+
+.mode-btn {
+  flex: 1;
+  padding: 8px 4px;
+  background: var(--bg-panel-darker);
+  border: none;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 0.5px;
+}
+
+.mode-btn:not(:last-child) {
+  border-right: 1.5px solid var(--border-bright);
+}
+
+.mode-btn:hover:not(.active) {
+  background: rgba(245, 166, 35, 0.06);
+  color: var(--text);
+}
+
+.mode-btn.active {
+  background: rgba(245, 166, 35, 0.18);
+  color: var(--accent);
+  text-shadow: 0 0 8px rgba(245, 166, 35, 0.3);
+}
+
+.mode-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Mode Panels ───────────────────────────────────────────────────────────────── */
+
+.cannon-panel,
+.rocket-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rocket-panel {
+  display: none; /* hidden by default, shown via JS when rocket mode is active */
+}
+
+/* ── Rocket Select Dropdown ────────────────────────────────────────────────── */
+
+.rocket-select {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg-panel-darker);
+  border: 1.5px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.rocket-select:hover,
+.rocket-select:focus {
+  border-color: var(--accent);
+}
+
+.rocket-select option {
+  background: var(--bg-panel);
+  color: var(--text);
+}
+
+.propellant-note {
+  font-family: var(--font-serif);
+  font-size: 11px;
+  color: var(--text-dim);
+  font-style: italic;
+  line-height: 1.4;
+  padding: 2px 0 0 0;
+  min-height: 16px;
+}
+
+/* ── Guidance Sub-controls ─────────────────────────────────────────────────── */
+
+.guidance-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 10px;
+  border-left: 2px solid var(--border-subtle);
+  margin-left: 4px;
+}
+
+.guidance-sub-hidden { display: none; }
+
+/* ── Efficiency Collapse Toggle ────────────────────────────────────────────── */
+
+.rocket-efficiency-hidden { display: none; }
+
+.rocket-efficiency-toggle {
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: color 0.2s;
+}
+
+.rocket-efficiency-toggle:hover {
+  color: var(--text);
+}
+
+.collapse-arrow {
+  font-size: 10px;
+  display: inline-block;
+  transition: transform 0.2s;
+  margin-left: 4px;
+}
+
+.collapse-arrow.open {
+  transform: rotate(90deg);
+}
+
+/* ── Launch Button (green variant of btn-fire) ─────────────────────────────── */
+
+.btn-launch {
+  background: linear-gradient(180deg, #27ae60 0%, #1e8449 100%) !important;
+  border-color: #2ecc71 !important;
+  box-shadow:
+    0 4px 12px rgba(39, 174, 96, 0.4),
+    inset 0 1px 0 rgba(255,255,255,0.15) !important;
+}
+
+.btn-launch:hover:not(.disabled) {
+  background: linear-gradient(180deg, #2ecc71 0%, #27ae60 100%) !important;
+  box-shadow:
+    0 6px 16px rgba(39, 174, 96, 0.5),
+    inset 0 1px 0 rgba(255,255,255,0.2) !important;
+}
+
+.btn-launch:active:not(.disabled) {
+  box-shadow:
+    0 2px 6px rgba(39, 174, 96, 0.3),
+    inset 0 2px 4px rgba(0,0,0,0.2) !important;
+}
+
+/* T/W < 1 caution state */
+.btn-launch.caution {
+  background: linear-gradient(180deg, #e67e22 0%, #d35400 100%) !important;
+  border-color: #f39c12 !important;
+  box-shadow:
+    0 4px 12px rgba(230, 126, 34, 0.4),
+    inset 0 1px 0 rgba(255,255,255,0.15) !important;
+  animation: caution-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes caution-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.75; }
+}
+
+/* ── T/W Warning ───────────────────────────────────────────────────────────── */
+
+.tw-warning {
+  font-family: var(--font-serif);
+  font-size: 12px;
+  color: #e74c3c;
+  text-align: center;
+  padding: 4px 8px;
+  background: rgba(231, 76, 60, 0.1);
+  border: 1px solid rgba(231, 76, 60, 0.3);
+  border-radius: 6px;
+  line-height: 1.4;
+}
+
+.tw-warning-hidden { display: none; }
+
+/* ── Fizzle Message ────────────────────────────────────────────────────────── */
+
+.fizzle-message {
+  font-family: var(--font-serif);
+  font-size: 12px;
+  color: #f39c12;
+  text-align: center;
+  padding: 6px 10px;
+  background: rgba(243, 156, 18, 0.12);
+  border: 1px solid rgba(243, 156, 18, 0.35);
+  border-radius: 6px;
+  line-height: 1.4;
+  font-style: italic;
+  animation: fizzle-appear 0.4s ease-out;
+}
+
+.fizzle-message-hidden { display: none; }
+
+@keyframes fizzle-appear {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Rocket Readout Colours ────────────────────────────────────────────────── */
+
+.readout-value.rocket-tw-warn { color: #e74c3c; }
+.readout-value.rocket-tw-ok   { color: #2ecc71; }
+
+/* ── Propellant Gauge Bar ──────────────────────────────────────────────────── */
+
+.prop-gauge-container {
+  width: 100%;
+  height: 22px;
+  background: var(--bg-panel-darker);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+  margin-top: 6px;
+}
+
+.prop-gauge-segment {
+  height: 100%;
+  width: 0%;
+  transition: width 0.08s linear;
+}
+
+.prop-gauge-ox {
+  background: linear-gradient(180deg, #5dade2, #2e86c1);
+}
+
+.prop-gauge-fuel {
+  background: linear-gradient(180deg, #f5a623, #d4891a);
+}
+
+.prop-gauge-legend {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+.prop-ox-dot {
+  background: #5dade2;
+}
+
+.prop-fuel-dot {
+  background: #f5a623;
+}
+
+/* ── Post-Flight Summary ───────────────────────────────────────────────────── */
+
+.post-flight-summary {
+  margin-top: 12px;
+  padding: 8px 10px;
+  background: rgba(46, 204, 113, 0.08);
+  border: 1px solid rgba(46, 204, 113, 0.3);
+  border-radius: 6px;
+  animation: post-flight-appear 0.4s ease-out;
+}
+
+.post-flight-summary .section-header {
+  color: #2ecc71;
+  margin-bottom: 4px;
+}
+
+.post-flight-hidden {
+  display: none;
+}
+
+@keyframes post-flight-appear {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Nozzle cutaway is now drawn on the main canvas — see nozzle_render.js */

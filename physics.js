@@ -39,7 +39,14 @@
   function computeLaunchVelocity(force, mass, barrelLength) {
     var d = (typeof barrelLength === 'number') ? barrelLength : BARREL_LENGTH;
     if (mass <= 0) return 0;
-    return Math.sqrt(2 * force * d / mass);
+
+    // Clamp invalid/negative inputs so we never take sqrt of a negative value.
+    var F = isFinite(force) ? Math.max(0, force) : 0;
+    d = isFinite(d) ? Math.max(0, d) : 0;
+    var workPerMass = (2 * F * d) / mass;
+    if (workPerMass <= 0) return 0;
+
+    return Math.sqrt(workPerMass);
   }
 
   /**
@@ -127,7 +134,9 @@
     var disc = vy * vy + 2 * gravity * startY;
     var flightTime = (vy + Math.sqrt(Math.max(0, disc))) / gravity;
     var range = startX + vx * flightTime;
-    var maxHeight = startY + (vy * vy) / (2 * gravity);
+    // Only upward vertical velocity contributes to a higher apex.
+    var vyUp = Math.max(0, vy);
+    var maxHeight = startY + (vyUp * vyUp) / (2 * gravity);
 
     return {
       range: range,

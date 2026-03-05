@@ -1,12 +1,13 @@
 <!DOCTYPE html>
 <!--
   ============================================================================
-  index.html — Shell & DOM Structure for Matilda's Cannon Lab
+  index.html — Shell & DOM Structure for Launch Lab
   ============================================================================
 
   ROLE:  Page skeleton, layout containers, all DOM elements for the control
          panel (sliders, buttons, readouts, energy bar), the simulation
          canvas, and the tooltip box. Loads all scripts in dependency order.
+         Supports two modes: Cannon (classic) and Rocket (continuous thrust).
 
   SCRIPT LOAD ORDER:
     1. physics.js   — Pure physics engine (no dependencies)
@@ -19,7 +20,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Matilda's Cannon Lab</title>
+  <title>Launch Lab</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -36,8 +37,14 @@
     <div class="control-panel">
 
       <!-- Title -->
-      <div class="panel-title">Matilda's Cannon Lab</div>
+      <div class="panel-title">Launch Lab</div>
       <div class="panel-subtitle">Physics Sandbox</div>
+
+      <!-- ── Mode Toggle ────────────────────────────────────────────────── -->
+      <div class="mode-toggle" id="mode-toggle">
+        <button class="mode-btn active" data-mode="cannon">&#x1F3F0; Cannon</button>
+        <button class="mode-btn" data-mode="rocket">&#x1F680; Rocket</button>
+      </div>
 
       <!-- ── Planet Quick-Select ─────────────────────────────────────────── -->
       <div class="section-header">Planet</div>
@@ -79,6 +86,11 @@
           &#x1F7E0; Jupiter<br><small>24.79</small>
         </button>
       </div>
+
+      <!-- ════════════════════════════════════════════════════════════════ -->
+      <!-- CANNON MODE PANEL                                                  -->
+      <!-- ════════════════════════════════════════════════════════════════ -->
+      <div class="cannon-panel" id="cannon-panel">
 
       <!-- ── Sliders ─────────────────────────────────────────────────────── -->
       <div class="section-header">Controls</div>
@@ -191,6 +203,331 @@
 
       <div class="spacer-lg"></div>
 
+      </div>
+      <!-- end .cannon-panel -->
+
+      <!-- ════════════════════════════════════════════════════════════════ -->
+      <!-- ROCKET MODE PANEL (placeholder — populated in later stages)     -->
+      <!-- ════════════════════════════════════════════════════════════════ -->
+      <div class="rocket-panel" id="rocket-panel">
+
+        <!-- ── Propellant ──────────────────────────────────────────────── -->
+        <div class="section-header">Propellant</div>
+        <div class="slider-group">
+          <div class="slider-row">
+            <div class="slider-label-row">
+              <span class="slider-label">
+                Propellant Combo
+                <span class="tooltip-trigger" data-tip="&lt;b&gt;🧪 Propellant Combo&lt;/b&gt;&lt;br&gt;&lt;br&gt;Choose an oxidizer/fuel pair. Each combo has different performance characteristics.&lt;br&gt;&lt;br&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;Cryogenic&lt;/b&gt; (LOX-based): Highest Isp, need cold storage&lt;/li&gt;&lt;li&gt;&lt;b&gt;Storable&lt;/b&gt; (N₂O₄-based): Hypergolic ignition, lower Isp&lt;/li&gt;&lt;li&gt;&lt;b&gt;Educational&lt;/b&gt;: Interesting trade studies&lt;/li&gt;&lt;/ul&gt;">?</span>
+              </span>
+            </div>
+            <select id="rocket-propellant" class="rocket-select" title="Propellant Combo"></select>
+            <div class="propellant-note" id="propellant-note"></div>
+          </div>
+
+          <!-- Mixture Ratio -->
+          <div class="slider-row">
+            <div class="slider-label-row">
+              <span class="slider-label">
+                Mixture Ratio (O/F)
+                <span class="tooltip-trigger" data-tip="&lt;b&gt;⚗️ Mixture Ratio&lt;/b&gt; &lt;i&gt;— mass of oxidizer per mass of fuel&lt;/i&gt;&lt;br&gt;&lt;br&gt;Controls combustion chemistry. Each propellant has an &lt;b&gt;optimal MR&lt;/b&gt; for peak Isp.&lt;br&gt;&lt;br&gt;&lt;ul&gt;&lt;li&gt;Too lean (low MR) → wasted fuel, lower temperature&lt;/li&gt;&lt;li&gt;Too rich (high MR) → cooler exhaust, often used for film cooling&lt;/li&gt;&lt;li&gt;Slider bounds change per propellant&lt;/li&gt;&lt;/ul&gt;">?</span>
+              </span>
+              <span class="slider-value" id="val-rocket-mr">2.56</span>
+            </div>
+            <input type="range" id="slider-rocket-mr" title="Mixture Ratio"
+                   min="2.2" max="2.9" value="2.56" step="0.01">
+          </div>
+        </div>
+
+        <!-- ── Engine / Nozzle ─────────────────────────────────────────── -->
+        <div class="section-header">Engine</div>
+        <div class="slider-group">
+
+          <!-- Chamber Pressure -->
+          <div class="slider-row">
+            <div class="slider-label-row">
+              <span class="slider-label">
+                Chamber Pressure
+                <span class="tooltip-trigger" data-tip="&lt;b&gt;🔥 Chamber Pressure&lt;/b&gt; &lt;i&gt;— bar&lt;/i&gt;&lt;br&gt;&lt;br&gt;Higher pressure → more thrust per unit throat area, but heavier hardware.&lt;br&gt;&lt;br&gt;&lt;ul&gt;&lt;li&gt;Typical range: 20–300 bar&lt;/li&gt;&lt;li&gt;Merlin 1D: ~97 bar; Raptor 3: ~300 bar&lt;/li&gt;&lt;li&gt;Affects mass flow rate and thrust&lt;/li&gt;&lt;/ul&gt;">?</span>
+              </span>
+              <span class="slider-value" id="val-rocket-pc">100 bar</span>
+            </div>
+            <input type="range" id="slider-rocket-pc" title="Chamber Pressure"
+                   min="10" max="300" value="100" step="1">
+          </div>
+
+          <!-- Expansion Ratio -->
+          <div class="slider-row">
+            <div class="slider-label-row">
+              <span class="slider-label">
+                Expansion Ratio (&epsilon;)
+                <span class="tooltip-trigger" data-tip="&lt;b&gt;📐 Expansion Ratio&lt;/b&gt; &lt;i&gt;— Ae/At&lt;/i&gt;&lt;br&gt;&lt;br&gt;The ratio of nozzle &lt;b&gt;exit area&lt;/b&gt; to &lt;b&gt;throat area&lt;/b&gt;. Controls how much the exhaust expands.&lt;br&gt;&lt;br&gt;&lt;ul&gt;&lt;li&gt;Higher ε → more thrust in vacuum, risk of over-expansion at sea level&lt;/li&gt;&lt;li&gt;Sea-level engines: ε ≈ 10–40&lt;/li&gt;&lt;li&gt;Vacuum engines: ε ≈ 80–200+&lt;/li&gt;&lt;li&gt;The nozzle bell gets wider as ε increases&lt;/li&gt;&lt;/ul&gt;">?</span>
+              </span>
+              <span class="slider-value" id="val-rocket-eps">20</span>
+            </div>
+            <input type="range" id="slider-rocket-eps" title="Expansion Ratio"
+                   min="5" max="200" value="20" step="1">
+          </div>
+
+          <!-- Throat Diameter -->
+          <div class="slider-row">
+            <div class="slider-label-row">
+              <span class="slider-label">
+                Throat Diameter
+                <span class="tooltip-trigger" data-tip="&lt;b&gt;⭕ Throat Diameter&lt;/b&gt; &lt;i&gt;— mm&lt;/i&gt;&lt;br&gt;&lt;br&gt;The narrowest point of the nozzle. Along with chamber pressure, this &lt;b&gt;sets the thrust level&lt;/b&gt;.&lt;br&gt;&lt;br&gt;&lt;ul&gt;&lt;li&gt;Throat area At = π(d/2)²&lt;/li&gt;&lt;li&gt;Thrust ∝ Pc × At&lt;/li&gt;&lt;li&gt;Small throat = low thrust (model rocket)&lt;/li&gt;&lt;li&gt;Large throat = high thrust (orbital launcher)&lt;/li&gt;&lt;/ul&gt;">?</span>
+              </span>
+              <span class="slider-value" id="val-rocket-dt">50 mm</span>
+            </div>
+            <input type="range" id="slider-rocket-dt" title="Throat Diameter"
+                   min="5" max="200" value="50" step="1">
+          </div>
+        </div>
+
+        <!-- ── Vehicle ─────────────────────────────────────────────────── -->
+        <div class="section-header">Vehicle</div>
+        <div class="slider-group">
+
+          <!-- Dry Mass -->
+          <div class="slider-row">
+            <div class="slider-label-row">
+              <span class="slider-label">
+                Dry Mass
+                <span class="tooltip-trigger" data-tip="&lt;b&gt;🏗️ Dry Mass&lt;/b&gt; &lt;i&gt;— kg&lt;/i&gt;&lt;br&gt;&lt;br&gt;The mass of the rocket &lt;b&gt;without propellant&lt;/b&gt; — structure, engine, tanks, payload.&lt;br&gt;&lt;br&gt;&lt;ul&gt;&lt;li&gt;Lower dry mass → better mass ratio → more Δv&lt;/li&gt;&lt;li&gt;The &lt;b&gt;mass fraction&lt;/b&gt; (propellant/total) is key to performance&lt;/li&gt;&lt;li&gt;Real rockets: 85–95% of launch mass is propellant&lt;/li&gt;&lt;/ul&gt;">?</span>
+              </span>
+              <span class="slider-value" id="val-rocket-drymass">100 kg</span>
+            </div>
+            <input type="range" id="slider-rocket-drymass" title="Dry Mass"
+                   min="1" max="500" value="100" step="1">
+          </div>
+
+          <!-- Propellant Mass -->
+          <div class="slider-row">
+            <div class="slider-label-row">
+              <span class="slider-label">
+                Propellant Mass
+                <span class="tooltip-trigger" data-tip="&lt;b&gt;⛽ Propellant Mass&lt;/b&gt; &lt;i&gt;— kg&lt;/i&gt;&lt;br&gt;&lt;br&gt;How much propellant (oxidizer + fuel combined) to load.&lt;br&gt;&lt;br&gt;&lt;ul&gt;&lt;li&gt;More propellant → longer burn → more Δv&lt;/li&gt;&lt;li&gt;But also more mass to accelerate (diminishing returns)&lt;/li&gt;&lt;li&gt;Tsiolkovsky: Δv = ve·ln(m0/mf)&lt;/li&gt;&lt;li&gt;Watch the Δv readout as you drag this slider&lt;/li&gt;&lt;/ul&gt;">?</span>
+              </span>
+              <span class="slider-value" id="val-rocket-propmass">500 kg</span>
+            </div>
+            <input type="range" id="slider-rocket-propmass" title="Propellant Mass"
+                   min="1" max="5000" value="500" step="1">
+          </div>
+
+          <!-- Launch Angle -->
+          <div class="slider-row">
+            <div class="slider-label-row">
+              <span class="slider-label">
+                Launch Angle
+                <span class="tooltip-trigger" data-tip="&lt;b&gt;📐 Launch Angle&lt;/b&gt; &lt;i&gt;— degrees from horizontal&lt;/i&gt;&lt;br&gt;&lt;br&gt;The angle of the launch tower/rail.&lt;br&gt;&lt;br&gt;&lt;ul&gt;&lt;li&gt;90° = straight up (vertical launch)&lt;/li&gt;&lt;li&gt;Lower angles → more horizontal velocity from the start&lt;/li&gt;&lt;li&gt;Most real rockets launch at 90° then pitch over (gravity turn)&lt;/li&gt;&lt;li&gt;Use Guidance Mode to control in-flight pitch&lt;/li&gt;&lt;/ul&gt;">?</span>
+              </span>
+              <span class="slider-value" id="val-rocket-angle">90°</span>
+            </div>
+            <input type="range" id="slider-rocket-angle" title="Launch Angle"
+                   min="5" max="90" value="90" step="1">
+          </div>
+        </div>
+
+        <!-- ── Guidance ────────────────────────────────────────────────── -->
+        <div class="section-header">Guidance</div>
+        <div class="slider-group">
+          <div class="slider-row">
+            <div class="slider-label-row">
+              <span class="slider-label">
+                Guidance Mode
+                <span class="tooltip-trigger" data-tip="&lt;b&gt;🧭 Guidance Mode&lt;/b&gt;&lt;br&gt;&lt;br&gt;How the rocket steers during flight.&lt;br&gt;&lt;br&gt;&lt;ul&gt;&lt;li&gt;&lt;b&gt;Gravity Turn&lt;/b&gt;: Rocket follows natural trajectory — thrust along velocity vector after clearing the rail (most realistic)&lt;/li&gt;&lt;li&gt;&lt;b&gt;Pitch Program&lt;/b&gt;: Linear ramp from one angle to another over a set time&lt;/li&gt;&lt;li&gt;&lt;b&gt;Prograde Lock&lt;/b&gt;: Auto-orient along velocity vector with custom speed threshold&lt;/li&gt;&lt;/ul&gt;">?</span>
+              </span>
+            </div>
+            <select id="rocket-guidance" class="rocket-select" title="Guidance Mode">
+              <option value="fixed">Gravity Turn</option>
+              <option value="pitch_program">Pitch Program</option>
+              <option value="prograde_lock">Prograde Lock</option>
+            </select>
+          </div>
+
+          <!-- Pitch Program sub-controls (hidden by default) -->
+          <div class="guidance-sub guidance-sub-hidden" id="guidance-pitch-sub">
+            <div class="slider-row">
+              <div class="slider-label-row">
+                <span class="slider-label">Final Angle</span>
+                <span class="slider-value" id="val-rocket-pitch-end">45°</span>
+              </div>
+              <input type="range" id="slider-rocket-pitch-end" title="Final Pitch Angle"
+                     min="0" max="89" value="45" step="1">
+            </div>
+            <div class="slider-row">
+              <div class="slider-label-row">
+                <span class="slider-label">Ramp Start (s)</span>
+                <span class="slider-value" id="val-rocket-pitch-t1">5 s</span>
+              </div>
+              <input type="range" id="slider-rocket-pitch-t1" title="Ramp Start Time"
+                     min="0" max="60" value="5" step="0.5">
+            </div>
+            <div class="slider-row">
+              <div class="slider-label-row">
+                <span class="slider-label">Ramp End (s)</span>
+                <span class="slider-value" id="val-rocket-pitch-t2">20 s</span>
+              </div>
+              <input type="range" id="slider-rocket-pitch-t2" title="Ramp End Time"
+                     min="1" max="120" value="20" step="0.5">
+            </div>
+          </div>
+
+          <!-- Prograde Lock sub-controls (hidden by default) -->
+          <div class="guidance-sub guidance-sub-hidden" id="guidance-prograde-sub">
+            <div class="slider-row">
+              <div class="slider-label-row">
+                <span class="slider-label">Speed Threshold</span>
+                <span class="slider-value" id="val-rocket-prograde-vmin">10 m/s</span>
+              </div>
+              <input type="range" id="slider-rocket-prograde-vmin" title="Prograde Lock Speed"
+                     min="1" max="100" value="10" step="1">
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Efficiencies (collapsible) ──────────────────────────────── -->
+        <div class="section-header">Camera Settings</div>
+        <div class="slider-group">
+          <div class="slider-row">
+            <div class="slider-label-row">
+              <span class="slider-label">
+                Zoom Margin
+                <span class="tooltip-trigger" data-tip="&lt;b&gt;Zoom Margin&lt;/b&gt; &lt;i&gt;— percent&lt;/i&gt;&lt;br&gt;&lt;br&gt;Extra framing around the predicted rocket trajectory. 10% is tighter, 20% gives more headroom.">?</span>
+              </span>
+              <span class="slider-value" id="val-rocket-zoom-margin">15 %</span>
+            </div>
+            <input type="range" id="slider-rocket-zoom-margin" title="Rocket Zoom Margin"
+                   min="10" max="20" value="15" step="1">
+          </div>
+
+          <div class="slider-row">
+            <div class="slider-label-row">
+              <span class="slider-label">
+                Zoom Transition
+                <span class="tooltip-trigger" data-tip="&lt;b&gt;Zoom Transition&lt;/b&gt; &lt;i&gt;— seconds&lt;/i&gt;&lt;br&gt;&lt;br&gt;How long the one-time pre-launch zoom-to-fit move takes. Default is 3 seconds.">?</span>
+              </span>
+              <span class="slider-value" id="val-rocket-zoom-duration">3.0 s</span>
+            </div>
+            <input type="range" id="slider-rocket-zoom-duration" title="Rocket Zoom Duration"
+                   min="1.0" max="8.0" value="3.0" step="0.1">
+          </div>
+        </div>
+
+        <div class="section-header rocket-efficiency-toggle" id="efficiency-toggle">
+          Efficiencies <span class="collapse-arrow" id="efficiency-arrow">&#x25B6;</span>
+        </div>
+        <div class="slider-group rocket-efficiency-section rocket-efficiency-hidden" id="efficiency-section">
+          <div class="slider-row">
+            <div class="slider-label-row">
+              <span class="slider-label">
+                &eta;<sub>c</sub> (combustion)
+                <span class="tooltip-trigger" data-tip="&lt;b&gt;η_c — Combustion Efficiency&lt;/b&gt;&lt;br&gt;&lt;br&gt;Fraction of ideal c* actually achieved. Real engines: 0.92–0.99.&lt;br&gt;&lt;br&gt;Scales the characteristic velocity: c*_eff = η_c × c*">?</span>
+              </span>
+              <span class="slider-value" id="val-rocket-etac">0.95</span>
+            </div>
+            <input type="range" id="slider-rocket-etac" title="Combustion Efficiency"
+                   min="0.80" max="1.00" value="0.95" step="0.01">
+          </div>
+          <div class="slider-row">
+            <div class="slider-label-row">
+              <span class="slider-label">
+                &eta;<sub>n</sub> (nozzle)
+                <span class="tooltip-trigger" data-tip="&lt;b&gt;η_n — Nozzle Efficiency&lt;/b&gt;&lt;br&gt;&lt;br&gt;Fraction of ideal Cf actually achieved. Real engines: 0.92–0.99.&lt;br&gt;&lt;br&gt;Scales the thrust coefficient: Cf_eff = η_n × Cf">?</span>
+              </span>
+              <span class="slider-value" id="val-rocket-etan">0.95</span>
+            </div>
+            <input type="range" id="slider-rocket-etan" title="Nozzle Efficiency"
+                   min="0.80" max="1.00" value="0.95" step="0.01">
+          </div>
+        </div>
+
+        <!-- ── Launch & Clear Buttons ──────────────────────────────────── -->
+        <button class="btn-fire btn-launch" id="btn-launch">&#x1F680; LAUNCH</button>
+        <div class="tw-warning tw-warning-hidden" id="tw-warning">&#x26A0; Thrust &lt; Weight &mdash; rocket will not lift off!</div>
+        <div class="fizzle-message fizzle-message-hidden" id="fizzle-message"></div>
+        <button class="btn-clear" id="btn-rocket-clear">&#x1F9F9; Clear Range</button>
+
+        <!-- ── Pre-launch Readouts ─────────────────────────────────────── -->
+        <div class="section-header">Pre-launch</div>
+        <div class="readout-grid" id="rocket-prelaunch">
+          <span class="readout-label" data-tip="&lt;b&gt;🔥 Thrust&lt;/b&gt; &lt;i&gt;— Newtons (N)&lt;/i&gt;&lt;br&gt;&lt;br&gt;The force the engine produces. Computed from &lt;b&gt;Cf × Pc × At&lt;/b&gt;.&lt;br&gt;&lt;br&gt;&lt;ul&gt;&lt;li&gt;Must exceed vehicle weight to lift off (T/W &gt; 1)&lt;/li&gt;&lt;li&gt;Higher chamber pressure or larger throat → more thrust&lt;/li&gt;&lt;li&gt;Merlin 1D: ~845 kN; Raptor 3: ~2,690 kN&lt;/li&gt;&lt;/ul&gt;">Thrust</span>
+          <span class="readout-value" id="read-rocket-thrust">---</span>
+          <span class="readout-label" data-tip="&lt;b&gt;🌊 Mass Flow Rate&lt;/b&gt; &lt;i&gt;— kg/s&lt;/i&gt;&lt;br&gt;&lt;br&gt;How fast propellant is consumed: &lt;b&gt;ṁ = Pc·At / c*&lt;/b&gt;.&lt;br&gt;&lt;br&gt;&lt;ul&gt;&lt;li&gt;Higher mass flow = more thrust but shorter burn&lt;/li&gt;&lt;li&gt;Divide propellant mass by ṁ to get burn time&lt;/li&gt;&lt;li&gt;Split between oxidizer and fuel by the mixture ratio&lt;/li&gt;&lt;/ul&gt;">Mass flow</span>
+          <span class="readout-value" id="read-rocket-mdot">---</span>
+          <span class="readout-label" data-tip="&lt;b&gt;⚡ Specific Impulse (Isp)&lt;/b&gt; &lt;i&gt;— seconds&lt;/i&gt;&lt;br&gt;&lt;br&gt;The &lt;b&gt;fuel efficiency&lt;/b&gt; of the engine — how many seconds one kg of propellant can produce one kg of thrust.&lt;br&gt;&lt;br&gt;&lt;ul&gt;&lt;li&gt;Higher Isp = more Δv per kg of propellant&lt;/li&gt;&lt;li&gt;Isp = ve / g₀ (exhaust velocity ÷ 9.81)&lt;/li&gt;&lt;li&gt;LOX/LH₂: ~450 s; LOX/RP-1: ~310 s; Solid: ~250 s&lt;/li&gt;&lt;li&gt;The &lt;b&gt;single most important&lt;/b&gt; engine metric for mission design&lt;/li&gt;&lt;/ul&gt;">Isp</span>
+          <span class="readout-value" id="read-rocket-isp">---</span>
+          <span class="readout-label" data-tip="&lt;b&gt;⚖️ Thrust-to-Weight Ratio&lt;/b&gt;&lt;br&gt;&lt;br&gt;Thrust ÷ (mass × gravity). &lt;b&gt;Must be &gt; 1.0 to lift off!&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;ul&gt;&lt;li&gt;T/W = 1.0 → hover (no net acceleration)&lt;/li&gt;&lt;li&gt;Typical launch vehicles: T/W ≈ 1.2–1.8&lt;/li&gt;&lt;li&gt;Higher T/W → less gravity loss but more structural stress&lt;/li&gt;&lt;li&gt;Changes with planet gravity — same rocket has different T/W on the Moon!&lt;/li&gt;&lt;/ul&gt;">T/W ratio</span>
+          <span class="readout-value" id="read-rocket-tw">---</span>
+          <span class="readout-label" data-tip="&lt;b&gt;⏱️ Burn Time&lt;/b&gt; &lt;i&gt;— seconds&lt;/i&gt;&lt;br&gt;&lt;br&gt;How long the engine fires: &lt;b&gt;t = propellant mass / mass flow rate&lt;/b&gt;.&lt;br&gt;&lt;br&gt;&lt;ul&gt;&lt;li&gt;More propellant → longer burn → more total impulse&lt;/li&gt;&lt;li&gt;After burnout the rocket coasts on a ballistic arc&lt;/li&gt;&lt;li&gt;Falcon 9 first stage: ~162 s; Saturn V S-IC: ~150 s&lt;/li&gt;&lt;/ul&gt;">Burn time</span>
+          <span class="readout-value" id="read-rocket-burn">---</span>
+          <span class="readout-label" data-tip="&lt;b&gt;🚀 Δv (Tsiolkovsky)&lt;/b&gt; &lt;i&gt;— m/s&lt;/i&gt;&lt;br&gt;&lt;br&gt;The &lt;b&gt;ideal&lt;/b&gt; velocity change from the &lt;b&gt;Tsiolkovsky rocket equation&lt;/b&gt;:&lt;br&gt;&lt;b&gt;Δv = ve · ln(m₀/mf)&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;ul&gt;&lt;li&gt;m₀ = launch mass, mf = dry mass (after burning all propellant)&lt;/li&gt;&lt;li&gt;This is the &lt;b&gt;maximum possible&lt;/b&gt; Δv — assumes no gravity&lt;/li&gt;&lt;li&gt;Actual Δv is always lower due to &lt;b&gt;gravity losses&lt;/b&gt;&lt;/li&gt;&lt;li&gt;LEO requires ~9,400 m/s of Δv; the Moon ~2,400 m/s&lt;/li&gt;&lt;/ul&gt;">&Delta;v (Tsiolkovsky)</span>
+          <span class="readout-value" id="read-rocket-dv">---</span>
+          <span class="readout-label">Pred. range</span>
+          <span class="readout-value" id="read-rocket-pred-range">---</span>
+          <span class="readout-label">Pred. apogee</span>
+          <span class="readout-value" id="read-rocket-pred-apogee">---</span>
+        </div>
+
+        <!-- ── Flight Data (live) ──────────────────────────────────────── -->
+        <div class="section-header">Flight Data</div>
+        <div class="readout-grid" id="rocket-flight-data">
+          <span class="readout-label">Velocity</span>
+          <span class="readout-value" id="read-rocket-velocity">---</span>
+          <span class="readout-label">Height</span>
+          <span class="readout-value" id="read-rocket-height">---</span>
+          <span class="readout-label">Downrange</span>
+          <span class="readout-value" id="read-rocket-range">---</span>
+          <span class="readout-label">Thrust</span>
+          <span class="readout-value" id="read-rocket-live-thrust">---</span>
+          <span class="readout-label">Mass</span>
+          <span class="readout-value" id="read-rocket-live-mass">---</span>
+          <span class="readout-label">Propellant</span>
+          <span class="readout-value" id="read-rocket-prop">---</span>
+          <span class="readout-label">Isp</span>
+          <span class="readout-value" id="read-rocket-live-isp">---</span>
+          <span class="readout-label">T/W</span>
+          <span class="readout-value" id="read-rocket-live-tw">---</span>
+          <span class="readout-label" data-tip="&lt;b&gt;💪 Total Impulse&lt;/b&gt; &lt;i&gt;— Newton-seconds (N·s)&lt;/i&gt;&lt;br&gt;&lt;br&gt;The &lt;b&gt;accumulated thrust over time&lt;/b&gt;: Total Impulse = ∫F dt.&lt;br&gt;&lt;br&gt;&lt;ul&gt;&lt;li&gt;Higher impulse = more total &amp;quot;push&amp;quot; delivered to the rocket&lt;/li&gt;&lt;li&gt;A small engine burning long can match a big engine burning short&lt;/li&gt;&lt;li&gt;Model rockets: ~100 N·s; Falcon 9 booster: ~1.7 MN·s per engine&lt;/li&gt;&lt;/ul&gt;">Total Impulse</span>
+          <span class="readout-value" id="read-rocket-impulse">---</span>
+        </div>
+
+        <!-- ── Propellant Gauge ────────────────────────────────────────── -->
+        <div class="prop-gauge-container" id="prop-gauge">
+          <div class="prop-gauge-segment prop-gauge-ox" id="prop-gauge-ox"></div>
+          <div class="prop-gauge-segment prop-gauge-fuel" id="prop-gauge-fuel"></div>
+        </div>
+        <div class="prop-gauge-legend">
+          <span class="legend-item"><span class="legend-dot prop-ox-dot"></span>Oxidizer</span>
+          <span class="legend-item"><span class="legend-dot prop-fuel-dot"></span>Fuel</span>
+        </div>
+
+        <!-- ── Post-Flight Summary ─────────────────────────────────────── -->
+        <div class="post-flight-summary post-flight-hidden" id="post-flight-summary">
+          <div class="section-header">Post-Flight Summary</div>
+          <div class="readout-grid">
+            <span class="readout-label">Range</span>
+            <span class="readout-value" id="read-post-range">---</span>
+            <span class="readout-label">Max Height</span>
+            <span class="readout-value" id="read-post-maxheight">---</span>
+            <span class="readout-label">Flight Time</span>
+            <span class="readout-value" id="read-post-flighttime">---</span>
+            <span class="readout-label">Burn Time</span>
+            <span class="readout-value" id="read-post-burntime">---</span>
+            <span class="readout-label" data-tip="&lt;b&gt;🚀 Δv (Tsiolkovsky)&lt;/b&gt;&lt;br&gt;&lt;br&gt;The &lt;b&gt;theoretical maximum&lt;/b&gt; velocity change, assuming no gravity.&lt;br&gt;&lt;b&gt;Δv = ve · ln(m₀/mf)&lt;/b&gt;&lt;br&gt;&lt;br&gt;Compare this to the actual Δv below — the difference is the &lt;b&gt;gravity loss&lt;/b&gt;.">&Delta;v (Tsiolkovsky)</span>
+            <span class="readout-value" id="read-post-dv-tsiolkovsky">---</span>
+            <span class="readout-label" data-tip="&lt;b&gt;🎯 Δv (Actual)&lt;/b&gt;&lt;br&gt;&lt;br&gt;The &lt;b&gt;real speed&lt;/b&gt; at engine burnout. Always less than the Tsiolkovsky value because gravity is pulling the rocket down during the entire burn.&lt;br&gt;&lt;br&gt;The gap between ideal and actual is called &lt;b&gt;gravity loss&lt;/b&gt;.">&Delta;v (actual)</span>
+            <span class="readout-value" id="read-post-dv-actual">---</span>
+            <span class="readout-label" data-tip="&lt;b&gt;📉 Gravity Loss&lt;/b&gt;&lt;br&gt;&lt;br&gt;The Δv &lt;b&gt;stolen by gravity&lt;/b&gt; during the burn: Tsiolkovsky Δv − actual Δv.&lt;br&gt;&lt;br&gt;&lt;ul&gt;&lt;li&gt;Higher T/W → shorter burn → &lt;b&gt;less gravity loss&lt;/b&gt;&lt;/li&gt;&lt;li&gt;Launching horizontally has zero gravity loss (but doesn't gain altitude)&lt;/li&gt;&lt;li&gt;Vertical launch at T/W = 1.2 can lose &lt;b&gt;30–40%&lt;/b&gt; of Δv to gravity!&lt;/li&gt;&lt;li&gt;This is why real rockets pitch over early (gravity turn)&lt;/li&gt;&lt;/ul&gt;">Gravity loss</span>
+            <span class="readout-value" id="read-post-gravity-loss">---</span>
+          </div>
+        </div>
+
+        <div class="spacer-lg"></div>
+
+        <!-- Reserved for future nozzle cutaway graphic -->
+        <div id="nozzle-cutaway"></div>
+      </div>
+
     </div>
     <!-- end .control-panel -->
 
@@ -206,6 +543,9 @@
 
   <!-- ── Scripts (dependency order) ─────────────────────────────────────── -->
   <script src="physics.js"></script>
+  <script src="rocket_propellants.js"></script>
+  <script src="rocket_physics.js"></script>
+  <script src="nozzle_render.js"></script>
   <script src="renderer.js"></script>
   <script src="ui.js"></script>
   <script src="main.js"></script>

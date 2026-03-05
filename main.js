@@ -1,14 +1,18 @@
 /**
  * ============================================================================
- * main.js — Entry Point & Animation Loop for Matilda's Cannon Lab
+ * main.js — Entry Point & Animation Loop for Launch Lab
  * ============================================================================
  *
  * ROLE:  Wires Physics, Renderer, and UI together. Owns the animation loop,
- *        game state (active ball, shot history, particles), cannon firing
- *        sequence (recoil, flash, sound), impact handling, dynamic zoom
- *        system, and gas-giant ball-vanish logic.
+ *        game state (active ball / active rocket, shot history, particles),
+ *        cannon firing sequence (recoil, flash, sound), rocket flight loop,
+ *        impact handling, dynamic zoom system, and gas-giant ball-vanish logic.
  *
- * DEPENDS ON: physics.js, renderer.js, ui.js (all loaded before this)
+ * Both cannon and rocket modes share: planet/gravity, characters, particles,
+ * zoom, shots/trajectory-dot history, and the world renderer.
+ *
+ * DEPENDS ON: physics.js, rocket_propellants.js, rocket_physics.js,
+ *             renderer.js, ui.js (all loaded before this)
  * LOADED BY:  <script src="main.js"> in index.html (last script)
  * ============================================================================
  */
@@ -18,11 +22,28 @@
 
   // ── State ──────────────────────────────────────────────────────────────────
   var canvas;
+  var currentMode = 'cannon';  // 'cannon' | 'rocket'
   var activeBall = null;
   var shots = [];              // Landed shot objects
   var trajectoryDots = [];
   var particles = [];
   var maxShots = 8;
+
+  // Rocket state (Stage 4+)
+  var activeRocket = null;     // null | RocketPhysics state object
+  var rocketLanded = false;    // True after rocket has impacted
+  var rocketGuidance = null;   // Guidance object (fixed/pitch/prograde)
+  var rocketDotTimer = 0;      // Trajectory dot timing for rocket
+  var rocketMaxThrust = 0;     // Initial thrust for exhaust scaling
+  var rocketFizzleTimer = 0;   // Fizzle animation progress timer
+  var rocketFizzleDuration = 0; // How long the fizzle burn lasts
+  var rocketFizzleTW = 0;       // T/W at fizzle for message display
+  var rocketEngineAudio = null; // Running engine audio nodes
+  // Flight telemetry tracking (Stage 7)
+  var rocketMaxHeight = 0;       // Peak altitude during flight
+  var rocketBurnoutSpeed = 0;    // Speed at engine burnout
+  var rocketBurnTime = 0;        // Actual burn duration
+  var rocketDvTsiolkovsky = 0;   // Theoretical delta-v (pre-launch)
 
   // Cannon animation
   var recoilOffset = 0;
@@ -50,6 +71,8 @@
   // Zoom state
   var maxRangeMetres = 0;      // Farthest range seen (persists across shots)
   var maxHeightMetres = 2;     // Tallest apex seen (persists across shots)
+  var DEFAULT_VIEW_TRANSITION_SECONDS = 1.2;
+  var DEFAULT_ROCKET_ZOOM_MARGIN = 0.15;
 
   // ── Barrel-change animation state ──────────────────────────────────────────
   // States: 'idle' → 'lowering' → 'modifying' → 'raising' → 'idle'
@@ -113,7 +136,7 @@
     return ch;
   }
 
-  function startleCharacter() {
+  function startleCharacter(isRocket) {
     if (!activeCharacter || !activeCharacter.visible) return;
     if (activeCharacter.state === 'squashed') return;
     // Whale: if surfaced, dive immediately
@@ -121,14 +144,43 @@
       if (activeCharacter.state === 'surfacing' || activeCharacter.state === 'spouting') {
         activeCharacter.state = 'diving';
         activeCharacter.stateTimer = 0;
-        activeCharacter.submergeDuration = 12 + Math.random() * 5; // stay hidden longer
+        activeCharacter.submergeDuration = isRocket ? 20 + Math.random() * 8 : 12 + Math.random() * 5;
       }
       activeCharacter.bubbleText = null;
       return;
     }
-    activeCharacter.state = 'startled';
+    if (isRocket) {
+      // Rocket launches are more dramatic — longer startled hold + thought bubble
+      activeCharacter.state = 'rocket_startled';
+      activeCharacter.stateTimer = 0;
+      var rocketScared = ['RUMBLE!!', 'WHAT THE—!', '*covers ears*', 'SO LOUD!', 'AAAH!!', 'THE GROUND!'];
+      activeCharacter.bubbleText = rocketScared[Math.floor(Math.random() * rocketScared.length)];
+      activeCharacter.bubbleTimer = 2.0;
+    } else {
+      activeCharacter.state = 'startled';
+      activeCharacter.stateTimer = 0;
+      activeCharacter.bubbleText = null;
+    }
+  }
+
+  function fizzleReactCharacter() {
+    if (!activeCharacter || !activeCharacter.visible) return;
+    if (activeCharacter.state === 'squashed') return;
+    // Whale: just show a bubble if surfaced
+    if (activeCharacter.type === 'whale') {
+      if (activeCharacter.state === 'spouting' || activeCharacter.state === 'surfacing') {
+        activeCharacter.bubbleText = 'Ha!';
+        activeCharacter.bubbleTimer = 2.5;
+      }
+      return;
+    }
+    // Laughing reaction — character stops running and mocks the fizzle
+    var laughs = ['Ha ha ha!', 'LOL!', 'Nice try!', 'Pfft!', '*points*', 'Called it!', 'Womp womp'];
+    activeCharacter.state = 'idle';
     activeCharacter.stateTimer = 0;
-    activeCharacter.bubbleText = null;
+    activeCharacter.bubbleText = laughs[Math.floor(Math.random() * laughs.length)];
+    activeCharacter.bubbleTimer = 3.0;
+    activeCharacter.thoughtCooldown = 6 + Math.random() * 5;
   }
 
   function squashCharacter() {
@@ -257,6 +309,15 @@
           ch.stateTimer = 0;
           // Run AWAY from cannon (which is at x≈1.5)
           ch.direction = (ch.x > Renderer.CANNON_BASE_X_M) ? 1 : -1;
+        }
+        break;
+
+      case 'rocket_startled':
+        // Rocket launch: longer startled hold with dramatic shaking
+        if (ch.stateTimer > 1.8) {
+          ch.state = 'running_away';
+          ch.stateTimer = 0;
+          ch.direction = (ch.x > (Renderer.TOWER_BASE_X_M || 1.5)) ? 1 : -1;
         }
         break;
 
@@ -564,6 +625,58 @@
   }
 
   // ── Particle helpers ───────────────────────────────────────────────────────
+
+  /**
+   * Generic particle emitter — shared by both cannon and rocket modes.
+   * Cannon smoke/impact use the dedicated wrappers below; rocket exhaust
+   * (Stage 6) will call this directly.
+   *
+   * @param {number} x      Physics x-coordinate of emitter origin
+   * @param {number} y      Physics y-coordinate of emitter origin
+   * @param {Object} opts   Configuration:
+   *   count      {number}   Number of particles (default 8)
+   *   baseAngle  {number}   Central emission angle in radians (default 0)
+   *   spread     {number}   Random spread in radians (default 1.0)
+   *   minSpeed   {number}   Min speed (default 1.5)
+   *   maxSpeed   {number}   Max speed (default 4)
+   *   vyBoost    {number}   Extra vy added to each particle (default 0)
+   *   minLife    {number}   Min lifetime in seconds (default 0.5)
+   *   maxLife    {number}   Max lifetime / maxLife property (default 1.0)
+   *   minRadius  {number}   Min draw radius (default 3)
+   *   maxRadius  {number}   Max draw radius (default 6)
+   *   colour     {string|function}  Colour or colour-factory (default randomGrey)
+   *   gravity    {number}   Per-particle gravity term (default 0)
+   */
+  function createParticlesAt(x, y, opts) {
+    opts = opts || {};
+    var count = opts.count || 8;
+    var baseAng = opts.baseAngle || 0;
+    var spreadW = opts.spread !== undefined ? opts.spread : 1.0;
+    var minSpd = opts.minSpeed || 1.5;
+    var maxSpd = opts.maxSpeed || 4;
+    var vyBoost = opts.vyBoost || 0;
+    var minLife = opts.minLife || 0.5;
+    var maxLife = opts.maxLife || 1.0;
+    var minR = opts.minRadius || 3;
+    var maxR = opts.maxRadius || 6;
+    var grav = opts.gravity !== undefined ? opts.gravity : 0;
+
+    for (var i = 0; i < count; i++) {
+      var ang = baseAng + (Math.random() - 0.5) * spreadW;
+      var speed = minSpd + Math.random() * (maxSpd - minSpd);
+      particles.push({
+        x: x, y: y,
+        vx: Math.cos(ang) * speed,
+        vy: Math.sin(ang) * speed + vyBoost,
+        life: minLife + Math.random() * (maxLife - minLife),
+        maxLife: maxLife,
+        radius: minR + Math.random() * (maxR - minR),
+        colour: typeof opts.colour === 'function' ? opts.colour() : (opts.colour || randomGrey()),
+        gravity: grav
+      });
+    }
+  }
+
   function createSmokeParticles(tipX, tipY, angleDeg) {
     var rad = angleDeg * Math.PI / 180;
     var count = 12 + Math.floor(Math.random() * 8);
@@ -624,24 +737,49 @@
     }
   }
 
+  function clamp(v, lo, hi) {
+    return Math.max(lo, Math.min(hi, v));
+  }
+
   // ── Zoom computation ───────────────────────────────────────────────────────
-  function computeNeededZoom(rangeMetres, maxHeightMetres) {
+  function computeNeededZoom(rangeMetres, maxHeightMetres, marginFraction) {
     var cW = Renderer.getWidth();
     var gY = Renderer.getGroundY();
+    marginFraction = (typeof marginFraction === 'number')
+      ? Math.max(0, marginFraction)
+      : DEFAULT_ROCKET_ZOOM_MARGIN;
+    var fitFraction = 1 / (1 + marginFraction);
     if (rangeMetres <= 0) return Renderer.DEFAULT_PPM;
 
-    // Need range + generous margin to fit horizontally
-    var horizPPM = (cW * 0.85) / (rangeMetres + 1);
+    // Fit width and height with explicit extra margin.
+    var horizPPM = (cW * fitFraction) / Math.max(1, rangeMetres);
     // Need max height to fit vertically (in the sky area)
-    var vertPPM = (gY * 0.80) / (maxHeightMetres + 0.5);
+    var vertPPM = (gY * fitFraction) / Math.max(0.5, maxHeightMetres);
 
     var needed = Math.min(horizPPM, vertPPM);
     // Don't zoom IN beyond default, but allow unlimited zoom OUT
-    return Math.min(Renderer.DEFAULT_PPM, Math.max(0.1, needed));
+    return Math.min(Renderer.DEFAULT_PPM, Math.max(0.01, needed));
+  }
+
+  function computeRocketZoomPlan(prediction, marginFraction) {
+    if (!prediction) return null;
+    var width = Math.max(1, prediction.maxX - prediction.minX);
+    var height = Math.max(2, prediction.maxHeight);
+    var ppm = computeNeededZoom(width, height, marginFraction);
+    var visibleWidth = Renderer.getWidth() / ppm;
+    var pad = Math.max(0, (visibleWidth - width) * 0.5);
+    var cameraX = prediction.minX - pad;
+    return {
+      ppm: ppm,
+      cameraX: cameraX
+    };
   }
 
   // ── Firing sequence ────────────────────────────────────────────────────────
   function fire() {
+    // Only fire in cannon mode
+    if (currentMode !== 'cannon') return;
+
     // If barrel animation is running, queue for later
     if (barrelAnimState !== 'idle') {
       pendingFire = true;
@@ -653,6 +791,7 @@
 
     // Update renderer barrel length to match slider
     Renderer.setBarrelLength(vals.barrelLength);
+    Renderer.setViewTransitionDuration(DEFAULT_VIEW_TRANSITION_SECONDS);
 
     // Predict trajectory for zoom
     var tip = Renderer.getCannonTipPhys(vals.angle);
@@ -666,7 +805,7 @@
     maxHeightMetres = Math.max(maxHeightMetres, prediction.maxHeight, 2);
 
     // Compute and set zoom
-    var neededPPM = computeNeededZoom(maxRangeMetres, maxHeightMetres);
+    var neededPPM = computeNeededZoom(maxRangeMetres, maxHeightMetres, DEFAULT_ROCKET_ZOOM_MARGIN);
     Renderer.setTargetZoom(neededPPM);
 
     // Compute launch velocity and create projectile
@@ -747,17 +886,33 @@
     trajectoryDots = [];
     particles = [];
     activeBall = null;
+    activeRocket = null;
+    rocketLanded = false;
+    rocketGuidance = null;
+    rocketFizzleTimer = 0;
+    rocketDotTimer = 0;
+    rocketMaxHeight = 0;
+    rocketBurnoutSpeed = 0;
+    rocketBurnTime = 0;
+    rocketDvTsiolkovsky = 0;
     totalShotCount = 0;
     maxRangeMetres = 0;
     maxHeightMetres = 2;
     impactShockwaveProgress = -1;
     squashTimer = -1;
 
+    stopEngineLoop();
+
     // Reset zoom back to default
+    Renderer.setViewTransitionDuration(DEFAULT_VIEW_TRANSITION_SECONDS);
     Renderer.resetZoom();
+    Renderer.resetCamera();
 
     UI.setFlightActive(false);
     UI.resetReadouts();
+    if (currentMode === 'rocket') {
+      UI.resetRocketReadouts();
+    }
   }
 
   // ── Gravity / planet change handler (from UI) ──────────────────────────────
@@ -765,6 +920,382 @@
     Renderer.setTargetGravity(g);
     UI.highlightNearestPlanet(g);
     syncCharacterToPlanet();
+    // Refresh rocket pre-launch readouts (T/W depends on gravity)
+    if (currentMode === 'rocket') UI.refreshPreLaunch();
+  }
+
+  // ── Rocket launch ──────────────────────────────────────────────────────────
+  function rocketLaunch() {
+    if (currentMode !== 'rocket') return;
+
+    var vals = UI.getRocketValues();
+    currentGravity = UI.getValues().gravity;
+    var towerX = Renderer.TOWER_BASE_X_M || 1.5;
+
+    // Hide previous fizzle message & post-flight summary
+    UI.hideFizzleMessage();
+    UI.hidePostFlightSummary();
+
+    // One-time camera move settings for this launch.
+    var zoomSettings = UI.getRocketZoomSettings
+      ? UI.getRocketZoomSettings()
+      : { marginPercent: 15, durationSeconds: 3 };
+    var marginPct = isFinite(zoomSettings.marginPercent) ? zoomSettings.marginPercent : 15;
+    var zoomDuration = isFinite(zoomSettings.durationSeconds) ? zoomSettings.durationSeconds : 3;
+    var zoomMargin = clamp(marginPct / 100, 0.10, 0.20);
+    Renderer.setViewTransitionDuration(clamp(zoomDuration, 0.5, 10));
+
+    // Build guidance object from user selection
+    rocketGuidance = buildGuidance(vals);
+
+    // Predict the full trajectory envelope pre-launch for zoom planning.
+    var trajectoryPrediction = null;
+    if (RocketPhysics.predictTrajectory) {
+      trajectoryPrediction = RocketPhysics.predictTrajectory(vals, currentGravity, {
+        guidance: rocketGuidance,
+        dt: 1 / 120,
+        maxTime: 600,
+        startX: towerX,
+        startY: 0
+      });
+    }
+
+    // Create rocket state
+    activeRocket = RocketPhysics.createRocketState(vals);
+    rocketMaxThrust = activeRocket.thrustMagnitude;
+    rocketLanded = false;
+    rocketDotTimer = 0;
+    rocketFizzleTimer = 0;
+
+    // Position on the pad (tower base)
+    activeRocket.x = towerX;
+    activeRocket.y = 0;
+    rocketMaxHeight = 0;
+    rocketBurnoutSpeed = 0;
+    rocketBurnTime = 0;
+    rocketDvTsiolkovsky = 0;
+
+    // Pre-launch T/W check — do first step to detect fizzle
+    var firstStep = RocketPhysics.stepRocket(activeRocket, 1/120, currentGravity, rocketGuidance);
+    if (firstStep.fizzled) {
+      // ── Fizzle path ──
+      activeRocket = firstStep;
+      activeRocket.phase = 'fizzle';
+      // Store the initial T/W for the fizzle message
+      var pre = RocketPhysics.computePreLaunch(vals, currentGravity);
+      rocketFizzleTW = pre.tw;
+      // Compute fizzle burn duration
+      rocketFizzleDuration = RocketPhysics.computeBurnTime(
+        vals.propMass, activeRocket.mdot > 0 ? activeRocket.mdot : 1
+      );
+      rocketFizzleDuration = Math.min(rocketFizzleDuration, 30); // cap
+      playIgnitionRumble(0.6); // quieter for fizzle
+      UI.setFlightActive(true);
+      startleCharacter(true);
+      // Reset trajectory
+      trajectoryDots = [];
+      return;
+    }
+
+    // ── Successful ignition ──
+    activeRocket = firstStep;
+    activeRocket.phase = 'flight';
+    activeRocket.maxThrust = rocketMaxThrust;
+
+    // Store Tsiolkovsky delta-v for post-flight comparison
+    var pre = RocketPhysics.computePreLaunch(vals, currentGravity);
+    rocketDvTsiolkovsky = pre.deltaV || 0;
+
+    // Pre-launch zoom-to-fit of the full predicted flight envelope.
+    var zoomPlan = null;
+    if (trajectoryPrediction && !trajectoryPrediction.fizzled) {
+      zoomPlan = computeRocketZoomPlan(trajectoryPrediction, zoomMargin);
+      maxRangeMetres = Math.max(maxRangeMetres, trajectoryPrediction.maxX - towerX);
+      maxHeightMetres = Math.max(maxHeightMetres, trajectoryPrediction.maxHeight, 2);
+    }
+
+    if (zoomPlan) {
+      Renderer.setTargetZoom(zoomPlan.ppm);
+      Renderer.setCameraTarget(zoomPlan.cameraX);
+    } else {
+      maxRangeMetres = Math.max(maxRangeMetres, 20);
+      maxHeightMetres = Math.max(maxHeightMetres, 30);
+      var neededPPM = computeNeededZoom(maxRangeMetres, maxHeightMetres, zoomMargin);
+      Renderer.setTargetZoom(neededPPM);
+      Renderer.setCameraTarget(towerX - 0.25 * Renderer.getWidth() / neededPPM);
+    }
+
+    // Reset trajectory
+    trajectoryDots = [];
+
+    // Audio + effects
+    playIgnitionRumble(1.0);
+    startEngineLoop();
+    createExhaustParticles(activeRocket.x, activeRocket.y, vals.launchAngle);
+    UI.setFlightActive(true);
+    startleCharacter(true);
+  }
+
+  function buildGuidance(vals) {
+    if (RocketPhysics.buildGuidance) {
+      return RocketPhysics.buildGuidance(vals);
+    }
+    switch (vals.guidanceMode) {
+      case 'pitch_program':
+        return RocketPhysics.guidancePitchProgram(
+          vals.launchAngle, vals.pitchEnd, vals.pitchT1, vals.pitchT2
+        );
+      case 'prograde_lock':
+        return RocketPhysics.guidanceProgradeLock(vals.progradeVmin, vals.launchAngle);
+      default: // 'fixed' → gravity turn: thrust follows velocity after rail clearance
+        return RocketPhysics.guidanceProgradeLock(5, vals.launchAngle);
+    }
+  }
+
+  // ── Rocket landing ────────────────────────────────────────────────────────
+  function handleRocketLanding(state) {
+    var landX = state.x;
+    var isGas = Renderer.isCurrentGas();
+
+    if (shots.length >= maxShots) shots.shift();
+    shots.push({
+      x: landX,
+      number: getTotalShotCount(),
+      flagSpring: 0,
+      isGas: isGas
+    });
+
+    createImpactParticles(landX, isGas);
+    impactShockwaveProgress = 0;
+    impactShockwaveX = landX;
+    squashTimer = 0;
+
+    // Freeze flight readouts at final values
+    UI.updateRocketReadouts(state);
+
+    // Post-flight summary
+    var launchX = Renderer.TOWER_BASE_X_M || 1.5;
+    var actualSpeed = Math.sqrt(state.vx * state.vx + state.vy * state.vy);
+    // If burnout never happened (engine still running at impact), capture now
+    if (rocketBurnoutSpeed === 0 && rocketBurnTime === 0 && state.time > 0) {
+      rocketBurnoutSpeed = actualSpeed;
+      rocketBurnTime = state.time;
+    }
+    UI.showPostFlightSummary({
+      range: Math.max(0, state.x - launchX),
+      maxHeight: rocketMaxHeight,
+      flightTime: state.time,
+      burnTime: rocketBurnTime,
+      dvTsiolkovsky: rocketDvTsiolkovsky,
+      dvActual: rocketBurnoutSpeed
+    });
+
+    rocketLanded = true;
+    activeRocket = null;
+    rocketGuidance = null;
+    stopEngineLoop();
+    UI.setFlightActive(false);
+
+    // Character squash check
+    if (activeCharacter && activeCharacter.visible &&
+        activeCharacter.state !== 'squashed' &&
+        activeCharacter.state !== 'off_screen') {
+      var charHalfW = 1.0;
+      if (Math.abs(landX - activeCharacter.x) < charHalfW) {
+        squashCharacter();
+      }
+    }
+  }
+
+  // ── Rocket exhaust particles ──────────────────────────────────────────────
+  function createExhaustParticles(px, py, angleDeg) {
+    var rad = (angleDeg + 180) * Math.PI / 180; // opposite to heading
+    createParticlesAt(px, py, {
+      count: 6,
+      baseAngle: rad,
+      spread: 0.8,
+      minSpeed: 2,
+      maxSpeed: 5,
+      vyBoost: -0.5,
+      minLife: 0.3,
+      maxLife: 0.8,
+      minRadius: 2,
+      maxRadius: 5,
+      colour: function () {
+        var r = 200 + Math.floor(Math.random() * 55);
+        var g = 100 + Math.floor(Math.random() * 80);
+        var b = Math.floor(Math.random() * 40);
+        return 'rgb(' + r + ',' + g + ',' + b + ')';
+      },
+      gravity: 3
+    });
+  }
+
+  // ── Audio: Rocket ignition rumble ──────────────────────────────────────────
+  function playIgnitionRumble(volume) {
+    try {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      var duration = 2.0;
+      var sr = audioCtx.sampleRate;
+      var len = Math.floor(sr * duration);
+      var buf = audioCtx.createBuffer(1, len, sr);
+      var data = buf.getChannelData(0);
+
+      // Deep rumble: filtered noise + low sine
+      for (var i = 0; i < len; i++) {
+        var t = i / sr;
+        var noise = (Math.random() * 2 - 1);
+        var sine = Math.sin(t * 80 * Math.PI * 2) * 0.4;
+        var sine2 = Math.sin(t * 120 * Math.PI * 2) * 0.2;
+        // Envelope: attack 0.1s, sustain, decay
+        var env = Math.min(1, t / 0.1) * Math.exp(-t / 1.5);
+        data[i] = (noise * 0.5 + sine + sine2) * env;
+      }
+
+      var src = audioCtx.createBufferSource();
+      src.buffer = buf;
+      var filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 200;
+      filter.Q.value = 0.7;
+      var gain = audioCtx.createGain();
+      gain.gain.setValueAtTime(volume * 0.5, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+      src.connect(filter);
+      filter.connect(gain);
+      gain.connect(audioCtx.destination);
+      src.start();
+    } catch (e) { /* silent fail */ }
+  }
+
+  // ── Audio: Engine running loop ─────────────────────────────────────────────
+  function startEngineLoop() {
+    try {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      stopEngineLoop(); // ensure clean start
+
+      // Create looping crackle noise
+      var sr = audioCtx.sampleRate;
+      var loopDur = 0.5;
+      var buf = audioCtx.createBuffer(1, Math.floor(sr * loopDur), sr);
+      var data = buf.getChannelData(0);
+      for (var i = 0; i < data.length; i++) {
+        var t = i / sr;
+        var noise = (Math.random() * 2 - 1);
+        var rumble = Math.sin(t * 60 * Math.PI * 2) * 0.3;
+        data[i] = (noise * 0.4 + rumble) * 0.5;
+      }
+
+      var src = audioCtx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      var filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 180;
+      var gain = audioCtx.createGain();
+      gain.gain.value = 0.12;
+      src.connect(filter);
+      filter.connect(gain);
+      gain.connect(audioCtx.destination);
+      src.start();
+
+      rocketEngineAudio = { source: src, gain: gain };
+    } catch (e) { /* silent fail */ }
+  }
+
+  function stopEngineLoop() {
+    if (rocketEngineAudio) {
+      try {
+        rocketEngineAudio.gain.gain.setValueAtTime(
+          rocketEngineAudio.gain.gain.value, audioCtx.currentTime
+        );
+        rocketEngineAudio.gain.gain.exponentialRampToValueAtTime(
+          0.001, audioCtx.currentTime + 0.3
+        );
+        var src = rocketEngineAudio.source;
+        setTimeout(function () { try { src.stop(); } catch (e) { /* */ } }, 400);
+      } catch (e) { /* silent fail */ }
+      rocketEngineAudio = null;
+    }
+  }
+
+  function playBurnoutSound() {
+    try {
+      if (!audioCtx) return;
+      var duration = 0.4;
+      var sr = audioCtx.sampleRate;
+      var buf = audioCtx.createBuffer(1, Math.floor(sr * duration), sr);
+      var data = buf.getChannelData(0);
+      for (var i = 0; i < data.length; i++) {
+        var t = i / sr;
+        // Descending pitch whine
+        var freq = 200 * Math.exp(-t * 3);
+        data[i] = Math.sin(t * freq * Math.PI * 2) * 0.3 * Math.exp(-t / 0.15);
+      }
+      var src = audioCtx.createBufferSource();
+      src.buffer = buf;
+      var gain = audioCtx.createGain();
+      gain.gain.value = 0.3;
+      src.connect(gain);
+      gain.connect(audioCtx.destination);
+      src.start();
+    } catch (e) { /* silent fail */ }
+  }
+
+  // ── Audio: Sad trombone for fizzle end ─────────────────────────────────────
+  function playSadTrombone() {
+    try {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      // Classic "wah wah wah wahhh" — four descending tones
+      var notes = [392, 370, 349, 294]; // G4, F#4, F4, D4 (approx)
+      var durations = [0.25, 0.25, 0.25, 0.6];
+      var startOffset = 0;
+
+      for (var n = 0; n < notes.length; n++) {
+        (function (freq, dur, offset) {
+          var osc = audioCtx.createOscillator();
+          osc.type = 'triangle';
+          osc.frequency.value = freq;
+
+          var gain = audioCtx.createGain();
+          gain.gain.setValueAtTime(0.2, audioCtx.currentTime + offset);
+          gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + offset + dur * 0.95);
+
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(audioCtx.currentTime + offset);
+          osc.stop(audioCtx.currentTime + offset + dur);
+        })(notes[n], durations[n], startOffset);
+        startOffset += durations[n];
+      }
+    } catch (e) { /* silent fail */ }
+  }
+
+  // ── Fizzle smoke burst ─────────────────────────────────────────────────────
+  function createFizzleSmoke(px, py) {
+    createParticlesAt(px, py, {
+      count: 15,
+      baseAngle: Math.PI / 2, // upward
+      spread: 2.5,
+      minSpeed: 0.8,
+      maxSpeed: 2.5,
+      vyBoost: 1.5,
+      minLife: 1.0,
+      maxLife: 2.5,
+      minRadius: 3,
+      maxRadius: 8,
+      colour: function () {
+        var v = 100 + Math.floor(Math.random() * 80);
+        return 'rgba(' + v + ',' + v + ',' + v + ',0.6)';
+      },
+      gravity: -0.5 // smoke floats up
+    });
   }
 
   // ── Animation loop ─────────────────────────────────────────────────────────
@@ -776,8 +1307,8 @@
     // Update renderer world (environment blend + zoom animation)
     Renderer.updateWorld(dt);
 
-    // ─── Physics ───
-    if (activeBall) {
+    // ─── Physics (mode-gated) ───
+    if (currentMode === 'cannon' && activeBall) {
       activeBall = Physics.stepProjectile(activeBall, dt, currentGravity);
 
       dotTimer += dt;
@@ -808,10 +1339,116 @@
         handleLanding(activeBall);
       }
     }
+    // ─── Rocket physics ───
+    if (currentMode === 'rocket' && activeRocket) {
+      if (activeRocket.phase === 'flight') {
+        var prevEngineOn = activeRocket.engineOn;
+        activeRocket = RocketPhysics.stepRocket(activeRocket, dt, currentGravity, rocketGuidance);
+        activeRocket.phase = 'flight';
+        activeRocket.maxThrust = rocketMaxThrust;
+
+        // Detect engine burnout
+        if (prevEngineOn && !activeRocket.engineOn) {
+          stopEngineLoop();
+          playBurnoutSound();
+          // Capture burnout telemetry
+          rocketBurnoutSpeed = Math.sqrt(
+            activeRocket.vx * activeRocket.vx + activeRocket.vy * activeRocket.vy
+          );
+          rocketBurnTime = activeRocket.time;
+        }
+
+        // Track max altitude
+        if (activeRocket.y > rocketMaxHeight) {
+          rocketMaxHeight = activeRocket.y;
+        }
+
+        // Trajectory dots
+        rocketDotTimer += dt;
+        if (rocketDotTimer > 0.05) {
+          trajectoryDots.push({ x: activeRocket.x, y: activeRocket.y });
+          rocketDotTimer = 0;
+        }
+
+        // Exhaust particles while engine is on
+        if (activeRocket.engineOn && activeRocket.thrustMagnitude > 0) {
+          var heading = Math.atan2(activeRocket.vy, activeRocket.vx || 0.001);
+          var headingDeg = heading * 180 / Math.PI;
+          if (Math.random() < 0.3) { // throttle particle rate
+            createExhaustParticles(activeRocket.x, activeRocket.y, headingDeg);
+          }
+        }
+
+        // Live telemetry
+        UI.updateRocketReadouts(activeRocket);
+
+        // Ground impact
+        if (activeRocket.y <= 0 && activeRocket.vy <= 0 && activeRocket.time > 0.2) {
+          handleRocketLanding(activeRocket);
+        }
+
+        // Off-screen check
+        if (activeRocket && toPhysX(Renderer.getWidth() + 200) < activeRocket.x) {
+          handleRocketLanding(activeRocket);
+        }
+      } else if (activeRocket.phase === 'fizzle') {
+        // ── Fizzle: burn propellant on the pad ──
+        rocketFizzleTimer += dt;
+
+        // Deplete propellant at computed rate
+        if (activeRocket.mProp > 0 && activeRocket.mdot > 0) {
+          activeRocket.mProp -= activeRocket.mdot * dt;
+          if (activeRocket.mProp <= 0) {
+            activeRocket.mProp = 0;
+            activeRocket.engineOn = false;
+          }
+          activeRocket.mass = activeRocket.mDry + activeRocket.mProp;
+          activeRocket.time += dt;
+          activeRocket.totalImpulse += activeRocket.thrustMagnitude * dt;
+
+          // Fizzle sparks
+          if (Math.random() < 0.2) {
+            createExhaustParticles(
+              Renderer.TOWER_BASE_X_M || 1.5, 0.1,
+              90 + (Math.random() - 0.5) * 40
+            );
+          }
+        }
+
+        // Fizzle progress for visual effect
+        activeRocket.fizzleProgress = rocketFizzleDuration > 0
+          ? Math.min(1, rocketFizzleTimer / rocketFizzleDuration)
+          : 1;
+
+        // Live telemetry during fizzle
+        UI.updateRocketReadouts(activeRocket);
+
+        // End fizzle when propellant runs out
+        if (activeRocket.mProp <= 0) {
+          activeRocket.phase = 'fizzle_done';
+          stopEngineLoop();
+          playSadTrombone();
+
+          // Smoke burst at fizzle end
+          createFizzleSmoke(Renderer.TOWER_BASE_X_M || 1.5, 0.2);
+
+          // Show fizzle message
+          UI.showFizzleMessage(rocketFizzleTW);
+
+          // Character mocks the failed launch
+          fizzleReactCharacter();
+
+          rocketLanded = true;
+          UI.setFlightActive(false);
+        }
+      }
+    }
 
     // ─── Animations ───
-    updateCannonAnimation(dt);
-    updateBarrelAnimation(dt);
+    if (currentMode === 'cannon') {
+      updateCannonAnimation(dt);
+      updateBarrelAnimation(dt);
+    }
     updateParticles(dt);
     updateImpactAnimations(dt);
     updateCharacter(dt);
@@ -852,6 +1489,9 @@
       Renderer.drawShockwave(impactShockwaveX, impactShockwaveProgress);
     }
 
+    // ─── Mode-specific drawing ───
+    if (currentMode === 'cannon') {
+
     // Barrel crew stickmen (drawn before cannon so they appear behind the barrel)
     var crew = getBarrelCrew();
     if (crew) {
@@ -874,7 +1514,74 @@
       Renderer.drawBall(activeBall.x, activeBall.y, 1, 1);
     }
 
-    // Particles
+    } else if (currentMode === 'rocket') {
+      // ── Rocket mode drawing (Stage 4) ──
+      var rVals = UI.getRocketValues();
+      var rAngle = rVals.launchAngle;
+      var rEps = rVals.epsilon;
+
+      // Launch tower (always visible)
+      Renderer.drawLaunchTower(rAngle);
+
+      // Rocket sprite — on pad, in flight, or absent after landing
+      if (activeRocket && activeRocket.phase === 'flight') {
+        Renderer.drawRocket(activeRocket, rAngle, rEps);
+        // Exhaust plume while engine is running
+        if (activeRocket.thrustMagnitude > 0) {
+          var heading = Math.atan2(activeRocket.vy, activeRocket.vx || 0.001);
+          var thrustFrac = activeRocket.thrustMagnitude / (activeRocket.maxThrust || activeRocket.thrustMagnitude || 1);
+          Renderer.drawExhaust(activeRocket.x, activeRocket.y, heading, thrustFrac);
+        }
+      } else if (activeRocket && (activeRocket.phase === 'fizzle' || activeRocket.phase === 'fizzle_done')) {
+        // Fizzle: rocket on pad, sputtering
+        Renderer.drawRocket({ phase: 'pad' }, rAngle, rEps);
+        if (activeRocket.phase === 'fizzle' && activeRocket.mProp > 0) {
+          // Show exhaust flame at nozzle on pad during fizzle
+          Renderer.drawExhaust(
+            Renderer.TOWER_BASE_X_M || 1.5, 0.1,
+            rAngle * Math.PI / 180,
+            0.5  // half thrust visually — it's sputtering
+          );
+          Renderer.drawFizzle(
+            Renderer.TOWER_BASE_X_M,
+            0,
+            activeRocket.fizzleProgress || 0
+          );
+        }
+      } else if (!rocketLanded) {
+        // Pre-launch: rocket sitting on the pad
+        Renderer.drawRocket({ phase: 'pad' }, rAngle, rEps);
+      }
+    }
+
+    // ── Nozzle cutaway inset (rocket mode only) ──
+    if (currentMode === 'rocket' && typeof NozzleRender !== 'undefined') {
+      var nzVals = UI.getRocketValues();
+      var nzGravity = currentGravity;
+      var nzPre = RocketPhysics.computePreLaunch(nzVals, nzGravity);
+      var nzProp = RocketPropellants.getById(nzVals.propellantId);
+      var nzPh = nzProp ? nzProp.placeholder : { gamma: 1.2, Tc_K: 3000 };
+      var nzCtx = canvas.getContext('2d');
+      NozzleRender.draw(nzCtx, canvas.width, canvas.height, {
+        throatDia_mm: nzVals.throatDia_mm,
+        epsilon:      nzVals.epsilon,
+        Pc_bar:       nzVals.Pc_bar,
+        MR:           nzVals.MR,
+        At:           nzPre.At,
+        mdot:         nzPre.mdot,
+        thrust:       nzPre.thrust,
+        Isp:          nzPre.Isp,
+        cStar:        nzPre.cStar,
+        Cf:           nzPre.Cf,
+        gamma:        nzPh.gamma,
+        Tc_K:         nzPh.Tc_K,
+        Pa_Pa:        nzVals.Pa_Pa,
+        Pc_Pa:        nzPre.Pc_Pa,
+        worldTime:    timestamp / 1000
+      });
+    }
+
+    // Particles (shared across both modes)
     Renderer.drawParticles(particles);
 
     requestAnimationFrame(loop);
@@ -921,7 +1628,10 @@
       onFire: fire,
       onClear: clearRange,
       onGravityChange: onGravityChange,
-      onBarrelChange: onBarrelChange
+      onBarrelChange: onBarrelChange,
+      onModeChange: function (mode) { currentMode = mode; Renderer.resetCamera(); },
+      onRocketLaunch: rocketLaunch,
+      onRocketClear: clearRange
     });
 
     window.addEventListener('resize', function () { Renderer.resize(); });

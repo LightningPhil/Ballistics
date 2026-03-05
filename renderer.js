@@ -11,9 +11,11 @@
  * EXPORTS (via window.Renderer namespace):
  *   init(canvas), resize(), updateWorld(dt)
  *   setTargetGravity(g), setTargetZoom(ppm), resetZoom()
+ *   setViewTransitionDuration(seconds)
  *   clear(), drawWorld(), drawCannon(), drawBall(), drawLandedBall()
  *   drawTrajectoryDot(), drawFlag(), drawCrater(), drawGasHole()
  *   drawParticles(), drawMuzzleFlash(), drawShockwave()
+ *   drawLaunchTower(), drawRocket(), drawExhaust(), drawFizzle()
  *   toCanvasX(), toCanvasY(), getCannonTipPhys()
  *   isCurrentGas(), getNearestPlanetName(), getPlanets()
  *
@@ -84,7 +86,7 @@
 
   // ── Constants ──────────────────────────────────────────────────────────────
   var DEFAULT_PPM       = 80;
-  var MIN_PPM           = 0.1;
+  var MIN_PPM           = 0.01;  // Allow extreme zoom-out for high-altitude rockets
   var GROUND_OFFSET     = 70;
   var CANNON_BASE_X_M   = 1.5;
   var CANNON_BASE_Y_M   = 1.0;
@@ -99,6 +101,9 @@
   var canvas, ctx, W, H, groundY;
   var currentPPM  = DEFAULT_PPM;
   var targetPPM   = DEFAULT_PPM;
+  var cameraX       = 0;     // world-space X offset for horizontal panning
+  var targetCameraX = 0;
+  var viewTransitionDuration = 1.2; // ~95% settle in ~1.2s by default
   var displayedGravity = 9.81;
   var targetGravity    = 9.81;
   var worldTime = 0;
@@ -287,6 +292,13 @@
   }
   function resetZoom() { targetPPM = DEFAULT_PPM; }
 
+  function setCameraTarget(x) { targetCameraX = x; }
+  function resetCamera() { targetCameraX = 0; cameraX = 0; }
+  function setViewTransitionDuration(seconds) {
+    if (!isFinite(seconds)) return;
+    viewTransitionDuration = Math.max(0.15, seconds);
+  }
+
   function setTargetGravity(g) { targetGravity = g; }
 
   function updateWorld(dt) {
@@ -295,12 +307,19 @@
     if (Math.abs(gDiff) < 0.01) displayedGravity = targetGravity;
     else displayedGravity += gDiff * Math.min(1, dt * 6);
 
+    // First-order response where "duration" means ~95% settle time.
+    var easingRate = 3 / viewTransitionDuration;
+
     var zDiff = targetPPM - currentPPM;
     if (Math.abs(zDiff) < 0.05) currentPPM = targetPPM;
     else {
-      // Smooth constant-rate zoom — covers ~95% in ~1 second
-      currentPPM += zDiff * Math.min(1, dt * 2.5);
+      currentPPM += zDiff * Math.min(1, dt * easingRate);
     }
+
+    // Smooth camera panning
+    var camDiff = targetCameraX - cameraX;
+    if (Math.abs(camDiff) < 0.01) cameraX = targetCameraX;
+    else cameraX += camDiff * Math.min(1, dt * easingRate);
 
     // Recompute groundY based on zoom — when zoomed out, ground moves to bottom
     var zoomRatio = Math.min(1, currentPPM / DEFAULT_PPM);
@@ -310,7 +329,7 @@
   }
 
   // ── Coordinate Mapping ─────────────────────────────────────────────────────
-  function toCanvasX(px) { return px * currentPPM; }
+  function toCanvasX(px) { return (px - cameraX) * currentPPM; }
   function toCanvasY(py) { return groundY - py * currentPPM; }
 
   function getCannonTipPhys(angleDeg) {
@@ -1491,28 +1510,42 @@
 
   function drawCharacter(char) {
     if (!char || !char.visible) return;
-    var cx = toCanvasX(char.x);
+
+    // Normalize rocket_startled to startled for drawing purposes
+    // (visually identical, only duration differs — handled in main.js)
+    var drawChar = char;
+    if (char.state === 'rocket_startled') {
+      drawChar = {};
+      for (var k in char) {
+        if (char.hasOwnProperty(k)) drawChar[k] = char[k];
+      }
+      drawChar.state = 'startled';
+    }
+
+    var cx = toCanvasX(drawChar.x);
     var cy = groundY;
     var s = Math.max(18, currentPPM); // min visual scale so characters stay visible
 
-    switch (char.type) {
-      case 'golfer':    drawGolfer(cx, cy, s, char); break;
-      case 'alien':     drawAlien(cx, cy, s, char); break;
-      case 'spaceman':  drawSpaceman(cx, cy, s, char); break;
-      case 'robot':     drawRobot(cx, cy, s, char); break;
-      case 'newt':      drawNewt(cx, cy, s, char); break;
-      case 'whale':     drawWhale(cx, cy, s, char); break;
-      case 'snowman':   drawSnowman(cx, cy, s, char); break;
-      case 'submarine': drawSubmarine(cx, cy, s, char); break;
-      case 'icerobot':  drawIceRobot(cx, cy, s, char); break;
+    switch (drawChar.type) {
+      case 'golfer':    drawGolfer(cx, cy, s, drawChar); break;
+      case 'alien':     drawAlien(cx, cy, s, drawChar); break;
+      case 'spaceman':  drawSpaceman(cx, cy, s, drawChar); break;
+      case 'robot':     drawRobot(cx, cy, s, drawChar); break;
+      case 'newt':      drawNewt(cx, cy, s, drawChar); break;
+      case 'whale':     drawWhale(cx, cy, s, drawChar); break;
+      case 'snowman':   drawSnowman(cx, cy, s, drawChar); break;
+      case 'submarine': drawSubmarine(cx, cy, s, drawChar); break;
+      case 'icerobot':  drawIceRobot(cx, cy, s, drawChar); break;
     }
 
     // Thought bubble (drawn above head)
-    if (char.bubbleText && (char.state === 'idle' || char.state === 'walking' || char.state === 'spouting')) {
+    if (char.bubbleText && (char.state === 'idle' || char.state === 'walking' ||
+        char.state === 'spouting' || char.state === 'rocket_startled' ||
+        char.state === 'startled')) {
       var bubbleYOff = s * 1.7;
-      if (char.type === 'submarine') bubbleYOff = s * 1.2;
-      else if (char.type === 'newt') bubbleYOff = s * 0.8;
-      else if (char.type === 'whale') bubbleYOff = s * 2.0;
+      if (drawChar.type === 'submarine') bubbleYOff = s * 1.2;
+      else if (drawChar.type === 'newt') bubbleYOff = s * 0.8;
+      else if (drawChar.type === 'whale') bubbleYOff = s * 2.0;
       drawThoughtBubble(cx, cy - bubbleYOff, s, char.bubbleText);
     }
   }
@@ -2823,6 +2856,409 @@
     ctx.stroke();
   }
 
+  // ── Launch Tower & Rocket ────────────────────────────────────────────────
+
+  // Visual constants (physics-space metres)
+  var TOWER_BASE_X_M   = 1.5;   // Same x as cannon base for camera consistency
+  var TOWER_HEIGHT_M   = 4.0;   // Lattice tower height
+  var PAD_WIDTH_M      = 2.2;   // Launch pad width
+  var PAD_HEIGHT_M     = 0.15;  // Launch pad thickness
+  var ROCKET_LENGTH_M  = 2.0;   // Full rocket nose-to-nozzle
+  var ROCKET_WIDTH_M   = 0.40;  // Body tube diameter
+  var NOZZLE_LENGTH_M  = 0.30;  // Base nozzle length (scales with ε)
+
+  /**
+   * drawLaunchTower(angleDeg)
+   * Draws: launch pad, lattice truss tower angled at the launch angle,
+   *        flame trench, and guide rail.
+   */
+  function drawLaunchTower(angleDeg) {
+    var s = Math.max(currentPPM, 18);
+    var baseX = toCanvasX(TOWER_BASE_X_M);
+    var baseY = toCanvasY(0);            // ground level
+    var rad = angleDeg * Math.PI / 180;
+
+    // ── Launch Pad ──
+    var padW = PAD_WIDTH_M * s;
+    var padH = Math.max(4, PAD_HEIGHT_M * s);
+    var padGrad = ctx.createLinearGradient(0, baseY - padH, 0, baseY);
+    padGrad.addColorStop(0, '#888');
+    padGrad.addColorStop(1, '#666');
+    ctx.fillStyle = padGrad;
+    ctx.fillRect(baseX - padW / 2, baseY - padH, padW, padH);
+    // Pad edge highlight
+    ctx.strokeStyle = '#999';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(baseX - padW / 2, baseY - padH, padW, padH);
+
+    // Bolt details on pad
+    ctx.fillStyle = '#555';
+    var boltR = Math.max(1.5, s * 0.02);
+    var boltY = baseY - padH / 2;
+    for (var b = 0; b < 5; b++) {
+      var boltX = baseX - padW * 0.4 + (padW * 0.8) * (b / 4);
+      ctx.beginPath();
+      ctx.arc(boltX, boltY, boltR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // ── Flame Trench ──
+    var trenchW = Math.max(10, 0.6 * s);
+    var trenchD = Math.max(4, 0.12 * s);
+    ctx.fillStyle = 'rgba(20,18,15,0.7)';
+    ctx.beginPath();
+    ctx.ellipse(baseX, baseY + 1, trenchW / 2, trenchD, 0, 0, Math.PI);
+    ctx.fill();
+
+    // ── Tower Structure (lattice truss) ──
+    var towerH = TOWER_HEIGHT_M * s;
+    var railW = Math.max(3, 0.06 * s);      // half-width of lattice at base
+    var railTop = Math.max(2, 0.03 * s);     // half-width at top
+
+    ctx.save();
+    ctx.translate(baseX, baseY - padH);
+    // Rotate tower to point along launch direction
+    // Tower is drawn upward (-y local); PI/2 - rad maps launch angle to canvas
+    ctx.rotate(Math.PI / 2 - rad);
+
+    // Offset lattice structure to the right of the guide rail
+    // so the rocket visually leans against the tower when tilted
+    var towerOff = railW * 1.2;
+
+    // Two side rails (offset to the right)
+    ctx.strokeStyle = '#c04020';  // industrial orange-red
+    ctx.lineWidth = Math.max(2, s * 0.035);
+    // Left rail (near the guide rail)
+    ctx.beginPath();
+    ctx.moveTo(-railW + towerOff, 0);
+    ctx.lineTo(-railTop + towerOff, -towerH);
+    ctx.stroke();
+    // Right rail (further right)
+    ctx.beginPath();
+    ctx.moveTo(railW + towerOff, 0);
+    ctx.lineTo(railTop + towerOff, -towerH);
+    ctx.stroke();
+
+    // Cross-braces (diagonal lattice, also offset)
+    ctx.strokeStyle = '#a03818';
+    ctx.lineWidth = Math.max(1, s * 0.018);
+    var numBraces = Math.max(4, Math.round(towerH / 25));
+    for (var i = 0; i < numBraces; i++) {
+      var frac0 = i / numBraces;
+      var frac1 = (i + 1) / numBraces;
+      var y0 = -towerH * frac0;
+      var y1 = -towerH * frac1;
+      var lw0 = railW + (railTop - railW) * frac0;
+      var rw0 = railW + (railTop - railW) * frac0;
+      var lw1 = railW + (railTop - railW) * frac1;
+      // Alternating X pattern
+      if (i % 2 === 0) {
+        ctx.beginPath();
+        ctx.moveTo(-lw0 + towerOff, y0);
+        ctx.lineTo(lw1 + towerOff, y1);
+        ctx.stroke();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(rw0 + towerOff, y0);
+        ctx.lineTo(-lw1 + towerOff, y1);
+        ctx.stroke();
+      }
+      // Horizontal rung
+      var hy = y1;
+      var hw = railW + (railTop - railW) * frac1;
+      ctx.beginPath();
+      ctx.moveTo(-hw + towerOff, hy);
+      ctx.lineTo(hw + towerOff, hy);
+      ctx.stroke();
+    }
+
+    // ── Guide Rail (stays centred for the rocket to sit on) ──
+    ctx.strokeStyle = '#ddd';
+    ctx.lineWidth = Math.max(1.5, s * 0.025);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, -towerH);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  /**
+   * drawRocket(rocketState, angleDeg, epsilon)
+   * rocketState: null / { phase:'pad' } / { phase:'flight', x, y, vx, vy, ... }
+   * angleDeg: launch rail angle (used for 'pad' orientation)
+   * epsilon: expansion ratio (for nozzle bell width)
+   */
+  // Fizzle shake parameters
+  var SHAKE_AMPLITUDE = 0.02; // metres — subtle pixel jitter
+  var SHAKE_FREQUENCY = 30;   // Hz
+
+  function drawRocket(rocketState, angleDeg, epsilon) {
+    var s = Math.max(currentPPM, 18);
+    var eps = epsilon || 20;
+    var phase = rocketState ? rocketState.phase : 'pad';
+
+    var rocketLen = ROCKET_LENGTH_M * s;
+    var rocketW = ROCKET_WIDTH_M * s;
+    var nozzleLen = NOZZLE_LENGTH_M * s * Math.min(2.0, Math.max(0.6, eps / 20));
+    var nozzleExitW = rocketW * 0.4 * Math.min(2.2, Math.max(0.7, Math.sqrt(eps / 10)));
+    var nozzleThroatW = rocketW * 0.15;
+    var noseLen = rocketLen * 0.22;
+    var finLen = rocketLen * 0.18;
+    var finH = rocketW * 0.55;
+
+    // Determine position & rotation
+    var cx, cy, rot;
+    if (phase === 'flight' && rocketState.x !== undefined) {
+      cx = toCanvasX(rocketState.x);
+      cy = toCanvasY(rocketState.y);
+      // Orient nose along velocity vector
+      // Nose is at local -x, so add PI to point nose in flight direction
+      rot = Math.PI - Math.atan2(rocketState.vy || 0, rocketState.vx || 0.001);
+    } else {
+      // On the pad / rail
+      var rad = angleDeg * Math.PI / 180;
+      var padH = Math.max(4, PAD_HEIGHT_M * s);
+      // Rocket base sits at rail bottom, halfway up the rocket body
+      var railOffset = ROCKET_LENGTH_M * 0.5;
+      cx = toCanvasX(TOWER_BASE_X_M) + Math.cos(rad) * railOffset * s;
+      cy = (toCanvasY(0) - padH) - Math.sin(rad) * railOffset * s;
+      rot = Math.PI - rad;
+
+      // ── Fizzle shake: jitter position while on pad ──
+      if (phase === 'fizzle') {
+        var shakeX = SHAKE_AMPLITUDE * s * Math.sin(worldTime * SHAKE_FREQUENCY * Math.PI * 2);
+        var shakeY = SHAKE_AMPLITUDE * s * Math.cos(worldTime * SHAKE_FREQUENCY * Math.PI * 2 * 1.3);
+        cx += shakeX;
+        cy += shakeY;
+      }
+    }
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(rot);
+
+    // Rocket drawn nose-right: nose at +x, nozzle at -x
+    var bodyStart = -rocketLen / 2 + noseLen;
+    var bodyEnd = rocketLen / 2;
+
+    // ── Fins (drawn first, behind body) ──
+    ctx.fillStyle = '#cc3333';
+    // Top fin
+    ctx.beginPath();
+    ctx.moveTo(bodyEnd - finLen, -rocketW / 2);
+    ctx.lineTo(bodyEnd, -rocketW / 2);
+    ctx.lineTo(bodyEnd - finLen * 0.3, -rocketW / 2 - finH);
+    ctx.closePath();
+    ctx.fill();
+    // Bottom fin
+    ctx.beginPath();
+    ctx.moveTo(bodyEnd - finLen, rocketW / 2);
+    ctx.lineTo(bodyEnd, rocketW / 2);
+    ctx.lineTo(bodyEnd - finLen * 0.3, rocketW / 2 + finH);
+    ctx.closePath();
+    ctx.fill();
+
+    // ── Nozzle bell ──
+    ctx.fillStyle = '#333';
+    ctx.beginPath();
+    ctx.moveTo(bodyEnd, -nozzleThroatW);
+    ctx.lineTo(bodyEnd + nozzleLen, -nozzleExitW);
+    ctx.lineTo(bodyEnd + nozzleLen, nozzleExitW);
+    ctx.lineTo(bodyEnd, nozzleThroatW);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = Math.max(0.5, s * 0.008);
+    ctx.stroke();
+
+    // ── Body tube ──
+    var bodyGrad = ctx.createLinearGradient(0, -rocketW / 2, 0, rocketW / 2);
+    bodyGrad.addColorStop(0, '#f0f0f0');
+    bodyGrad.addColorStop(0.3, '#ffffff');
+    bodyGrad.addColorStop(0.7, '#e8e8e8');
+    bodyGrad.addColorStop(1, '#d0d0d0');
+    ctx.fillStyle = bodyGrad;
+    ctx.fillRect(bodyStart, -rocketW / 2, bodyEnd - bodyStart, rocketW);
+
+    // Colour band (visual flair — changes with propellant family hint)
+    var bandW = rocketLen * 0.08;
+    var bandX = bodyStart + (bodyEnd - bodyStart) * 0.35;
+    ctx.fillStyle = 'rgba(0,100,200,0.7)';
+    ctx.fillRect(bandX, -rocketW / 2, bandW, rocketW);
+
+    // Body outline
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+    ctx.lineWidth = Math.max(0.5, s * 0.008);
+    ctx.strokeRect(bodyStart, -rocketW / 2, bodyEnd - bodyStart, rocketW);
+
+    // ── Nose cone (ogive-ish) ──
+    var noseGrad = ctx.createLinearGradient(0, -rocketW / 2, 0, rocketW / 2);
+    noseGrad.addColorStop(0, '#e8e8e8');
+    noseGrad.addColorStop(0.5, '#ffffff');
+    noseGrad.addColorStop(1, '#d0d0d0');
+    ctx.fillStyle = noseGrad;
+    ctx.beginPath();
+    ctx.moveTo(-rocketLen / 2, 0);
+    // Bezier ogive shape
+    ctx.bezierCurveTo(
+      -rocketLen / 2 + noseLen * 0.3, -rocketW * 0.12,
+      bodyStart - noseLen * 0.1, -rocketW / 2,
+      bodyStart, -rocketW / 2
+    );
+    ctx.lineTo(bodyStart, rocketW / 2);
+    ctx.bezierCurveTo(
+      bodyStart - noseLen * 0.1, rocketW / 2,
+      -rocketLen / 2 + noseLen * 0.3, rocketW * 0.12,
+      -rocketLen / 2, 0
+    );
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+    ctx.lineWidth = Math.max(0.5, s * 0.008);
+    ctx.stroke();
+
+    // Nose tip highlight
+    ctx.fillStyle = 'rgba(255,50,50,0.85)';
+    ctx.beginPath();
+    ctx.arc(-rocketLen / 2, 0, Math.max(2, rocketW * 0.12), 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  /**
+   * drawExhaust(physX, physY, theta, thrustFrac)
+   * Draws the engine exhaust plume at the nozzle position, oriented opposite
+   * to the rocket's heading (theta in radians, measured from +x axis).
+   * thrustFrac: 0-1, 0 = no exhaust, 1 = full thrust.
+   */
+  function drawExhaust(physX, physY, theta, thrustFrac) {
+    if (thrustFrac <= 0) return;
+    var s = Math.max(currentPPM, 18);
+    var cx = toCanvasX(physX);
+    var cy = toCanvasY(physY);
+
+    // Nozzle exit is behind the rocket (opposite to heading)
+    var exhaustAngle = theta + Math.PI;
+
+    var plumeLenBase = ROCKET_LENGTH_M * 0.8 * s * thrustFrac;
+    var plumeW = ROCKET_WIDTH_M * 0.35 * s;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(-exhaustAngle);
+
+    // ── Inner plume (bright core) ──
+    var t = worldTime * 12;
+    var flicker = 1 + 0.12 * Math.sin(t) + 0.08 * Math.sin(t * 2.7);
+    var coreLen = plumeLenBase * 0.7 * flicker;
+    var coreW = plumeW * 0.35;
+
+    var coreGrad = ctx.createLinearGradient(0, 0, coreLen, 0);
+    coreGrad.addColorStop(0, 'rgba(200,220,255,0.95)');
+    coreGrad.addColorStop(0.3, 'rgba(255,255,200,0.85)');
+    coreGrad.addColorStop(0.7, 'rgba(255,180,50,0.5)');
+    coreGrad.addColorStop(1, 'rgba(255,100,20,0)');
+    ctx.fillStyle = coreGrad;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(coreLen * 0.5, -coreW * flicker, coreLen, 0);
+    ctx.quadraticCurveTo(coreLen * 0.5, coreW * flicker, 0, 0);
+    ctx.fill();
+
+    // ── Outer plume (fiery glow) ──
+    var outerLen = plumeLenBase * flicker;
+    var outerW = plumeW * 0.7;
+    var outerGrad = ctx.createLinearGradient(0, 0, outerLen, 0);
+    outerGrad.addColorStop(0, 'rgba(255,200,100,0.6)');
+    outerGrad.addColorStop(0.4, 'rgba(255,120,30,0.35)');
+    outerGrad.addColorStop(0.8, 'rgba(200,60,10,0.12)');
+    outerGrad.addColorStop(1, 'rgba(100,30,5,0)');
+    ctx.fillStyle = outerGrad;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(outerLen * 0.4, -outerW, outerLen, 0);
+    ctx.quadraticCurveTo(outerLen * 0.4, outerW, 0, 0);
+    ctx.fill();
+
+    // ── Mach diamonds (bright nodes at high expansion ratios) ──
+    if (thrustFrac > 0.3) {
+      var numDiamonds = Math.min(4, Math.floor(Math.sqrt(thrustFrac * 12)));
+      var diamondSpacing = coreLen * 0.22;
+      for (var md = 0; md < numDiamonds; md++) {
+        var mdX = (md + 1) * diamondSpacing;
+        if (mdX > coreLen * 0.9) break;
+        var mdR = coreW * 0.5 * (1 - md * 0.18) * flicker;
+        var mdAlpha = (0.4 - md * 0.08) * thrustFrac;
+        ctx.globalAlpha = Math.max(0, mdAlpha);
+        ctx.fillStyle = '#ffffcc';
+        // Diamond shape
+        ctx.beginPath();
+        ctx.moveTo(mdX - mdR * 0.5, 0);
+        ctx.lineTo(mdX, -mdR);
+        ctx.lineTo(mdX + mdR * 0.5, 0);
+        ctx.lineTo(mdX, mdR);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // ── Smoke trail at plume tip ──
+    var smokeX = outerLen * 0.85;
+    var smokeR = plumeW * 0.4 * thrustFrac;
+    ctx.globalAlpha = 0.15 * thrustFrac;
+    ctx.fillStyle = '#aaa';
+    ctx.beginPath();
+    ctx.arc(smokeX, 0, Math.max(2, smokeR), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+  }
+
+  /**
+   * drawFizzle(physX, physY, progress)
+   * Sputtering failed ignition. progress: 0→1 over the burn.
+   */
+  function drawFizzle(physX, physY, progress) {
+    if (progress <= 0 || progress > 1) return;
+    var s = Math.max(currentPPM, 18);
+    var cx = toCanvasX(physX);
+    var cy = toCanvasY(physY);
+
+    var sparks = 5 + Math.floor(progress * 6);
+    var sputter = (1 - progress * 0.6);  // diminishes towards end
+
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    for (var i = 0; i < sparks; i++) {
+      var angle = (i / sparks) * Math.PI * 2 + worldTime * 8 + progress * 5;
+      var dist = (5 + Math.random() * 12) * s / 80 * sputter;
+      var sx = Math.cos(angle) * dist;
+      var sy = Math.sin(angle) * dist * 0.6 + Math.random() * 4;
+      var sparkR = Math.max(1, (1.5 + Math.random() * 2) * sputter);
+
+      var alpha = (0.5 + Math.random() * 0.5) * sputter;
+      ctx.fillStyle = 'rgba(255,' + Math.floor(120 + Math.random() * 80) + ',0,' + alpha + ')';
+      ctx.beginPath();
+      ctx.arc(sx, sy, sparkR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Small smoke puff
+    ctx.globalAlpha = 0.25 * sputter;
+    ctx.fillStyle = '#888';
+    ctx.beginPath();
+    ctx.arc(0, -3 * s / 80, Math.max(3, 8 * s / 80 * progress), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+  }
+
   // ── Composite World Draw ───────────────────────────────────────────────────
   function drawWorld() {
     drawSky();
@@ -2852,12 +3288,19 @@
     CANNON_BASE_Y_M:  CANNON_BASE_Y_M,
     BARREL_LENGTH_M:  BARREL_LENGTH_M,
     BALL_RADIUS_M:    BALL_RADIUS_M,
+    TOWER_BASE_X_M:   TOWER_BASE_X_M,
+    TOWER_HEIGHT_M:   TOWER_HEIGHT_M,
+    ROCKET_LENGTH_M:  ROCKET_LENGTH_M,
+    ROCKET_WIDTH_M:   ROCKET_WIDTH_M,
     init: init,
     resize: resize,
     updateWorld: updateWorld,
     setTargetGravity: setTargetGravity,
     setTargetZoom: setTargetZoom,
     resetZoom: resetZoom,
+    setViewTransitionDuration: setViewTransitionDuration,
+    setCameraTarget: setCameraTarget,
+    resetCamera: resetCamera,
     setBarrelLength: setBarrelLength,
     clear: clear,
     drawWorld: drawWorld,
@@ -2873,6 +3316,10 @@
     drawShockwave: drawShockwave,
     drawCharacter: drawCharacter,
     drawStickman: drawStickman,
+    drawLaunchTower: drawLaunchTower,
+    drawRocket: drawRocket,
+    drawExhaust: drawExhaust,
+    drawFizzle: drawFizzle,
     toCanvasX: toCanvasX,
     toCanvasY: toCanvasY,
     getCannonTipPhys: getCannonTipPhys,
