@@ -90,6 +90,13 @@ var CANNON_BASE_Y_M   = 1.0;
 var BARREL_LENGTH_M   = 1.5;
 var BALL_RADIUS_M     = 0.1;
 
+// ── Parallax depth factors (0 = fixed on screen, 1 = moves fully with camera) ──
+var PARALLAX_STARS      = 0.03;   // Far sky: stars, celestial bodies, rings
+var PARALLAX_CLOUDS     = 0.15;   // Clouds, volcanic haze
+var PARALLAX_MOUNTAINS  = 0.35;   // Mountains (behind trees)
+var PARALLAX_TREES      = 0.5;    // Treeline (mid-ground)
+var PARALLAX_GROUND     = 1.0;    // Ground surface features (crater fields etc.)
+
 function setBarrelLength(m) {
   BARREL_LENGTH_M = Math.max(0.4, Math.min(4.0, m));
 }
@@ -169,6 +176,22 @@ function rgba(c, a) {
   return 'rgba('+Math.round(c[0])+','+Math.round(c[1])+','+Math.round(c[2])+','+a+')';
 }
 function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+// Parallax helper: pixel offset for a given depth factor
+function parallaxOffset(factor) {
+  return cameraX * currentPPM * factor;
+}
+// Vertical parallax: how much a layer shifts down when the camera rises
+function parallaxOffsetY(factor) {
+  return cameraY * currentPPM * factor;
+}
+// Wrap a screen-space x position into the visible range with margin for partial features
+function wrapX(x, margin) {
+  if (W <= 0) return x;
+  margin = margin || 50;
+  var total = W + 2 * margin;
+  return ((x + margin) % total + total) % total - margin;
+}
 
 // ── Init & Resize ──────────────────────────────────────────────────────────
 function init(cvs) {
@@ -328,9 +351,20 @@ function updateWorld(dt) {
   // First-order response where "duration" means ~95% settle time.
   var easingRate = 3 / viewTransitionDuration;
 
+  // Logarithmic zoom interpolation — zoom is multiplicative so log-space
+  // easing feels perceptually uniform (avoids the "fast then slow" jolt).
   var zDiff = targetPPM - currentPPM;
   if (Math.abs(zDiff) < 0.05) currentPPM = targetPPM;
-  else {
+  else if (currentPPM > 0 && targetPPM > 0) {
+    var logCur = Math.log(currentPPM);
+    var logTgt = Math.log(targetPPM);
+    var logDiff = logTgt - logCur;
+    if (Math.abs(logDiff) < 0.001) currentPPM = targetPPM;
+    else {
+      logCur += logDiff * Math.min(1, dt * easingRate);
+      currentPPM = Math.exp(logCur);
+    }
+  } else {
     currentPPM += zDiff * Math.min(1, dt * easingRate);
   }
 
@@ -396,26 +430,34 @@ function drawPlanetFeatures(planet, alpha) {
 }
 
 function drawStars() {
+  var offset = parallaxOffset(PARALLAX_STARS);
+  var offsetY = parallaxOffsetY(PARALLAX_STARS);
   for (var i = 0; i < starData.length; i++) {
     var s = starData[i];
     var twinkle = 0.5 + 0.5*Math.sin(worldTime*2 + i*3.7);
     ctx.fillStyle = 'rgba(255,255,255,'+(s.b*twinkle)+')';
+    var sx = wrapX(s.x * W - offset, 5);
+    var sy = s.y * baseGroundY + offsetY;
     ctx.beginPath();
-    ctx.arc(s.x*W, s.y*baseGroundY, s.r, 0, Math.PI*2);
+    ctx.arc(sx, sy, s.r, 0, Math.PI*2);
     ctx.fill();
   }
 }
 
 function drawClouds() {
   var zr = Math.min(1, currentPPM / DEFAULT_PPM);
+  var offset = parallaxOffset(PARALLAX_CLOUDS);
+  var offsetY = parallaxOffsetY(PARALLAX_CLOUDS);
   ctx.fillStyle = 'rgba(255,255,255,0.65)';
   for (var i = 0; i < cloudData.length; i++) {
     var c = cloudData[i];
     var cx = (c.x + worldTime*0.008) % 1.3 - 0.1;
     var cr = c.r * zr;
+    var baseX = wrapX(cx * W - offset, cr * c.puffs);
+    var baseY = c.y * baseGroundY + offsetY;
     for (var p = 0; p < c.puffs; p++) {
       ctx.beginPath();
-      ctx.arc(cx*W + p*cr*0.8, c.y*baseGroundY + (p%2)*cr*0.3,
+      ctx.arc(baseX + p*cr*0.8, baseY + (p%2)*cr*0.3,
               cr, 0, Math.PI*2);
       ctx.fill();
     }
@@ -424,15 +466,17 @@ function drawClouds() {
 
 function drawTreeline() {
   var zr = Math.min(1, currentPPM / DEFAULT_PPM);
+  var offset = parallaxOffset(PARALLAX_TREES);
   ctx.fillStyle = '#2d5a3a';
   for (var i = 0; i < treeData.length; i++) {
     var t = treeData[i];
     var th = t.h * zr;
     var tw = t.w * zr;
+    var tx = wrapX(t.x * W - offset, tw);
     ctx.beginPath();
-    ctx.moveTo(t.x*W - tw/2, groundY);
-    ctx.lineTo(t.x*W, groundY - th);
-    ctx.lineTo(t.x*W + tw/2, groundY);
+    ctx.moveTo(tx - tw/2, groundY);
+    ctx.lineTo(tx, groundY - th);
+    ctx.lineTo(tx + tw/2, groundY);
     ctx.closePath();
     ctx.fill();
   }
@@ -441,10 +485,11 @@ function drawTreeline() {
 function drawMountains(planet) {
   var zr = Math.min(1, currentPPM / DEFAULT_PPM);
   var col = lerpRGB(planet.groundTop, planet.skyBot, 0.4);
+  var offset = parallaxOffset(PARALLAX_MOUNTAINS);
   ctx.fillStyle = rgb(col);
   for (var i = 0; i < mountainData.length; i++) {
     var m = mountainData[i];
-    var mx = m.x*W;
+    var mx = wrapX(m.x * W - offset, m.w * zr);
     var mh = m.h * zr;
     var mw = m.w * zr;
     ctx.beginPath();
@@ -459,12 +504,15 @@ function drawMountains(planet) {
 }
 
 function drawVolcanicHaze() {
-  var grad = ctx.createLinearGradient(0, baseGroundY*0.5, 0, baseGroundY);
+  var hazeOffY = parallaxOffsetY(PARALLAX_CLOUDS);
+  var hazeTop = baseGroundY * 0.5 + hazeOffY;
+  var hazeBot = baseGroundY + hazeOffY;
+  var grad = ctx.createLinearGradient(0, hazeTop, 0, hazeBot);
   grad.addColorStop(0, 'rgba(200,150,40,0)');
   grad.addColorStop(0.5, 'rgba(200,150,40,0.08)');
   grad.addColorStop(1, 'rgba(200,130,30,0.2)');
   ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, baseGroundY);
+  ctx.fillRect(0, 0, W, hazeBot);
 }
 
 function drawSaturnRings() {
@@ -486,8 +534,10 @@ function drawSaturnRings() {
   var tilt  = 0.25 + Math.sin(worldTime * 0.04) * 0.12;  // gentle tilt sway
 
   // Centre sits far below canvas — only the top arc peeks into view
-  var cx = W * 0.5 + Math.sin(drift) * W * 0.15;
-  var cy = groundY + H * 2.8;
+  var ringsOffset = parallaxOffset(PARALLAX_STARS);
+  var ringsOffsetY = parallaxOffsetY(PARALLAX_STARS);
+  var cx = W * 0.5 + Math.sin(drift) * W * 0.15 - ringsOffset;
+  var cy = baseGroundY + H * 2.8 + ringsOffsetY;
   var baseR = H * 2.9;            // massive radius → gentle arc curvature
 
   var ringDefs = [
@@ -525,15 +575,17 @@ function drawSaturnRings() {
 
 // ── Celestial Body Drawing ─────────────────────────────────────────────────
 function drawCelestialBodies(planetName) {
+  var offset = parallaxOffset(PARALLAX_STARS);
+  var offsetY = parallaxOffsetY(PARALLAX_STARS);
   for (var i = 0; i < celestialBodies.length; i++) {
     var body = celestialBodies[i];
     if (body.planet !== planetName) continue;
 
     // Compute screen position: wraps across screen with margin off each side
     var xFrac = ((worldTime + body.phase) / body.orbitPeriod) % 1.3 - 0.15;
-    var yBase = body.yFrac * groundY;
-    var yBob  = Math.sin(worldTime * 0.5 + body.phase) * body.yOscillation * groundY;
-    var cx = xFrac * W;
+    var yBase = body.yFrac * baseGroundY + offsetY;
+    var yBob  = Math.sin(worldTime * 0.5 + body.phase) * body.yOscillation * baseGroundY;
+    var cx = xFrac * W - offset;
     var cy = yBase + yBob;
 
     // Skip if fully off screen
@@ -754,6 +806,7 @@ function drawEarthMoon(cx, cy, body) {
 
 // Draw a faint shadow on Mars surface when Phobos passes overhead
 function drawPhobosShadow() {
+  var offset = parallaxOffset(PARALLAX_GROUND);
   for (var i = 0; i < celestialBodies.length; i++) {
     var body = celestialBodies[i];
     if (body.name !== 'phobos') continue;
@@ -762,7 +815,7 @@ function drawPhobosShadow() {
     // Only draw shadow when Phobos is over the visible area
     if (xFrac < -0.05 || xFrac > 1.05) continue;
 
-    var shadowX = xFrac * W;
+    var shadowX = xFrac * W - offset;
     var shadowW = 30 + Math.sin(worldTime * 0.8) * 5;
     var shadowH = 6;
 
@@ -774,15 +827,17 @@ function drawPhobosShadow() {
 }
 
 function drawCraterFieldFeature() {
+  var offset = parallaxOffset(PARALLAX_GROUND);
   for (var i = 0; i < craterFieldData.length; i++) {
     var c = craterFieldData[i];
+    var cx = wrapX(c.x * W - offset, c.r * 2);
     ctx.fillStyle = 'rgba(0,0,0,0.12)';
     ctx.beginPath();
-    ctx.ellipse(c.x*W, groundY+2, c.r, c.r*0.35, 0, 0, Math.PI*2);
+    ctx.ellipse(cx, groundY+2, c.r, c.r*0.35, 0, 0, Math.PI*2);
     ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,0.06)';
     ctx.beginPath();
-    ctx.ellipse(c.x*W, groundY+1, c.r*0.7, c.r*0.22, 0, 0, Math.PI*2);
+    ctx.ellipse(cx, groundY+1, c.r*0.7, c.r*0.22, 0, 0, Math.PI*2);
     ctx.fill();
   }
 }
@@ -806,11 +861,13 @@ function drawSolidGround(alpha) {
   ctx.fillStyle = grad;
   ctx.fillRect(0, groundY, W, surfDepth);
 
+  var groundOff = parallaxOffset(PARALLAX_GROUND);
   ctx.fillStyle = rgb(env.surfEdge);
   ctx.beginPath();
   ctx.moveTo(0, groundY);
   for (var x = 0; x <= W; x += 10) {
-    ctx.lineTo(x, groundY - edgeAmp*Math.sin(x*0.05) - edgeAmp2*Math.sin(x*0.13));
+    var wx = x + groundOff;
+    ctx.lineTo(x, groundY - edgeAmp*Math.sin(wx*0.05) - edgeAmp2*Math.sin(wx*0.13));
   }
   ctx.lineTo(W, groundY + Math.max(2, 6 * zr));
   ctx.lineTo(0, groundY + Math.max(2, 6 * zr));
@@ -834,13 +891,15 @@ function drawGasGround(alpha) {
   ctx.fillStyle = grad;
   ctx.fillRect(0, groundY-5, W, H-groundY+5);
 
+  var gasGroundOff = parallaxOffset(PARALLAX_GROUND);
   ctx.fillStyle = rgb(env.surfEdge);
   ctx.beginPath();
   ctx.moveTo(0, groundY);
   for (var x = 0; x <= W; x += 8) {
-    var turb = Math.sin(x*0.03+worldTime*1.8)*5
-             + Math.sin(x*0.07+worldTime*1.3)*3
-             + Math.sin(x*0.15+worldTime*2.5)*2;
+    var wx = x + gasGroundOff;
+    var turb = Math.sin(wx*0.03+worldTime*1.8)*5
+             + Math.sin(wx*0.07+worldTime*1.3)*3
+             + Math.sin(wx*0.15+worldTime*2.5)*2;
     ctx.lineTo(x, groundY+turb);
   }
   ctx.lineTo(W, groundY+12);
@@ -861,7 +920,8 @@ function drawGasGround(alpha) {
     ctx.beginPath();
     ctx.moveTo(0, bandY+shift);
     for (var x2 = 0; x2 <= W; x2 += 10) {
-      ctx.lineTo(x2, bandY+shift + Math.sin(x2*s.freq+worldTime*0.7)*s.amp);
+      var wx2 = x2 + gasGroundOff;
+      ctx.lineTo(x2, bandY+shift + Math.sin(wx2*s.freq+worldTime*0.7)*s.amp);
     }
     ctx.lineTo(W, bandY+shift+8);
     ctx.lineTo(0, bandY+shift+8);

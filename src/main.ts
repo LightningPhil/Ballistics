@@ -78,7 +78,13 @@ var launchTME = 0;
 var maxRangeMetres = 0;      // Farthest range seen (persists across shots)
 var maxHeightMetres = 2;     // Tallest apex seen (persists across shots)
 var DEFAULT_VIEW_TRANSITION_SECONDS = 1.2;
+var DEFAULT_CANNON_VIEW_SECONDS = 2.0;   // Slower, smoother zoom for cannon
 var DEFAULT_ROCKET_ZOOM_MARGIN = 0.15;
+var DEFAULT_CANNON_ZOOM_MARGIN = 0.20;   // Extra breathing room for cannon
+
+// Per-mode zoom memory (saved/restored on mode switch)
+var cannonZoomState = { maxRange: 0, maxHeight: 2, ppm: 80, camX: 0, camY: 0 };
+var rocketZoomState = { maxRange: 0, maxHeight: 2, ppm: 80, camX: 0, camY: 0 };
 
 // ── Barrel-change animation state ──────────────────────────────────────────
 // States: 'idle' → 'lowering' → 'modifying' → 'raising' → 'idle'
@@ -797,7 +803,7 @@ function fire() {
 
   // Update renderer barrel length to match slider
   Renderer.setBarrelLength(vals.barrelLength);
-  Renderer.setViewTransitionDuration(DEFAULT_VIEW_TRANSITION_SECONDS);
+  Renderer.setViewTransitionDuration(DEFAULT_CANNON_VIEW_SECONDS);
 
   // Predict trajectory for zoom
   var tip = Renderer.getCannonTipPhys(vals.angle);
@@ -810,9 +816,10 @@ function fire() {
   maxRangeMetres = Math.max(maxRangeMetres, prediction.range);
   maxHeightMetres = Math.max(maxHeightMetres, prediction.maxHeight, 2);
 
-  // Compute and set zoom immediately so the ball is never off-screen
-  var neededPPM = computeNeededZoom(maxRangeMetres, maxHeightMetres, DEFAULT_ROCKET_ZOOM_MARGIN);
-  Renderer.setZoomImmediate(neededPPM);
+  // Smoothly animate to the needed zoom level
+  Renderer.setViewTransitionDuration(DEFAULT_CANNON_VIEW_SECONDS);
+  var neededPPM = computeNeededZoom(maxRangeMetres, maxHeightMetres, DEFAULT_CANNON_ZOOM_MARGIN);
+  Renderer.setTargetZoom(neededPPM);
 
   // Compute launch velocity and create projectile
   var speed = Physics.computeLaunchVelocity(vals.force, vals.mass, vals.barrelLength);
@@ -910,10 +917,21 @@ function clearRange() {
 
   stopEngineLoop();
 
-  // Reset zoom back to default
-  Renderer.setViewTransitionDuration(DEFAULT_VIEW_TRANSITION_SECONDS);
+  // Reset zoom back to default (smooth for cannon, instant for rocket)
+  if (currentMode === 'cannon') {
+    Renderer.setViewTransitionDuration(DEFAULT_CANNON_VIEW_SECONDS);
+  } else {
+    Renderer.setViewTransitionDuration(DEFAULT_VIEW_TRANSITION_SECONDS);
+  }
   Renderer.resetZoom();
   Renderer.resetCamera();
+
+  // Also reset the current mode's saved zoom state
+  if (currentMode === 'cannon') {
+    cannonZoomState = { maxRange: 0, maxHeight: 2, ppm: Renderer.DEFAULT_PPM, camX: 0, camY: 0 };
+  } else {
+    rocketZoomState = { maxRange: 0, maxHeight: 2, ppm: Renderer.DEFAULT_PPM, camX: 0, camY: 0 };
+  }
 
   UI.setFlightActive(false);
   UI.resetReadouts();
@@ -1303,14 +1321,14 @@ function loop(timestamp) {
       dotTimer = 0;
     }
 
-    // In-flight zoom adjustment: if ball exceeds our predicted bounds, zoom out more
+    // In-flight zoom adjustment: if ball exceeds our predicted bounds, smoothly zoom out more
     var ballRange = activeBall.x;
     var ballHeight = activeBall.y;
     if (ballRange > maxRangeMetres * 0.85 || ballHeight > maxHeightMetres * 0.85) {
       maxRangeMetres = Math.max(maxRangeMetres, ballRange * 1.2);
       maxHeightMetres = Math.max(maxHeightMetres, ballHeight * 1.2);
-      var neededPPM = computeNeededZoom(maxRangeMetres, maxHeightMetres);
-      Renderer.setZoomImmediate(neededPPM);
+      var neededPPM = computeNeededZoom(maxRangeMetres, maxHeightMetres, DEFAULT_CANNON_ZOOM_MARGIN);
+      Renderer.setTargetZoom(neededPPM);
     }
 
     if (activeBall.y <= 0) {
@@ -1586,7 +1604,11 @@ function loop(timestamp) {
 // Helper: convert canvas px back to physics metres (for off-screen check)
 function toPhysX(canvasPx) {
   var ppm = Renderer.getCurrentPPM();
-  return ppm > 0 ? canvasPx / ppm : 9999;
+  if (ppm <= 0) return 9999;
+  // cameraX is implicit in toCanvasX: canvas = (world - cameraX) * ppm
+  // -> world = cameraX + canvas/ppm, with cameraX recovered from toCanvasX(0).
+  var cameraX = -Renderer.toCanvasX(0) / ppm;
+  return cameraX + canvasPx / ppm;
 }
 
 // ── Cannon animation ───────────────────────────────────────────────────────
@@ -1626,11 +1648,31 @@ function boot() {
     onGravityChange: onGravityChange,
     onBarrelChange: onBarrelChange,
     onModeChange: function (mode) {
+      // Save current mode's zoom state
+      var savePPM = Renderer.getCurrentPPM();
+      if (currentMode === 'cannon') {
+        cannonZoomState = { maxRange: maxRangeMetres, maxHeight: maxHeightMetres, ppm: savePPM, camX: 0, camY: 0 };
+      } else {
+        rocketZoomState = { maxRange: maxRangeMetres, maxHeight: maxHeightMetres, ppm: savePPM, camX: 0, camY: 0 };
+      }
+
       currentMode = mode;
-      Renderer.resetCamera();
-      if (mode === 'rocket') {
+
+      // Restore new mode's zoom state
+      if (mode === 'cannon') {
+        maxRangeMetres = cannonZoomState.maxRange;
+        maxHeightMetres = cannonZoomState.maxHeight;
+        Renderer.setViewTransitionDuration(DEFAULT_CANNON_VIEW_SECONDS);
+        Renderer.setTargetZoom(cannonZoomState.ppm);
+        Renderer.resetCamera();
+      } else {
+        maxRangeMetres = rocketZoomState.maxRange;
+        maxHeightMetres = rocketZoomState.maxHeight;
+        Renderer.setViewTransitionDuration(DEFAULT_VIEW_TRANSITION_SECONDS);
+        Renderer.setZoomImmediate(rocketZoomState.ppm);
+        Renderer.resetCamera();
         var tw = Renderer.TOWER_BASE_X_M || 1.5;
-        var vw = Renderer.getWidth() / Renderer.DEFAULT_PPM;
+        var vw = Renderer.getWidth() / rocketZoomState.ppm;
         Renderer.setCameraImmediate(tw - vw / 2);
       }
     },
