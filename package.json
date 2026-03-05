@@ -1,0 +1,29 @@
+{
+  "name": "ballistics",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build && vite build --config vite.config.singlefile.ts",
+    "build:single": "tsc && vite build --config vite.config.singlefile.ts",
+    "preview": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LightningPhil/Ballistics.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "private": true,
+  "bugs": {
+    "url": "https://github.com/LightningPhil/Ballistics/issues"
+  },
+  "homepage": "https://github.com/LightningPhil/Ballistics#readme",
+  "description": "",
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vite-plugin-singlefile": "^2.3.0"
+  }
+}
