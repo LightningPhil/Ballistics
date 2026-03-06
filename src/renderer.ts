@@ -25,55 +25,55 @@
 
 // ── Planet Data (sorted by gravity) ────────────────────────────────────────
 var PLANETS = [
-  { name:'moon',    g:1.62,  isGas:false,
+  { name:'moon',    g:1.62,  radius:1737400,  isGas:false,
     skyTop:[5,5,15],       skyMid:[10,10,25],      skyBot:[25,25,45],
     groundTop:[150,148,142], groundBot:[115,113,108],
     subTop:[90,88,83],     subBot:[70,68,63],
     surfEdge:[165,163,158], moundCol:[135,133,128],
     features:'moon' },
-  { name:'mercury', g:3.7,   isGas:false,
+  { name:'mercury', g:3.7,   radius:2439700,  isGas:false,
     skyTop:[8,6,18],       skyMid:[18,14,32],      skyBot:[35,30,48],
     groundTop:[145,130,115], groundBot:[115,100,85],
     subTop:[88,78,63],     subBot:[68,58,48],
     surfEdge:[160,145,130], moundCol:[135,120,105],
     features:'mercury' },
-  { name:'mars',    g:3.72,  isGas:false,
+  { name:'mars',    g:3.72,  radius:3389500,  isGas:false,
     skyTop:[165,105,75],   skyMid:[195,135,100],   skyBot:[215,165,135],
     groundTop:[190,110,68], groundBot:[160,88,52],
     subTop:[130,68,38],    subBot:[100,52,28],
     surfEdge:[205,128,78], moundCol:[180,105,62],
     features:'mars' },
-  { name:'uranus',  g:8.69,  isGas:true,
+  { name:'uranus',  g:8.69,  radius:25362000, isGas:true,
     skyTop:[85,165,190],   skyMid:[105,190,215],   skyBot:[135,205,225],
     groundTop:[75,155,185], groundBot:[55,125,160],
     subTop:[45,105,140],   subBot:[35,85,120],
     surfEdge:[90,170,200], moundCol:[70,150,180],
     features:'icegas' },
-  { name:'venus',   g:8.87,  isGas:false,
+  { name:'venus',   g:8.87,  radius:6051800,  isGas:false,
     skyTop:[195,155,55],   skyMid:[205,170,75],    skyBot:[218,185,100],
     groundTop:[180,128,48], groundBot:[150,105,38],
     subTop:[125,82,28],    subBot:[100,62,20],
     surfEdge:[200,148,58], moundCol:[170,120,42],
     features:'venus' },
-  { name:'earth',   g:9.81,  isGas:false,
+  { name:'earth',   g:9.81,  radius:6371000,  isGas:false,
     skyTop:[93,169,233],   skyMid:[135,206,235],   skyBot:[182,223,247],
     groundTop:[90,154,106], groundBot:[74,124,89],
     subTop:[107,68,35],    subBot:[74,47,21],
     surfEdge:[106,173,122], moundCol:[90,140,100],
     features:'earth' },
-  { name:'saturn',  g:10.44, isGas:true,
+  { name:'saturn',  g:10.44, radius:58232000, isGas:true,
     skyTop:[195,175,115],  skyMid:[210,195,145],   skyBot:[220,205,160],
     groundTop:[190,170,110], groundBot:[170,150,90],
     subTop:[150,130,75],   subBot:[130,110,58],
     surfEdge:[200,180,125], moundCol:[180,160,100],
     features:'saturn' },
-  { name:'neptune', g:11.15, isGas:true,
+  { name:'neptune', g:11.15, radius:24622000, isGas:true,
     skyTop:[18,35,105],    skyMid:[28,55,140],     skyBot:[45,75,165],
     groundTop:[28,48,130], groundBot:[20,38,110],
     subTop:[15,28,90],     subBot:[10,20,68],
     surfEdge:[38,58,140],  moundCol:[25,42,118],
     features:'deepgas' },
-  { name:'jupiter', g:24.79, isGas:true,
+  { name:'jupiter', g:24.79, radius:69911000, isGas:true,
     skyTop:[200,150,100],  skyMid:[215,170,118],   skyBot:[225,185,140],
     groundTop:[180,128,78], groundBot:[160,108,58],
     subTop:[140,88,42],    subBot:[118,68,28],
@@ -114,6 +114,24 @@ var displayedGravity = 9.81;
 var targetGravity    = 9.81;
 var worldTime = 0;
 
+// ── Curvature state (Phase 2) ──────────────────────────────────────────────
+// When the viewport is wide enough relative to the planet that the ground arc's
+// sagitta exceeds ~2 px, we switch from flat rendering to curved rendering.
+var curveActive    = false;   // Is curvature currently visible?
+var curveRadius    = 0;       // Planet radius in metres (0 = flat fallback)
+var curveRadiusPx  = 0;       // Planet radius in screen pixels (R * PPM)
+// Planet-centre screen position — used when curvature is active.
+// The "camera follow point" (cameraX, cameraY) maps to the screen anchor point,
+// and we compute planet-centre relative to that.
+var curveCentreX   = 0;       // screen px
+var curveCentreY   = 0;       // screen px
+var curveCamTheta  = 0;       // camera's angular position on the sphere (radians)
+
+// ── Phase 4: Whole-planet view ─────────────────────────────────────────────
+// planetViewFrac smoothly ramps from 0 (ground-level follow) to 1 (whole-planet
+// centred) as PPM drops below the threshold where the planet disc fits on screen.
+var planetViewFrac = 0;       // 0 = follow mode, 1 = planet-centred mode
+
 // Interpolated environment
 var env = {
   skyTop:[93,169,233], skyMid:[135,206,235], skyBot:[182,223,247],
@@ -136,19 +154,25 @@ var celestialBodies = [
     planet: 'mars', name: 'phobos',
     radius: 8, colour: [170, 155, 140],
     orbitPeriod: 35, yFrac: 0.30, yOscillation: 0.04,
-    phase: 0, texture: 'lumpy', shapeVerts: []
+    phase: 0, texture: 'lumpy', shapeVerts: [],
+    // Phase 3: orbital data (real Phobos orbit ~2.77 R_mars)
+    orbitRadiusFactor: 2.77, inclination: 0.02
   },
   {
     planet: 'mars', name: 'deimos',
     radius: 4, colour: [160, 150, 135],
     orbitPeriod: 60, yFrac: 0.18, yOscillation: 0.03,
-    phase: 17.5, texture: 'lumpy', shapeVerts: []
+    phase: 17.5, texture: 'lumpy', shapeVerts: [],
+    // Phase 3: orbital data (real Deimos orbit ~6.92 R_mars)
+    orbitRadiusFactor: 6.92, inclination: 0.03
   },
   {
     planet: 'earth', name: 'moon',
     radius: 25, colour: [230, 225, 210],
     orbitPeriod: 120, yFrac: 0.25, yOscillation: 0.02,
     phase: 5, texture: 'moon', shapeVerts: [],
+    // Phase 3: orbital data (real Moon is 60R — compressed to 4.5R for visibility)
+    orbitRadiusFactor: 4.5, inclination: 0.09,
     craters: [
       { ax: -0.25, ay: -0.30, r: 0.18 },
       { ax:  0.30, ay: -0.15, r: 0.14 },
@@ -382,12 +406,160 @@ function updateWorld(dt) {
   baseGroundY = H - Math.max(12, GROUND_OFFSET * zoomRatio);
   groundY = baseGroundY + cameraY * currentPPM;
 
+  // ── Phase 4: planet-view blend fraction ──
+  // As PPM drops toward the whole-planet threshold, planetViewFrac ramps 0→1.
+  // The ramp starts at 5× the whole-planet PPM (planet is ~50% of viewport diameter)
+  // and reaches 1 at 1× (full planet in viewport).
+  // Computed before updateCurvature() so the centre-blend uses the current value.
+  var wpPPM = getWholePlanetPPM();
+  if (wpPPM > 0) {
+    var rampStart = wpPPM * 5;   // begin blend at 5× whole-planet PPM
+    var rampEnd   = wpPPM;       // full planet-centred at 1×
+    if (currentPPM <= rampStart) {
+      // Use log-space for perceptually uniform ramp
+      var logStart = Math.log(rampStart);
+      var logEnd   = Math.log(rampEnd);
+      var logCur   = Math.log(Math.max(currentPPM, rampEnd * 0.5));
+      planetViewFrac = clamp((logStart - logCur) / (logStart - logEnd), 0, 1);
+    } else {
+      planetViewFrac = 0;
+    }
+  } else {
+    planetViewFrac = 0;
+  }
+
+  // ── Curvature computation (Phase 2) ──
+  updateCurvature();
+
   computeEnvironment();
 }
 
+// ── Curvature helpers ──────────────────────────────────────────────────────
+
+/**
+ * Recompute curvature state based on current zoom, planet radius, and camera.
+ * Called every frame from updateWorld().
+ *
+ * Sagitta = R_px * (1 - cos(halfAngle)) where halfAngle = (W/2) / R_px.
+ * When sagitta >= 2 px, curvature is visible → switch to arc rendering.
+ */
+function updateCurvature() {
+  curveRadius = getPlanetRadius(displayedGravity);
+  if (curveRadius <= 0 || currentPPM <= 0 || W <= 0) {
+    curveActive = false;
+    return;
+  }
+
+  curveRadiusPx = curveRadius * currentPPM;
+
+  // Half-angle subtended by half the viewport on the planet surface
+  var halfAngle = (W * 0.5) / curveRadiusPx;
+  // Sagitta: how many pixels the arc dips below a flat line across the viewport
+  var sagitta = curveRadiusPx * (1 - Math.cos(halfAngle));
+
+  curveActive = sagitta >= 2;
+
+  if (curveActive) {
+    // Camera angular position on sphere: cameraX (metres along surface) → angle
+    curveCamTheta = cameraX / curveRadius;
+
+    // Planet centre screen position.
+    // We require worldToScreen(cameraX, cameraY) = (0, baseGroundY)
+    // where 0 = screen X of camera anchor and baseGroundY = screen Y.
+    //
+    // worldToScreen gives: sx = pcX + (R+camY)*sin(camTheta)*ppm
+    //                      sy = pcY - (R+camY)*cos(camTheta)*ppm
+    //
+    // Solving for pcX, pcY:
+    var camR = (curveRadius + cameraY) * currentPPM;
+    curveCentreX = -camR * Math.sin(curveCamTheta);
+    curveCentreY = baseGroundY + camR * Math.cos(curveCamTheta);
+
+    // Phase 4: blend planet centre towards screen centre for whole-planet view
+    if (planetViewFrac > 0.001) {
+      var t = planetViewFrac;
+      curveCentreX = curveCentreX * (1 - t) + (W * 0.5) * t;
+      curveCentreY = curveCentreY * (1 - t) + (H * 0.5) * t;
+    }
+  }
+}
+
+/**
+ * Convert physics coordinates (surface distance, altitude) to screen pixels.
+ * When curvature is active, uses polar projection around the planet centre.
+ * When flat, uses the original linear mapping.
+ *
+ * @param {number} physX  Surface distance from origin (metres)
+ * @param {number} physY  Altitude above surface (metres)
+ * @returns {{ sx: number, sy: number }} Screen coordinates
+ */
+function worldToScreen(physX, physY) {
+  if (!curveActive) {
+    return {
+      sx: (physX - cameraX) * currentPPM,
+      sy: groundY - physY * currentPPM
+    };
+  }
+
+  // Polar projection using planet-centre screen position (curveCentreX/Y).
+  // physX/R = angular position (theta) on the sphere
+  // physY = altitude above surface → radial distance = R + physY
+  //
+  // World-space position relative to planet centre:
+  //   wx = (R + physY) * sin(theta)
+  //   wy = (R + physY) * cos(theta)
+  //
+  // The camera offset is already encoded in curveCentreX/Y (planet centre
+  // screen position), so we don't subtract camera here.
+
+  var theta = physX / curveRadius;
+  var r = curveRadius + physY;
+
+  return {
+    sx: curveCentreX + r * Math.sin(theta) * currentPPM,
+    sy: curveCentreY - r * Math.cos(theta) * currentPPM
+  };
+}
+
+/**
+ * Surface-normal angle at a given physics X position (radians).
+ * This is the rotation needed to tilt a surface object to match the curved ground.
+ * Returns 0 when curvature is not active.
+ */
+function surfaceNormalAngle(physX) {
+  if (!curveActive || curveRadius <= 0) return 0;
+  // The surface normal at physX points radially outward.
+  // Relative to the camera position, the tilt angle is:
+  return (physX / curveRadius) - curveCamTheta;
+}
+
+/**
+ * Get the screen Y for ground level (physY=0) at a given physX.
+ * In flat mode, this is just groundY. In curved mode, it follows the arc.
+ */
+function groundYAtPhysX(physX) {
+  if (!curveActive) return groundY;
+  var pt = worldToScreen(physX, 0);
+  return pt.sy;
+}
+
 // ── Coordinate Mapping ─────────────────────────────────────────────────────
-function toCanvasX(px) { return (px - cameraX) * currentPPM; }
-function toCanvasY(py) { return groundY - py * currentPPM; }
+function toCanvasX(px) {
+  if (curveActive) return worldToScreen(px, 0).sx;
+  return (px - cameraX) * currentPPM;
+}
+function toCanvasY(py) {
+  if (curveActive) return worldToScreen(cameraX, py).sy;
+  return groundY - py * currentPPM;
+}
+/** Full curved-aware transform for both coordinates at once. */
+function toCanvas(px, py) {
+  if (curveActive) {
+    var pt = worldToScreen(px, py);
+    return { x: pt.sx, y: pt.sy };
+  }
+  return { x: (px - cameraX) * currentPPM, y: groundY - py * currentPPM };
+}
 
 function getCannonTipPhys(angleDeg) {
   var rad = angleDeg * Math.PI / 180;
@@ -397,30 +569,70 @@ function getCannonTipPhys(angleDeg) {
   };
 }
 function getCannonPivotCanvas() {
-  return { x:toCanvasX(CANNON_BASE_X_M), y:toCanvasY(CANNON_BASE_Y_M) };
+  return toCanvas(CANNON_BASE_X_M, CANNON_BASE_Y_M);
 }
 
 // ── Sky ────────────────────────────────────────────────────────────────────
 function drawSky() {
   var skyBottom = Math.min(groundY, H);
-  var grad = ctx.createLinearGradient(0, 0, 0, skyBottom);
-  grad.addColorStop(0,   rgb(env.skyTop));
-  grad.addColorStop(0.6, rgb(env.skyMid));
-  grad.addColorStop(1,   rgb(env.skyBot));
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, skyBottom);
+
+  // Space transition: when zoomed out enough to see the planet as a disc,
+  // the sky fades to space-void black.
+  var spaceFrac = 0;
+  if (curveActive && curveRadiusPx > 0) {
+    // spaceFrac = 0 when planet is huge (flat-looking), 1 when planet is a small disc
+    spaceFrac = clamp(1 - curveRadiusPx / (H * 2), 0, 1);
+  }
+
+  if (spaceFrac > 0.01) {
+    // Fill entire canvas with space black, faded by spaceFrac
+    ctx.fillStyle = 'rgba(3,3,8,' + spaceFrac + ')';
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // Normal sky gradient (faded out as space takes over)
+  if (spaceFrac < 0.99 && skyBottom > 0) {
+    ctx.globalAlpha = 1 - spaceFrac;
+    var grad = ctx.createLinearGradient(0, 0, 0, skyBottom);
+    grad.addColorStop(0,   rgb(env.skyTop));
+    grad.addColorStop(0.6, rgb(env.skyMid));
+    grad.addColorStop(1,   rgb(env.skyBot));
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, skyBottom);
+    ctx.globalAlpha = 1;
+  }
+
+  // Atmosphere glow around the planet disc when space is visible
+  if (spaceFrac > 0.1 && curveRadiusPx > 5) {
+    var atmosPx = Math.max(4, curveRadiusPx * 0.02);
+    var atmosGrad = ctx.createRadialGradient(
+      curveCentreX, curveCentreY, curveRadiusPx,
+      curveCentreX, curveCentreY, curveRadiusPx + atmosPx);
+    var a = Math.min(1, spaceFrac * 1.5);
+    atmosGrad.addColorStop(0, rgba(env.skyBot, 0.5 * a));
+    atmosGrad.addColorStop(0.4, rgba(env.skyMid, 0.25 * a));
+    atmosGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = atmosGrad;
+    ctx.beginPath();
+    ctx.arc(curveCentreX, curveCentreY, curveRadiusPx + atmosPx, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 // ── Feature Drawing ────────────────────────────────────────────────────────
 function drawPlanetFeatures(planet, alpha) {
   if (alpha < 0.02) return;
   ctx.globalAlpha = alpha;
+
+  // LOD: skip surface-level detail when zoomed to whole-planet view
+  var skipSurface = planetViewFrac > 0.5;
+
   switch (planet.features) {
-    case 'moon':    drawStars(); drawCraterFieldFeature(); break;
-    case 'mercury': drawStars(); drawCraterFieldFeature(); break;
-    case 'mars':    drawStars(); drawCelestialBodies('mars'); drawMountains(planet); drawPhobosShadow(); break;
-    case 'venus':   drawVolcanicHaze(); break;
-    case 'earth':   drawCelestialBodies('earth'); drawClouds(); drawTreeline(); break;
+    case 'moon':    drawStars(); if (!skipSurface) drawCraterFieldFeature(); break;
+    case 'mercury': drawStars(); if (!skipSurface) drawCraterFieldFeature(); break;
+    case 'mars':    drawStars(); drawCelestialBodies('mars'); if (!skipSurface) drawMountains(planet); drawPhobosShadow(); break;
+    case 'venus':   if (!skipSurface) drawVolcanicHaze(); break;
+    case 'earth':   drawCelestialBodies('earth'); if (!skipSurface) { drawClouds(); drawTreeline(); } break;
     case 'saturn':  drawSaturnRings(); break;
     case 'icegas':  break;
     case 'deepgas': break;
@@ -516,30 +728,7 @@ function drawVolcanicHaze() {
 }
 
 function drawSaturnRings() {
-  // From Saturn's surface, rings appear as a luminous band arcing across
-  // the entire sky from horizon to horizon — like a colossal stripe overhead.
-  //
-  // Technique: place the ellipse centre FAR below the canvas so only a
-  // small arc segment (the top of the huge ellipse) is visible in the sky
-  // area. This gives the "band sweeping past" look, not a full ring.
-
-  ctx.save();
-  // Clip to sky so nothing bleeds below the ground line
-  ctx.beginPath();
-  ctx.rect(0, 0, W, baseGroundY);
-  ctx.clip();
-
-  // Slowly rotate where the arc crosses the sky
-  var drift = worldTime * 0.015;
-  var tilt  = 0.25 + Math.sin(worldTime * 0.04) * 0.12;  // gentle tilt sway
-
-  // Centre sits far below canvas — only the top arc peeks into view
-  var ringsOffset = parallaxOffset(PARALLAX_STARS);
-  var ringsOffsetY = parallaxOffsetY(PARALLAX_STARS);
-  var cx = W * 0.5 + Math.sin(drift) * W * 0.15 - ringsOffset;
-  var cy = baseGroundY + H * 2.8 + ringsOffsetY;
-  var baseR = H * 2.9;            // massive radius → gentle arc curvature
-
+  // Ring band definitions (shared between both modes)
   var ringDefs = [
     { rOff:-42, w:5,  col:[210,195,150], a:0.14 },
     { rOff:-28, w:10, col:[195,180,135], a:0.25 },
@@ -551,23 +740,70 @@ function drawSaturnRings() {
     { rOff: 58, w:5,  col:[170,158,118], a:0.10 }
   ];
 
-  for (var i = 0; i < ringDefs.length; i++) {
-    var rd = ringDefs[i];
-    var r  = baseR + rd.rOff;
-    ctx.strokeStyle = 'rgba('+rd.col[0]+','+rd.col[1]+','+rd.col[2]+','+rd.a+')';
-    ctx.lineWidth = rd.w;
+  if (curveActive && curveRadiusPx > 5) {
+    // ── Orbital mode: draw actual ring ellipses around the planet disc ──
+    // Saturn's rings span ~1.15R (inner D ring) to ~2.27R (outer F ring).
+    // Ring defs are centred at ~1.7R with offsets in pixels.
+    ctx.save();
+
+    var tilt = 0.25 + Math.sin(worldTime * 0.04) * 0.12;
+    var baseRingR = curveRadiusPx * 1.7;  // base ring at 1.7 planetary radii
+    // Scale the ring offsets proportionally with zoom
+    var offsetScale = curveRadiusPx / 300; // normalise so offsets look right
+
+    for (var i = 0; i < ringDefs.length; i++) {
+      var rd = ringDefs[i];
+      var r = baseRingR + rd.rOff * offsetScale;
+      if (r < curveRadiusPx * 1.05) continue; // don't overlap the planet
+      ctx.strokeStyle = 'rgba('+rd.col[0]+','+rd.col[1]+','+rd.col[2]+','+rd.a+')';
+      ctx.lineWidth = Math.max(1, rd.w * offsetScale);
+      ctx.beginPath();
+      ctx.ellipse(curveCentreX, curveCentreY, r, r * 0.35, tilt, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Faint glow
+    ctx.strokeStyle = 'rgba(230,215,170,0.04)';
+    ctx.lineWidth = Math.max(2, 40 * offsetScale);
     ctx.beginPath();
-    // Slight eccentricity so the arc isn't perfectly circular
-    ctx.ellipse(cx, cy, r, r * 0.97, tilt, 0, Math.PI * 2);
+    ctx.ellipse(curveCentreX, curveCentreY, baseRingR, baseRingR * 0.35, tilt, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.restore();
+    return;
+  }
+
+  // ── Close-zoom mode: original "sky band" technique ──
+  // From Saturn's surface, rings appear as a luminous band arcing across
+  // the entire sky from horizon to horizon — like a colossal stripe overhead.
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, W, baseGroundY);
+  ctx.clip();
+
+  var drift = worldTime * 0.015;
+  var tilt2 = 0.25 + Math.sin(worldTime * 0.04) * 0.12;
+
+  var ringsOffset = parallaxOffset(PARALLAX_STARS);
+  var ringsOffsetY = parallaxOffsetY(PARALLAX_STARS);
+  var cx = W * 0.5 + Math.sin(drift) * W * 0.15 - ringsOffset;
+  var cy = baseGroundY + H * 2.8 + ringsOffsetY;
+  var baseR = H * 2.9;
+
+  for (var j = 0; j < ringDefs.length; j++) {
+    var rd2 = ringDefs[j];
+    var r2 = baseR + rd2.rOff;
+    ctx.strokeStyle = 'rgba('+rd2.col[0]+','+rd2.col[1]+','+rd2.col[2]+','+rd2.a+')';
+    ctx.lineWidth = rd2.w;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, r2, r2 * 0.97, tilt2, 0, Math.PI * 2);
     ctx.stroke();
   }
 
-  // Faint glow along the brightest band
-  var glowR = baseR;
   ctx.strokeStyle = 'rgba(230,215,170,0.06)';
   ctx.lineWidth = 40;
   ctx.beginPath();
-  ctx.ellipse(cx, cy, glowR, glowR * 0.97, tilt, 0, Math.PI * 2);
+  ctx.ellipse(cx, cy, baseR, baseR * 0.97, tilt2, 0, Math.PI * 2);
   ctx.stroke();
 
   ctx.restore();
@@ -575,27 +811,58 @@ function drawSaturnRings() {
 
 // ── Celestial Body Drawing ─────────────────────────────────────────────────
 function drawCelestialBodies(planetName) {
-  var offset = parallaxOffset(PARALLAX_STARS);
-  var offsetY = parallaxOffsetY(PARALLAX_STARS);
   for (var i = 0; i < celestialBodies.length; i++) {
     var body = celestialBodies[i];
     if (body.planet !== planetName) continue;
 
-    // Compute screen position: wraps across screen with margin off each side
-    var xFrac = ((worldTime + body.phase) / body.orbitPeriod) % 1.3 - 0.15;
-    var yBase = body.yFrac * baseGroundY + offsetY;
-    var yBob  = Math.sin(worldTime * 0.5 + body.phase) * body.yOscillation * baseGroundY;
-    var cx = xFrac * W - offset;
-    var cy = yBase + yBob;
+    var cx, cy, displayR;
+
+    if (curveActive && body.orbitRadiusFactor) {
+      // ── Orbital mode: body orbits the planet centre ──
+      // Angular position: full revolution per orbitPeriod (artistic speed)
+      var orbAngle = ((worldTime + body.phase) / body.orbitPeriod) * Math.PI * 2;
+      var incl = body.inclination || 0;
+
+      // Orbit radius in metres, then to screen pixels
+      var orbitR = curveRadius * body.orbitRadiusFactor;
+      var orbitRPx = orbitR * currentPPM;
+
+      // Position relative to planet centre (2D projection of inclined orbit)
+      var orbX = curveCentreX + Math.cos(orbAngle) * orbitRPx;
+      var orbY = curveCentreY + Math.sin(orbAngle) * orbitRPx * Math.cos(incl);
+
+      cx = orbX;
+      cy = orbY;
+
+      // Scale body radius with zoom: at whole-planet view, ensure minimum visibility
+      displayR = Math.max(body.radius, curveRadiusPx * 0.012);
+    } else {
+      // ── Flat/close-zoom mode: original screen-fraction animation ──
+      var offset = parallaxOffset(PARALLAX_STARS);
+      var offsetY = parallaxOffsetY(PARALLAX_STARS);
+      var xFrac = ((worldTime + body.phase) / body.orbitPeriod) % 1.3 - 0.15;
+      var yBase = body.yFrac * baseGroundY + offsetY;
+      var yBob  = Math.sin(worldTime * 0.5 + body.phase) * body.yOscillation * baseGroundY;
+      cx = xFrac * W - offset;
+      cy = yBase + yBob;
+      displayR = body.radius;
+    }
 
     // Skip if fully off screen
-    if (cx < -body.radius * 2 || cx > W + body.radius * 2) continue;
+    if (cx < -displayR * 2 || cx > W + displayR * 2 ||
+        cy < -displayR * 2 || cy > H + displayR * 2) continue;
+
+    // Temporarily override radius for scaled drawing
+    var origR = body.radius;
+    body.radius = displayR;
 
     if (body.texture === 'lumpy') {
       drawLumpyMoon(cx, cy, body);
     } else if (body.texture === 'moon') {
       drawEarthMoon(cx, cy, body);
     }
+
+    body.radius = origR;
   }
 }
 
@@ -806,22 +1073,39 @@ function drawEarthMoon(cx, cy, body) {
 
 // Draw a faint shadow on Mars surface when Phobos passes overhead
 function drawPhobosShadow() {
-  var offset = parallaxOffset(PARALLAX_GROUND);
   for (var i = 0; i < celestialBodies.length; i++) {
     var body = celestialBodies[i];
     if (body.name !== 'phobos') continue;
 
-    var xFrac = ((worldTime + body.phase) / body.orbitPeriod) % 1.3 - 0.15;
-    // Only draw shadow when Phobos is over the visible area
-    if (xFrac < -0.05 || xFrac > 1.05) continue;
-
-    var shadowX = xFrac * W - offset;
+    var shadowX, shadowGY;
     var shadowW = 30 + Math.sin(worldTime * 0.8) * 5;
     var shadowH = 6;
 
+    if (curveActive && body.orbitRadiusFactor) {
+      // Orbital mode: project Phobos angular position onto the planet surface
+      var orbAngle = ((worldTime + body.phase) / body.orbitPeriod) * Math.PI * 2;
+      // Shadow is at the surface point directly below the moon
+      // Convert orbit angle to surface physX: the orbital angle maps to a point on the surface
+      var shadowPhysX = orbAngle * curveRadius;
+      shadowX = toCanvasX(shadowPhysX);
+      shadowGY = groundYAtPhysX(shadowPhysX);
+      // Scale shadow with zoom
+      shadowW = Math.max(6, curveRadiusPx * 0.015);
+      shadowH = Math.max(2, shadowW * 0.2);
+    } else {
+      var offset = parallaxOffset(PARALLAX_GROUND);
+      var xFrac = ((worldTime + body.phase) / body.orbitPeriod) % 1.3 - 0.15;
+      if (xFrac < -0.05 || xFrac > 1.05) continue;
+      shadowX = xFrac * W - offset;
+      shadowGY = groundY + 1;
+    }
+
+    // Skip if fully off screen
+    if (shadowX < -shadowW * 2 || shadowX > W + shadowW * 2) continue;
+
     ctx.fillStyle = 'rgba(0,0,0,0.06)';
     ctx.beginPath();
-    ctx.ellipse(shadowX, groundY + 1, shadowW, shadowH, 0, 0, Math.PI * 2);
+    ctx.ellipse(shadowX, shadowGY, shadowW, shadowH, 0, 0, Math.PI * 2);
     ctx.fill();
   }
 }
@@ -855,6 +1139,77 @@ function drawSolidGround(alpha) {
   var edgeAmp = 3 * zr;
   var edgeAmp2 = 2 * zr;
 
+  if (curveActive) {
+    // ── Curved ground: planet disc with concentric layers ──
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, W, H);
+    ctx.clip();
+
+    // Subsurface fill (deepest layer) — full disc interior
+    var subGrad = ctx.createRadialGradient(
+      curveCentreX, curveCentreY, curveRadiusPx * 0.85,
+      curveCentreX, curveCentreY, curveRadiusPx * 0.98);
+    subGrad.addColorStop(0, rgb(env.subBot));
+    subGrad.addColorStop(1, rgb(env.subTop));
+    ctx.fillStyle = subGrad;
+    ctx.beginPath();
+    ctx.arc(curveCentreX, curveCentreY, curveRadiusPx, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Surface band (annulus from Rpx to Rpx - surfDepthPx)
+    var surfGrad = ctx.createRadialGradient(
+      curveCentreX, curveCentreY, curveRadiusPx - surfDepth,
+      curveCentreX, curveCentreY, curveRadiusPx);
+    surfGrad.addColorStop(0, rgb(env.groundBot));
+    surfGrad.addColorStop(1, rgb(env.groundTop));
+    ctx.fillStyle = surfGrad;
+    ctx.beginPath();
+    ctx.arc(curveCentreX, curveCentreY, curveRadiusPx, 0, Math.PI * 2);
+    ctx.arc(curveCentreX, curveCentreY, Math.max(0, curveRadiusPx - surfDepth), 0, Math.PI * 2, true);
+    ctx.fill();
+
+    // Edge ripple — skip at whole-planet zoom (detail invisible)
+    if (planetViewFrac < 0.5) {
+    var groundOff = parallaxOffset(PARALLAX_GROUND);
+    ctx.fillStyle = rgb(env.surfEdge);
+    ctx.beginPath();
+    var STEP = 10;
+    // Use worldToScreen to trace the arc and add ripple in the radial direction
+    for (var sx = -STEP; sx <= W + STEP; sx += STEP) {
+      // Invert screen X to get approximate physX
+      var approxPhysX = cameraX + (sx - 0) / currentPPM;
+      var gPt = worldToScreen(approxPhysX, 0);
+      // Ripple amplitude in radial direction
+      var wx = sx + groundOff;
+      var ripple = edgeAmp * Math.sin(wx * 0.05) + edgeAmp2 * Math.sin(wx * 0.13);
+      // Normal direction: from planet centre through the surface point
+      var nx = gPt.sx - curveCentreX;
+      var ny = gPt.sy - curveCentreY;
+      var nl = Math.sqrt(nx * nx + ny * ny) || 1;
+      nx /= nl; ny /= nl;
+      if (sx === -STEP) ctx.moveTo(gPt.sx - nx * ripple, gPt.sy - ny * ripple);
+      else ctx.lineTo(gPt.sx - nx * ripple, gPt.sy - ny * ripple);
+    }
+    // Close the edge ripple band by tracing a thin strip just below surface
+    for (var sx2 = W + STEP; sx2 >= -STEP; sx2 -= STEP) {
+      var approxPhysX2 = cameraX + (sx2 - 0) / currentPPM;
+      var gPt2 = worldToScreen(approxPhysX2, 0);
+      var nx2 = gPt2.sx - curveCentreX;
+      var ny2 = gPt2.sy - curveCentreY;
+      var nl2 = Math.sqrt(nx2 * nx2 + ny2 * ny2) || 1;
+      ctx.lineTo(gPt2.sx + (nx2 / nl2) * Math.max(2, 6 * zr), gPt2.sy + (ny2 / nl2) * Math.max(2, 6 * zr));
+    }
+    ctx.closePath();
+    ctx.fill();
+    } // end skip edge ripple LOD
+
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    return;
+  }
+
+  // ── Flat ground (original) ──
   var grad = ctx.createLinearGradient(0, groundY, 0, groundY + surfDepth);
   grad.addColorStop(0, rgb(env.groundTop));
   grad.addColorStop(1, rgb(env.groundBot));
@@ -884,6 +1239,65 @@ function drawSolidGround(alpha) {
 
 function drawGasGround(alpha) {
   ctx.globalAlpha = alpha;
+
+  if (curveActive) {
+    // ── Curved gas ground: planet disc with radial gradient ──
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, W, H);
+    ctx.clip();
+
+    var gasGrad = ctx.createRadialGradient(
+      curveCentreX, curveCentreY, curveRadiusPx * 0.7,
+      curveCentreX, curveCentreY, curveRadiusPx);
+    gasGrad.addColorStop(0, rgb(env.subBot));
+    gasGrad.addColorStop(0.5, rgb(env.groundBot));
+    gasGrad.addColorStop(1, rgb(env.groundTop));
+    ctx.fillStyle = gasGrad;
+    ctx.beginPath();
+    ctx.arc(curveCentreX, curveCentreY, curveRadiusPx, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Turbulent edge — skip at whole-planet zoom
+    if (planetViewFrac < 0.5) {
+    var gasGroundOff = parallaxOffset(PARALLAX_GROUND);
+    ctx.fillStyle = rgb(env.surfEdge);
+    ctx.beginPath();
+    var STEP = 8;
+    for (var sx = -STEP; sx <= W + STEP; sx += STEP) {
+      var approxPhysX = cameraX + (sx - 0) / currentPPM;
+      var gPt = worldToScreen(approxPhysX, 0);
+      var wx = sx + gasGroundOff;
+      var turb = Math.sin(wx * 0.03 + worldTime * 1.8) * 5
+               + Math.sin(wx * 0.07 + worldTime * 1.3) * 3
+               + Math.sin(wx * 0.15 + worldTime * 2.5) * 2;
+      var nx = gPt.sx - curveCentreX;
+      var ny = gPt.sy - curveCentreY;
+      var nl = Math.sqrt(nx * nx + ny * ny) || 1;
+      var px = gPt.sx + (nx / nl) * turb;
+      var py = gPt.sy + (ny / nl) * turb;
+      if (sx === -STEP) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    // Close back through a thin band inward
+    for (var sx2 = W + STEP; sx2 >= -STEP; sx2 -= STEP) {
+      var approxPhysX2 = cameraX + (sx2 - 0) / currentPPM;
+      var gPt2 = worldToScreen(approxPhysX2, 0);
+      var nx2 = gPt2.sx - curveCentreX;
+      var ny2 = gPt2.sy - curveCentreY;
+      var nl2 = Math.sqrt(nx2 * nx2 + ny2 * ny2) || 1;
+      ctx.lineTo(gPt2.sx + (nx2 / nl2) * 12, gPt2.sy + (ny2 / nl2) * 12);
+    }
+    ctx.closePath();
+    ctx.fill();
+    } // end skip turbulent edge LOD
+
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    return;
+  }
+
+  // ── Flat gas ground (original) ──
   var grad = ctx.createLinearGradient(0, groundY, 0, H);
   grad.addColorStop(0, rgb(env.groundTop));
   grad.addColorStop(0.5, rgb(env.groundBot));
@@ -933,28 +1347,43 @@ function drawGasGround(alpha) {
 
 // ── Cannon Mound ───────────────────────────────────────────────────────────
 function drawMound() {
+  // LOD: invisible at whole-planet scale
+  if (planetViewFrac > 0.5) return;
   var px = toCanvasX(CANNON_BASE_X_M);
+  var py = groundYAtPhysX(CANNON_BASE_X_M);
   var zr = Math.min(1, currentPPM / DEFAULT_PPM);
   var mw = Math.max(25, 0.9*currentPPM);
   var mh = Math.max(6, mw*0.28);
+  var tilt = surfaceNormalAngle(CANNON_BASE_X_M);
   ctx.fillStyle = rgb(env.moundCol);
   ctx.beginPath();
-  ctx.ellipse(px, groundY, mw, mh, 0, 0, Math.PI*2);
+  ctx.ellipse(px, py, mw, mh, tilt, 0, Math.PI*2);
   ctx.fill();
 }
 
 // ── Cannon (Castle Rampart Fixed Mount) ────────────────────────────────────
 function drawCannon(angleDeg, recoilOffset) {
-  var pivCX = toCanvasX(CANNON_BASE_X_M);
-  var pivCY = toCanvasY(CANNON_BASE_Y_M);
+  var _cpv = toCanvas(CANNON_BASE_X_M, CANNON_BASE_Y_M);
+  var pivCX = _cpv.x;
+  var pivCY = _cpv.y;
   var rad = angleDeg * Math.PI / 180;
   var recoil = recoilOffset || 0;
   var s = Math.max(currentPPM, 18); // min visual scale for readability
 
+  // Surface-normal tilt for curved ground
+  var tilt = surfaceNormalAngle(CANNON_BASE_X_M);
+  if (tilt !== 0) {
+    ctx.save();
+    var _gp = toCanvas(CANNON_BASE_X_M, 0);
+    ctx.translate(_gp.x, _gp.y);
+    ctx.rotate(tilt);
+    ctx.translate(-_gp.x, -_gp.y);
+  }
+
   // ── Rampart wall ──
   var wallW  = 1.4 * s;
   var wallTop = pivCY;
-  var wallBot = groundY;
+  var wallBot = groundYAtPhysX(CANNON_BASE_X_M);
   var topHW  = wallW * 0.45;
   var botHW  = wallW * 0.55;
 
@@ -1089,12 +1518,14 @@ function drawCannon(angleDeg, recoilOffset) {
   ctx.fill();
 
   ctx.restore();
+  if (tilt !== 0) ctx.restore();
 }
 
 // ── Cannonball ─────────────────────────────────────────────────────────────
 function drawBall(physX, physY, squashX, squashY) {
   var sx = squashX || 1, sy = squashY || 1;
-  var cx = toCanvasX(physX), cy = toCanvasY(physY);
+  var pt = toCanvas(physX, physY);
+  var cx = pt.x, cy = pt.y;
   var r = Math.max(3, BALL_RADIUS_M*currentPPM);
 
   ctx.save();
@@ -1141,13 +1572,14 @@ function drawTrajectoryDot(physX, physY) {
   var c = getTrailColour();
   ctx.fillStyle = 'rgba('+c[0]+','+c[1]+','+c[2]+',0.6)';
   ctx.beginPath();
-  ctx.arc(toCanvasX(physX), toCanvasY(physY), r, 0, Math.PI*2);
+  var _td = toCanvas(physX, physY);
+  ctx.arc(_td.x, _td.y, r, 0, Math.PI*2);
   ctx.fill();
 }
 
 // ── Flags ──────────────────────────────────────────────────────────────────
 function drawFlag(physX, shotNumber, springProgress) {
-  var baseX = toCanvasX(physX), baseY = groundY;
+  var baseX = toCanvasX(physX), baseY = groundYAtPhysX(physX);
   var sp = (typeof springProgress === 'number') ? springProgress : 1;
   var maxH = Math.max(22, 0.65*currentPPM);
   var flagH = maxH * sp;
@@ -1181,7 +1613,7 @@ function drawFlag(physX, shotNumber, springProgress) {
 
 // ── Craters (solid planets) ────────────────────────────────────────────────
 function drawCrater(physX) {
-  var cx = toCanvasX(physX), cy = groundY+2;
+  var cx = toCanvasX(physX), cy = groundYAtPhysX(physX)+2;
   var r1 = Math.max(8, 0.2*currentPPM);
   ctx.fillStyle = rgba(env.subBot, 0.8);
   ctx.beginPath(); ctx.ellipse(cx,cy,r1,r1*0.32,0,0,Math.PI*2); ctx.fill();
@@ -1191,7 +1623,7 @@ function drawCrater(physX) {
 
 // ── Gas Hole (gas giants) ──────────────────────────────────────────────────
 function drawGasHole(physX) {
-  var cx = toCanvasX(physX), cy = groundY+2;
+  var cx = toCanvasX(physX), cy = groundYAtPhysX(physX)+2;
   var r = Math.max(10, 0.28*currentPPM);
 
   ctx.fillStyle = 'rgba(0,0,0,0.25)';
@@ -1218,7 +1650,8 @@ function drawParticles(particles) {
     ctx.globalAlpha = Math.max(0, p.life/p.maxLife);
     ctx.fillStyle = p.colour;
     ctx.beginPath();
-    ctx.arc(toCanvasX(p.x), toCanvasY(p.y),
+    var _pp = toCanvas(p.x, p.y);
+    ctx.arc(_pp.x, _pp.y,
             Math.max(1, p.radius*currentPPM/DEFAULT_PPM), 0, Math.PI*2);
     ctx.fill();
   }
@@ -1229,7 +1662,8 @@ function drawParticles(particles) {
 function drawMuzzleFlash(angleDeg, progress) {
   if (progress <= 0 || progress > 1) return;
   var tip = getCannonTipPhys(angleDeg);
-  var tipCX = toCanvasX(tip.x), tipCY = toCanvasY(tip.y);
+  var _tp = toCanvas(tip.x, tip.y);
+  var tipCX = _tp.x, tipCY = _tp.y;
   var rad = angleDeg * Math.PI / 180;
   var size = (1-progress) * Math.max(15, 0.4*currentPPM) + 5;
 
@@ -1258,8 +1692,9 @@ function drawMuzzleFlash(angleDeg, progress) {
 // Each stickman is ~0.6 m tall in physics units. Poses are parametric on timer.
 
 function drawStickman(physX, physY, poseData) {
-  var cx = toCanvasX(physX);
-  var cy = toCanvasY(physY);
+  var _sm = toCanvas(physX, physY);
+  var cx = _sm.x;
+  var cy = _sm.y;
   var s = Math.max(18, currentPPM);
   var h = s * 1.35;           // total height in canvas pixels (3x original)
   var t = poseData.timer || 0;
@@ -1607,7 +2042,7 @@ function drawCharacter(char) {
   }
 
   var cx = toCanvasX(drawChar.x);
-  var cy = groundY;
+  var cy = groundYAtPhysX(drawChar.x);
   var s = Math.max(18, currentPPM); // min visual scale so characters stay visible
 
   switch (drawChar.type) {
@@ -2931,7 +3366,7 @@ function drawThoughtBubble(cx, cy, s, text) {
 // ── Shockwave Ring ─────────────────────────────────────────────────────────
 function drawShockwave(physX, progress) {
   if (progress <= 0 || progress > 1) return;
-  var cx = toCanvasX(physX), cy = groundY;
+  var cx = toCanvasX(physX), cy = groundYAtPhysX(physX);
   var r = progress * Math.max(25, 0.6*currentPPM);
   ctx.strokeStyle = 'rgba(200,180,140,'+(1-progress)+')';
   ctx.lineWidth = Math.max(1.5, currentPPM*0.025);
@@ -2958,9 +3393,19 @@ var NOZZLE_LENGTH_M  = 0.30;  // Base nozzle length (scales with ε)
  */
 function drawLaunchTower(angleDeg) {
   var s = Math.max(currentPPM, 18);
-  var baseX = toCanvasX(TOWER_BASE_X_M);
-  var baseY = toCanvasY(0);            // ground level
+  var _tw = toCanvas(TOWER_BASE_X_M, 0);
+  var baseX = _tw.x;
+  var baseY = _tw.y;            // ground level
   var rad = angleDeg * Math.PI / 180;
+
+  // Surface-normal tilt for curved ground
+  var tilt = surfaceNormalAngle(TOWER_BASE_X_M);
+  if (tilt !== 0) {
+    ctx.save();
+    ctx.translate(baseX, baseY);
+    ctx.rotate(tilt);
+    ctx.translate(-baseX, -baseY);
+  }
 
   // ── Launch Pad ──
   var padW = PAD_WIDTH_M * s;
@@ -3065,6 +3510,7 @@ function drawLaunchTower(angleDeg) {
   ctx.stroke();
 
   ctx.restore();
+  if (tilt !== 0) ctx.restore();
 }
 
 /**
@@ -3094,8 +3540,9 @@ function drawRocket(rocketState, angleDeg, epsilon) {
   // Determine position & rotation
   var cx, cy, rot;
   if (phase === 'flight' && rocketState.x !== undefined) {
-    cx = toCanvasX(rocketState.x);
-    cy = toCanvasY(rocketState.y);
+    var _rp = toCanvas(rocketState.x, rocketState.y);
+    cx = _rp.x;
+    cy = _rp.y;
     // Orient nose along velocity vector
     // Nose is at local -x, so add PI to point nose in flight direction
     rot = Math.PI - Math.atan2(rocketState.vy || 0, rocketState.vx || 0.001);
@@ -3105,8 +3552,9 @@ function drawRocket(rocketState, angleDeg, epsilon) {
     var padH = Math.max(4, PAD_HEIGHT_M * s);
     // Rocket base sits at rail bottom, halfway up the rocket body
     var railOffset = ROCKET_LENGTH_M * 0.5;
-    cx = toCanvasX(TOWER_BASE_X_M) + Math.cos(rad) * railOffset * s;
-    cy = (toCanvasY(0) - padH) - Math.sin(rad) * railOffset * s;
+    var _padPt = toCanvas(TOWER_BASE_X_M, 0);
+    cx = _padPt.x + Math.cos(rad) * railOffset * s;
+    cy = (_padPt.y - padH) - Math.sin(rad) * railOffset * s;
     rot = Math.PI - rad;
 
     // ── Fizzle shake: jitter position while on pad ──
@@ -3220,8 +3668,9 @@ function drawRocket(rocketState, angleDeg, epsilon) {
 function drawExhaust(physX, physY, theta, thrustFrac) {
   if (thrustFrac <= 0) return;
   var s = Math.max(currentPPM, 18);
-  var cx = toCanvasX(physX);
-  var cy = toCanvasY(physY);
+  var _ep = toCanvas(physX, physY);
+  var cx = _ep.x;
+  var cy = _ep.y;
 
   // Nozzle exit is behind the rocket (opposite to heading)
   var exhaustAngle = theta + Math.PI;
@@ -3309,8 +3758,9 @@ function drawExhaust(physX, physY, theta, thrustFrac) {
 function drawFizzle(physX, physY, progress) {
   if (progress <= 0 || progress > 1) return;
   var s = Math.max(currentPPM, 18);
-  var cx = toCanvasX(physX);
-  var cy = toCanvasY(physY);
+  var _fz = toCanvas(physX, physY);
+  var cx = _fz.x;
+  var cy = _fz.y;
 
   var sparks = 5 + Math.floor(progress * 6);
   var sputter = (1 - progress * 0.6);  // diminishes towards end
@@ -3346,12 +3796,23 @@ function drawFizzle(physX, physY, progress) {
 // ── Composite World Draw ───────────────────────────────────────────────────
 function drawWorld() {
   drawSky();
-  if (env.lowerAlpha > 0.02) drawPlanetFeatures(env.lowerPlanet, env.lowerAlpha);
-  if (env.upperAlpha > 0.02 && env.upperPlanet !== env.lowerPlanet) {
-    drawPlanetFeatures(env.upperPlanet, env.upperAlpha);
+  if (!curveActive) {
+    // Flat mode: features draw behind the ground (sky objects)
+    if (env.lowerAlpha > 0.02) drawPlanetFeatures(env.lowerPlanet, env.lowerAlpha);
+    if (env.upperAlpha > 0.02 && env.upperPlanet !== env.lowerPlanet) {
+      drawPlanetFeatures(env.upperPlanet, env.upperAlpha);
+    }
   }
   drawGround();
   drawMound();
+  if (curveActive) {
+    // Curved mode: draw orbital features after ground so moons/rings
+    // appear in front of the planet disc.
+    if (env.lowerAlpha > 0.02) drawPlanetFeatures(env.lowerPlanet, env.lowerAlpha);
+    if (env.upperAlpha > 0.02 && env.upperPlanet !== env.lowerPlanet) {
+      drawPlanetFeatures(env.upperPlanet, env.upperAlpha);
+    }
+  }
 }
 
 function clear() { ctx.clearRect(0, 0, W, H); }
@@ -3360,11 +3821,34 @@ function clear() { ctx.clearRect(0, 0, W, H); }
 function isCurrentGas()         { return env.isGas; }
 function getNearestPlanetName() { return env.nearestPlanet.name; }
 function getPlanets()           { return PLANETS; }
+
+// Return the planet radius for a given surface gravity (interpolated between
+// bracket planets, snapped to nearest when close).
+function getPlanetRadius(g) {
+  var b = findBracket(g);
+  if (b.t === 0) return b.lo.radius;
+  // Interpolate radius between the two bracketing planets
+  return b.lo.radius + (b.hi.radius - b.lo.radius) * b.t;
+}
 function getGroundY()           { return groundY; }
 function getBaseGroundY()       { return baseGroundY; }
 function getWidth()             { return W; }
 function getHeight()            { return H; }
 function getCurrentPPM()        { return currentPPM; }
+
+/**
+ * Compute the PPM at which the whole planet fits in the viewport.
+ * Uses PPM = canvasWidth / (2.5 × R) so the disc fills ~80% of the width.
+ * Returns 0 if there's no planet radius (flat mode).
+ */
+function getWholePlanetPPM() {
+  var r = getPlanetRadius(displayedGravity);
+  if (r <= 0 || W <= 0) return 0;
+  return W / (2.5 * r);
+}
+
+/** Returns the current planet-view blend factor (0 = follow, 1 = planet-centred). */
+function getPlanetViewFrac() { return planetViewFrac; }
 
 // ── Expose Namespace ──────────────────────────────────────────────────────
 export const Renderer = {
@@ -3416,9 +3900,12 @@ export const Renderer = {
   isCurrentGas: isCurrentGas,
   getNearestPlanetName: getNearestPlanetName,
   getPlanets: getPlanets,
+  getPlanetRadius: getPlanetRadius,
   getGroundY: getGroundY,
   getBaseGroundY: getBaseGroundY,
   getWidth: getWidth,
   getHeight: getHeight,
-  getCurrentPPM: getCurrentPPM
+  getCurrentPPM: getCurrentPPM,
+  getWholePlanetPPM: getWholePlanetPPM,
+  getPlanetViewFrac: getPlanetViewFrac
 };

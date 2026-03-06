@@ -72,6 +72,7 @@ var dotTimer = 0;
 
 // Physics state
 var currentGravity = 9.81;
+var currentPlanetRadius = 0;
 var launchTME = 0;
 
 // Zoom state
@@ -800,6 +801,7 @@ function fire() {
 
   var vals = UI.getValues();
   currentGravity = vals.gravity;
+  currentPlanetRadius = Renderer.getPlanetRadius(currentGravity);
 
   // Update renderer barrel length to match slider
   Renderer.setBarrelLength(vals.barrelLength);
@@ -809,7 +811,7 @@ function fire() {
   var tip = Renderer.getCannonTipPhys(vals.angle);
   var prediction = Physics.predictTrajectory(
     vals.force, vals.mass, vals.angle, currentGravity,
-    tip.x, tip.y, vals.barrelLength
+    tip.x, tip.y, vals.barrelLength, currentPlanetRadius
   );
 
   // Update max range and height (persist until clear)
@@ -823,7 +825,7 @@ function fire() {
 
   // Compute launch velocity and create projectile
   var speed = Physics.computeLaunchVelocity(vals.force, vals.mass, vals.barrelLength);
-  activeBall = Physics.createProjectile(tip.x, tip.y, speed, vals.angle, vals.mass);
+  activeBall = Physics.createProjectile(tip.x, tip.y, speed, vals.angle, vals.mass, currentPlanetRadius);
 
   // Launch TME
   var e = Physics.computeEnergy(activeBall, currentGravity);
@@ -955,6 +957,7 @@ function rocketLaunch() {
 
   var vals = UI.getRocketValues();
   currentGravity = UI.getValues().gravity;
+  currentPlanetRadius = Renderer.getPlanetRadius(currentGravity);
   var towerX = Renderer.TOWER_BASE_X_M || 1.5;
 
   // Hide previous fizzle message & post-flight summary
@@ -964,7 +967,8 @@ function rocketLaunch() {
   // Build guidance object from user selection
   rocketGuidance = buildGuidance(vals);
 
-  // Create rocket state
+  // Create rocket state (pass planetRadius for radial gravity)
+  (vals as any).planetRadius = currentPlanetRadius;
   activeRocket = RocketPhysics.createRocketState(vals);
   rocketMaxThrust = activeRocket.thrustMagnitude;
   rocketLanded = false;
@@ -974,6 +978,12 @@ function rocketLaunch() {
   // Position on the pad (tower base)
   activeRocket.x = towerX;
   activeRocket.y = 0;
+  // Update world-space coords if using radial gravity
+  if (currentPlanetRadius > 0) {
+    var theta0 = towerX / currentPlanetRadius;
+    activeRocket.wx = currentPlanetRadius * Math.sin(theta0);
+    activeRocket.wy = currentPlanetRadius * Math.cos(theta0);
+  }
   rocketMaxHeight = 0;
   rocketBurnoutSpeed = 0;
   rocketBurnTime = 0;
@@ -1339,7 +1349,9 @@ function loop(timestamp) {
     }
 
     // Off-screen check (with zoomed-out canvas width)
-    if (activeBall && toPhysX(Renderer.getWidth() + 200) < activeBall.x) {
+    // Skip when in whole-planet view — projectile orbits are visible on the disc
+    if (activeBall && Renderer.getPlanetViewFrac() < 0.1 &&
+        toPhysX(Renderer.getWidth() + 200) < activeBall.x) {
       handleLanding(activeBall);
     }
   }
@@ -1367,6 +1379,22 @@ function loop(timestamp) {
         rocketMaxHeight = activeRocket.y;
       }
 
+      // ── Dynamic zoom for high-altitude rockets (Phase 4) ──
+      // As altitude grows, zoom out so the rocket remains visible.
+      // At very high altitudes, zoom approaches the whole-planet PPM.
+      var rocketRange = Math.max(1, Math.abs(activeRocket.x));
+      var rocketHeight = Math.max(1, activeRocket.y);
+      var neededRocketPPM = computeNeededZoom(rocketRange, rocketHeight, DEFAULT_ROCKET_ZOOM_MARGIN);
+      var wpPPM = Renderer.getWholePlanetPPM();
+      if (wpPPM > 0) {
+        // Don't zoom in tighter than default, but allow zooming out to whole-planet
+        neededRocketPPM = Math.max(neededRocketPPM, wpPPM * 0.8);
+      }
+      if (neededRocketPPM < Renderer.getCurrentPPM()) {
+        Renderer.setViewTransitionDuration(1.5);
+        Renderer.setTargetZoom(neededRocketPPM);
+      }
+
       // Trajectory dots
       rocketDotTimer += dt;
       if (rocketDotTimer > 0.05) {
@@ -1374,15 +1402,21 @@ function loop(timestamp) {
         rocketDotTimer = 0;
       }
 
-      // ── Camera follow (no zoom) ──
-      // Horizontal: keep rocket centred
-      var visW = Renderer.getWidth() / Renderer.getCurrentPPM();
-      Renderer.setCameraImmediate(activeRocket.x - visW / 2);
+      // ── Camera follow ──
+      // At far zoom (planet view), smoothly stop following the rocket so
+      // the renderer's planet-centred view takes over.
+      var pvf = Renderer.getPlanetViewFrac();
+      var followWeight = 1 - pvf;  // 1 = full follow, 0 = planet-centred
 
-      // Vertical: centre rocket on screen, clamp so ground stays at bottom
+      // Horizontal: keep rocket centred (blended)
+      var visW = Renderer.getWidth() / Renderer.getCurrentPPM();
+      var followCamX = activeRocket.x - visW / 2;
+      Renderer.setCameraImmediate(followCamX * followWeight);
+
+      // Vertical: centre rocket on screen, clamp so ground stays at bottom (blended)
       var ppm = Renderer.getCurrentPPM();
       var wantedCamY = activeRocket.y + (Renderer.getHeight() / 2 - Renderer.getBaseGroundY()) / ppm;
-      Renderer.setCameraImmediateY(Math.max(0, wantedCamY));
+      Renderer.setCameraImmediateY(Math.max(0, wantedCamY * followWeight));
 
       // Exhaust particles while engine is on
       if (activeRocket.engineOn && activeRocket.thrustMagnitude > 0) {
@@ -1401,8 +1435,9 @@ function loop(timestamp) {
         handleRocketLanding(activeRocket);
       }
 
-      // Off-screen check
-      if (activeRocket && toPhysX(Renderer.getWidth() + 200) < activeRocket.x) {
+      // Off-screen check — skip in whole-planet view (orbiting rockets stay visible)
+      if (activeRocket && Renderer.getPlanetViewFrac() < 0.1 &&
+          toPhysX(Renderer.getWidth() + 200) < activeRocket.x) {
         handleRocketLanding(activeRocket);
       }
     } else if (activeRocket.phase === 'fizzle') {
@@ -1477,7 +1512,11 @@ function loop(timestamp) {
     Renderer.drawTrajectoryDot(trajectoryDots[d].x, trajectoryDots[d].y);
   }
 
+  // LOD: skip fine surface detail at whole-planet zoom
+  var drawSurfaceDetail = Renderer.getPlanetViewFrac() < 0.5;
+
   // Landed shots
+  if (drawSurfaceDetail) {
   for (var s = 0; s < shots.length; s++) {
     var shot = shots[s];
     // Draw crater or gas hole based on what planet was active at landing
@@ -1492,20 +1531,23 @@ function loop(timestamp) {
     }
     Renderer.drawFlag(shot.x, shot.number, shot.flagSpring);
   }
+  }
 
   // Comic character (behind shockwave and cannon)
-  if (activeCharacter) {
+  if (drawSurfaceDetail && activeCharacter) {
     Renderer.drawCharacter(activeCharacter);
   }
 
   // Shockwave
-  if (impactShockwaveProgress >= 0 && impactShockwaveProgress <= 1) {
+  if (drawSurfaceDetail && impactShockwaveProgress >= 0 && impactShockwaveProgress <= 1) {
     Renderer.drawShockwave(impactShockwaveX, impactShockwaveProgress);
   }
 
   // ─── Mode-specific drawing ───
   if (currentMode === 'cannon') {
 
+  // Surface objects — skip at whole-planet zoom
+  if (drawSurfaceDetail) {
   // Barrel crew stickmen (drawn before cannon so they appear behind the barrel)
   var crew = getBarrelCrew();
   if (crew) {
@@ -1522,8 +1564,9 @@ function loop(timestamp) {
   if (flashProgress >= 0 && flashProgress <= 1) {
     Renderer.drawMuzzleFlash(cannonAngle, flashProgress);
   }
+  } // end drawSurfaceDetail
 
-  // Active ball
+  // Active ball (always visible — it's the projectile)
   if (activeBall) {
     Renderer.drawBall(activeBall.x, activeBall.y, 1, 1);
   }
@@ -1534,8 +1577,10 @@ function loop(timestamp) {
     var rAngle = rVals.launchAngle;
     var rEps = rVals.epsilon;
 
-    // Launch tower (always visible)
-    Renderer.drawLaunchTower(rAngle);
+    // Launch tower — skip at whole-planet zoom
+    if (drawSurfaceDetail) {
+      Renderer.drawLaunchTower(rAngle);
+    }
 
     // Rocket sprite — on pad, in flight, or absent after landing
     if (activeRocket && activeRocket.phase === 'flight') {

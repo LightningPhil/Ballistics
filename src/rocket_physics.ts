@@ -281,6 +281,7 @@ function buildGuidance(config) {
  *   etaC          {number}  Combustion efficiency (0–1, default 0.95)
  *   etaN          {number}  Nozzle efficiency (0–1, default 0.95)
  *   Pa_Pa         {number}  Ambient pressure (Pa, default 101325)
+ *   planetRadius  {number}  Planet radius in metres (enables radial gravity)
  * @returns {Object} Rocket state
  */
 function createRocketState(config) {
@@ -289,6 +290,7 @@ function createRocketState(config) {
   var etaC = (config.etaC !== undefined) ? config.etaC : 0.95;
   var etaN = (config.etaN !== undefined) ? config.etaN : 0.95;
   var Pa_Pa = (config.Pa_Pa !== undefined) ? config.Pa_Pa : 101325;
+  var R = (config.planetRadius && config.planetRadius > 0) ? config.planetRadius : 0;
 
   // Look up performance at initial conditions
   var perf = RocketPropellants.lookupPerformance(
@@ -303,13 +305,20 @@ function createRocketState(config) {
   var m0 = config.dryMass + config.propMass;
 
   return {
-    // Position (metres, physics coords: +x right, +y up)
+    // Position (metres, surface coords: +x along surface, +y up from surface)
     x: 0,
     y: 0,
 
-    // Velocity (m/s)
+    // Velocity (m/s, surface frame: tangential and radial)
     vx: 0,
     vy: 0,
+
+    // World-space position and velocity (planet centre at origin)
+    wx: 0,
+    wy: R > 0 ? R : 0,
+    wvx: 0,
+    wvy: 0,
+    planetRadius: R,
 
     // Masses (kg)
     mDry: config.dryMass,
@@ -335,7 +344,7 @@ function createRocketState(config) {
     Isp: Isp,
 
     // Guidance
-    theta: config.launchAngle, // current thrust angle (deg from +x)
+    theta: config.launchAngle, // current thrust angle (deg from local horizontal)
 
     // Timing / accumulators
     time: 0,
@@ -355,10 +364,11 @@ function createRocketState(config) {
 /**
  * Advance rocket state by one timestep.
  * Returns a NEW state object — original is untouched.
+ * When state.planetRadius > 0, uses radial gravity in world-space coords.
  *
  * @param {Object} state     Current rocket state
  * @param {number} dt        Timestep (seconds)
- * @param {number} gravity   Local gravity magnitude (m/s², positive)
+ * @param {number} gravity   Surface gravity magnitude (m/s², positive)
  * @param {Object} guidance  Guidance object from guidanceFixed/PitchProgram/ProgradeLock
  * @returns {Object} New rocket state
  */
@@ -370,7 +380,7 @@ function stepRocket(state, dt, gravity, guidance) {
   }
   s.time += dt;
 
-  // ── 1) Guidance → compute θ ──
+  // ── 1) Guidance → compute θ (angle from local horizontal in degrees) ──
   s.theta = guidance.getAngle(s);
   var thetaRad = s.theta * DEG_TO_RAD;
 
@@ -421,16 +431,6 @@ function stepRocket(state, dt, gravity, guidance) {
   // ── 3) Mass ──
   s.mass = s.mDry + s.mProp;
 
-  // ── 4) Acceleration ──
-  var ax, ay;
-  if (s.mass > 0 && effectiveThrust > 0) {
-    ax = (effectiveThrust / s.mass) * Math.cos(thetaRad);
-    ay = (effectiveThrust / s.mass) * Math.sin(thetaRad) - gravity;
-  } else {
-    ax = 0;
-    ay = -gravity;
-  }
-
   // ── Fizzle check ──
   // On the very first step (not yet launched), check T/W.
   // If thrust cannot overcome weight, the rocket fizzles on the pad.
@@ -455,10 +455,135 @@ function stepRocket(state, dt, gravity, guidance) {
     return s;
   }
 
+  var R = s.planetRadius;
+
+  if (R > 0) {
+    // ── Radial gravity integration (world-space) ──
+    var mu = gravity * R * R; // gravitational parameter
+
+    var wx = s.wx;
+    var wy = s.wy;
+    var wvx = s.wvx;
+    var wvy = s.wvy;
+
+    var r = Math.sqrt(wx * wx + wy * wy);
+    if (r < 1) r = 1;
+    var invR = 1 / r;
+
+    // Unit vectors at current position
+    var radX = wx * invR;   // radial outward
+    var radY = wy * invR;
+    var tanX = wy * invR;   // tangent (perpendicular, "rightward")
+    var tanY = -wx * invR;
+
+    // Thrust acceleration in world-space
+    // theta is angle from local horizontal: cos(theta) along tangent, sin(theta) along radial
+    var thrustAcc = (s.mass > 0 && effectiveThrust > 0) ? (effectiveThrust / s.mass) : 0;
+    var thrustAccTan = thrustAcc * Math.cos(thetaRad);
+    var thrustAccRad = thrustAcc * Math.sin(thetaRad);
+    var thrustAx = thrustAccTan * tanX + thrustAccRad * radX;
+    var thrustAy = thrustAccTan * tanY + thrustAccRad * radY;
+
+    // Gravity acceleration: -mu/r^2 toward origin
+    var gravFactor = -mu / (r * r * r);
+    var gravAx = gravFactor * wx;
+    var gravAy = gravFactor * wy;
+
+    var ax = thrustAx + gravAx;
+    var ay = thrustAy + gravAy;
+
+    // Velocity Verlet integration
+    var hvx = wvx + ax * dt * 0.5;
+    var hvy = wvy + ay * dt * 0.5;
+    var nwx = wx + hvx * dt;
+    var nwy = wy + hvy * dt;
+
+    var nr = Math.sqrt(nwx * nwx + nwy * nwy);
+    if (nr < 1) nr = 1;
+
+    // Recompute acceleration at new position
+    var nInvR = 1 / nr;
+    var nRadX = nwx * nInvR;
+    var nRadY = nwy * nInvR;
+    var nTanX = nwy * nInvR;
+    var nTanY = -nwx * nInvR;
+
+    // Thrust direction stays the same for this step (no re-guidance mid-step)
+    var nThrustAx = thrustAccTan * nTanX + thrustAccRad * nRadX;
+    var nThrustAy = thrustAccTan * nTanY + thrustAccRad * nRadY;
+    var nGravFactor = -mu / (nr * nr * nr);
+    var nGravAx = nGravFactor * nwx;
+    var nGravAy = nGravFactor * nwy;
+    var nax = nThrustAx + nGravAx;
+    var nay = nThrustAy + nGravAy;
+
+    var nvx = hvx + nax * dt * 0.5;
+    var nvy = hvy + nay * dt * 0.5;
+
+    // Convert to surface coordinates
+    var altitude = nr - R;
+    var angle = Math.atan2(nwx, nwy);
+    var surfX = angle * R;
+    var surfY = altitude;
+
+    // Surface-frame velocity
+    var sInvR = 1 / nr;
+    var sRadX = nwx * sInvR;
+    var sRadY = nwy * sInvR;
+    var sTanX = nwy * sInvR;
+    var sTanY = -nwx * sInvR;
+    var surfVx = nvx * sTanX + nvy * sTanY;  // tangential
+    var surfVy = nvx * sRadX + nvy * sRadY;  // radial outward
+
+    s.wx = nwx;
+    s.wy = nwy;
+    s.wvx = nvx;
+    s.wvy = nvy;
+    s.x = surfX;
+    s.y = surfY;
+    s.vx = surfVx;
+    s.vy = surfVy;
+
+    // Ground impact check: altitude <= 0 and moving inward
+    if (altitude <= 0 && surfVy < 0) {
+      // Interpolate exact landing
+      if (state.y > 0 && state.y !== s.y) {
+        var alpha = state.y / (state.y - s.y);
+        s.x = state.x + alpha * (s.x - state.x);
+      } else {
+        s.x = state.x;
+      }
+      s.y = 0;
+      s.vy = 0;
+      s.vx = 0;
+      s.engineOn = false;
+      // Snap world coords to surface
+      var landAngle = s.x / R;
+      s.wx = R * Math.sin(landAngle);
+      s.wy = R * Math.cos(landAngle);
+      s.wvx = 0;
+      s.wvy = 0;
+    }
+
+    return s;
+  }
+
+  // ── Flat-earth fallback ──
+
+  // ── 4) Acceleration ──
+  var flatAx, flatAy;
+  if (s.mass > 0 && effectiveThrust > 0) {
+    flatAx = (effectiveThrust / s.mass) * Math.cos(thetaRad);
+    flatAy = (effectiveThrust / s.mass) * Math.sin(thetaRad) - gravity;
+  } else {
+    flatAx = 0;
+    flatAy = -gravity;
+  }
+
   // ── 5) Semi-implicit Euler integration ──
   // v += a·dt
-  s.vx += ax * dt;
-  s.vy += ay * dt;
+  s.vx += flatAx * dt;
+  s.vy += flatAy * dt;
   // r += v·dt  (using updated velocity)
   s.x += s.vx * dt;
   s.y += s.vy * dt;
@@ -539,11 +664,12 @@ function computePreLaunch(config, gravity) {
  * @param {Object} config   Same shape as createRocketState config
  * @param {number} gravity  Local gravity (m/s²)
  * @param {Object} [options]
- *   guidance  {Object} Pre-built guidance object (optional)
- *   dt        {number} Fixed simulation step in seconds (default 1/120)
- *   maxTime   {number} Max simulated seconds before bailing out (default 600)
- *   startX    {number} Launch x position in metres (default 0)
- *   startY    {number} Launch y position in metres (default 0)
+ *   guidance      {Object} Pre-built guidance object (optional)
+ *   dt            {number} Fixed simulation step in seconds (default 1/120)
+ *   maxTime       {number} Max simulated seconds before bailing out (default 600)
+ *   startX        {number} Launch x position in metres (default 0)
+ *   startY        {number} Launch y position in metres (default 0)
+ *   planetRadius  {number} Planet radius in metres (enables radial gravity)
  * @returns {Object}
  *   {
  *     fizzled, complete, time, burnTime,
@@ -561,10 +687,26 @@ function predictTrajectory(config, gravity, options) {
   var launchX = (typeof options.startX === 'number') ? options.startX : 0;
   var launchY = (typeof options.startY === 'number') ? options.startY : 0;
   var guidance = options.guidance || buildGuidance(config);
+  var planetRadius = (typeof options.planetRadius === 'number' && options.planetRadius > 0)
+    ? options.planetRadius : (config.planetRadius || 0);
 
-  var state = createRocketState(config);
+  // Pass planetRadius to the rocket state so stepRocket uses radial gravity
+  var configWithRadius = {};
+  for (var key in config) {
+    if (config.hasOwnProperty(key)) configWithRadius[key] = config[key];
+  }
+  (configWithRadius as any).planetRadius = planetRadius;
+
+  var state = createRocketState(configWithRadius);
   state.x = launchX;
   state.y = launchY;
+  // If planetRadius, update world-space coords to match launch position
+  if (planetRadius > 0) {
+    var theta0 = launchX / planetRadius;
+    var alt0 = planetRadius + launchY;
+    state.wx = alt0 * Math.sin(theta0);
+    state.wy = alt0 * Math.cos(theta0);
+  }
 
   var minX = launchX;
   var maxX = launchX;
