@@ -1,3 +1,5 @@
+import { drawCrew } from './crew.ts';
+
 /**
  * ============================================================================
  * renderer.js — Canvas Drawing for Matilda's Cannon Lab
@@ -56,10 +58,10 @@ var PLANETS = [
     surfEdge:[200,148,58], moundCol:[170,120,42],
     features:'venus' },
   { name:'earth',   g:9.81,  radius:6371000,  isGas:false,
-    skyTop:[93,169,233],   skyMid:[135,206,235],   skyBot:[182,223,247],
-    groundTop:[90,154,106], groundBot:[74,124,89],
-    subTop:[107,68,35],    subBot:[74,47,21],
-    surfEdge:[106,173,122], moundCol:[90,140,100],
+    skyTop:[130,176,190],  skyMid:[176,206,211],  skyBot:[228,231,208],
+    groundTop:[126,153,110], groundBot:[89,120,86],
+    subTop:[126,104,73],   subBot:[83,77,58],
+    surfEdge:[167,179,126], moundCol:[116,144,99],
     features:'earth' },
   { name:'saturn',  g:10.44, radius:58232000, isGas:true,
     skyTop:[195,175,115],  skyMid:[210,195,145],   skyBot:[220,205,160],
@@ -83,7 +85,7 @@ var PLANETS = [
 
 // ── Constants ──────────────────────────────────────────────────────────────
 var DEFAULT_PPM       = 80;
-var MIN_PPM           = 0.01;  // Allow extreme zoom-out for high-altitude rockets
+var MIN_PPM           = 1e-8;  // Whole planets must fit, including Jupiter.
 var GROUND_OFFSET     = 70;
 var CANNON_BASE_X_M   = 1.5;
 var CANNON_BASE_Y_M   = 1.0;
@@ -103,6 +105,7 @@ function setBarrelLength(m) {
 
 // ── State ──────────────────────────────────────────────────────────────────
 var canvas, ctx, W, H, groundY, baseGroundY;
+var pixelRatio = 1;
 var currentPPM  = DEFAULT_PPM;
 var targetPPM   = DEFAULT_PPM;
 var cameraX       = 0;     // world-space X offset for horizontal panning
@@ -224,12 +227,24 @@ function init(cvs) {
   resize();
   generateFeatures();
   computeEnvironment();
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(() => {
+      var bounds = canvas.getBoundingClientRect();
+      if (Math.round(bounds.width) !== W || Math.round(bounds.height) !== H) resize();
+    }).observe(canvas);
+  }
 }
 
 function resize() {
-  var p = canvas.parentElement;
-  W = canvas.width  = p.clientWidth;
-  H = canvas.height = p.clientHeight;
+  // Rendering coordinates stay in CSS pixels; only the backing bitmap uses DPR.
+  // Read the canvas itself because the playback controls share its parent.
+  var bounds = canvas.getBoundingClientRect();
+  W = Math.max(1, Math.round(bounds.width));
+  H = Math.max(1, Math.round(bounds.height));
+  pixelRatio = Math.max(1, window.devicePixelRatio || 1);
+  canvas.width = Math.round(W * pixelRatio);
+  canvas.height = Math.round(H * pixelRatio);
+  ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   baseGroundY = H - GROUND_OFFSET;
   groundY = baseGroundY + cameraY * currentPPM;
 }
@@ -335,9 +350,11 @@ function computeEnvironment() {
 
 // ── Camera / Zoom ──────────────────────────────────────────────────────────
 function setTargetZoom(ppm) {
+  if (!Number.isFinite(ppm)) return;
   targetPPM = Math.max(MIN_PPM, ppm);
 }
 function setZoomImmediate(ppm) {
+  if (!Number.isFinite(ppm)) return;
   ppm = Math.max(MIN_PPM, ppm);
   currentPPM = ppm;
   targetPPM = ppm;
@@ -378,14 +395,13 @@ function updateWorld(dt) {
   // Logarithmic zoom interpolation — zoom is multiplicative so log-space
   // easing feels perceptually uniform (avoids the "fast then slow" jolt).
   var zDiff = targetPPM - currentPPM;
-  if (Math.abs(zDiff) < 0.05) currentPPM = targetPPM;
-  else if (currentPPM > 0 && targetPPM > 0) {
+  if (currentPPM > 0 && targetPPM > 0) {
     var logCur = Math.log(currentPPM);
     var logTgt = Math.log(targetPPM);
     var logDiff = logTgt - logCur;
     if (Math.abs(logDiff) < 0.001) currentPPM = targetPPM;
     else {
-      logCur += logDiff * Math.min(1, dt * easingRate);
+      logCur += logDiff * (1-Math.exp(-Math.max(0,dt)*easingRate));
       currentPPM = Math.exp(logCur);
     }
   } else {
@@ -453,11 +469,11 @@ function updateCurvature() {
   curveRadiusPx = curveRadius * currentPPM;
 
   // Half-angle subtended by half the viewport on the planet surface
-  var halfAngle = (W * 0.5) / curveRadiusPx;
+  var halfAngle = Math.min(Math.PI,(W * 0.5) / curveRadiusPx);
   // Sagitta: how many pixels the arc dips below a flat line across the viewport
   var sagitta = curveRadiusPx * (1 - Math.cos(halfAngle));
 
-  curveActive = sagitta >= 2;
+  curveActive = sagitta >= 2 || planetViewFrac > 0;
 
   if (curveActive) {
     // Camera angular position on sphere: cameraX (metres along surface) → angle
@@ -528,9 +544,9 @@ function worldToScreen(physX, physY) {
  */
 function surfaceNormalAngle(physX) {
   if (!curveActive || curveRadius <= 0) return 0;
-  // The surface normal at physX points radially outward.
-  // Relative to the camera position, the tilt angle is:
-  return (physX / curveRadius) - curveCamTheta;
+  // Projection translates the planet centre but never rotates the camera frame.
+  // Therefore the local normal uses the absolute surface angle.
+  return physX / curveRadius;
 }
 
 /**
@@ -559,6 +575,94 @@ function toCanvas(px, py) {
     return { x: pt.sx, y: pt.sy };
   }
   return { x: (px - cameraX) * currentPPM, y: groundY - py * currentPPM };
+}
+
+/** Inverse canvas projection, using CSS pixels (e.g. pointer minus canvas rect). */
+function screenToSurface(screenX, screenY) {
+  if (!curveActive) {
+    return { x: cameraX + screenX / currentPPM, y: (groundY - screenY) / currentPPM };
+  }
+  var dx = screenX - curveCentreX;
+  var dy = curveCentreY - screenY;
+  var angle = Math.atan2(dx, dy);
+  // Choose the surface-distance winding nearest the current camera.
+  angle += Math.round((curveCamTheta - angle) / (Math.PI * 2)) * Math.PI * 2;
+  return { x: angle * curveRadius, y: Math.hypot(dx, dy) / currentPPM - curveRadius };
+}
+
+/** A previous run is a single screen-space dashed path, with no new physics. */
+function drawGhost(points, options = {}) {
+  if (!points || points.length < 2) return;
+  ctx.save();
+  ctx.strokeStyle = options['color'] || (env.skyMid[0] > 100 ? '#566c7b' : '#aec4da');
+  ctx.globalAlpha = 0.65;
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.setLineDash([6, 7]);
+  ctx.beginPath();
+  var last = null;
+  for (var point of points) {
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) { last = null; continue; }
+    var p = toCanvas(point.x, point.y);
+    if (!last) ctx.moveTo(p.x, p.y);
+    else if (Math.hypot(p.x - last.x, p.y - last.y) >= 1.5) ctx.lineTo(p.x, p.y);
+    else continue;
+    last = p;
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawTarget(value, mode = 'cannon') {
+  if (!Number.isFinite(value)) return;
+  var rocketMode = mode === 'rocket';
+  var point = toCanvas(rocketMode ? TOWER_BASE_X_M : value, rocketMode ? value : 0);
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#315d59';
+  var distance = Math.abs(value) >= 1000 ? (value / 1000).toFixed(1) + ' km' : Math.round(value) + ' m';
+  if (rocketMode) {
+    ctx.strokeStyle = 'rgba(236,201,115,.9)';
+    ctx.setLineDash([6, 5]);
+    if (curveActive) {
+      var ring = (curveRadius + value) * currentPPM;
+      if (ring > 0) { ctx.beginPath(); ctx.arc(curveCentreX,curveCentreY,ring,0,Math.PI*2);ctx.stroke(); }
+    } else {
+      ctx.beginPath();ctx.moveTo(0,point.y);ctx.lineTo(W,point.y);ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    var markerY = clamp(point.y, 30, H - 35);
+    drawAnnotation('Height goal · ' + distance, clamp(point.x + 22, 16, W - 170), markerY - 25);
+    ctx.fillStyle = '#f3cf76';ctx.beginPath();ctx.arc(clamp(point.x,12,W-12),markerY,5,0,Math.PI*2);ctx.fill();
+  } else {
+    if (point.x < -60 || point.x > W + 60 || point.y < -70 || point.y > H + 70) {
+      drawAnnotation('Target · ' + distance + (point.x > W ? ' →' : ' ←'),clamp(point.x,12,W-145),H-35);
+    } else {
+      ctx.translate(point.x,point.y);
+      if (curveActive) ctx.rotate(value / curveRadius);
+      ctx.fillStyle = 'rgba(33,52,48,.18)';ctx.beginPath();ctx.ellipse(0,0,17,4,0,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle='#324b4c';ctx.lineWidth=3;
+      ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,-49);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(1,-48);ctx.quadraticCurveTo(15,-51,29,-43);
+      ctx.lineTo(22,-31);ctx.quadraticCurveTo(12,-37,1,-34);ctx.closePath();
+      ctx.fillStyle='#e9ae57';ctx.fill();ctx.lineWidth=1.5;ctx.stroke();
+      ctx.fillStyle='#fff1c8';ctx.beginPath();ctx.arc(11,-42,3,0,Math.PI*2);ctx.fill();
+      ctx.restore();ctx.save();
+      drawAnnotation('Target · ' + distance,clamp(point.x-50,12,W-140),clamp(point.y+10,16,H-31));
+    }
+  }
+  ctx.restore();
+}
+
+function drawAnnotation(text, x, y) {
+  ctx.save();ctx.font='600 12px system-ui, sans-serif';
+  var width=ctx.measureText(text).width+18;
+  ctx.beginPath();ctx.roundRect(clamp(x,5,W-width-5),y,width,25,8);
+  ctx.fillStyle='rgba(255,247,228,.94)';ctx.fill();
+  ctx.strokeStyle='rgba(40,62,60,.25)';ctx.lineWidth=1;ctx.stroke();
+  ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillStyle='#2c454b';
+  ctx.fillText(text,clamp(x,5,W-width-5)+9,y+12.5);ctx.restore();
 }
 
 function getCannonTipPhys(angleDeg) {
@@ -1363,162 +1467,56 @@ function drawMound() {
 
 // ── Cannon (Castle Rampart Fixed Mount) ────────────────────────────────────
 function drawCannon(angleDeg, recoilOffset) {
-  var _cpv = toCanvas(CANNON_BASE_X_M, CANNON_BASE_Y_M);
-  var pivCX = _cpv.x;
-  var pivCY = _cpv.y;
-  var rad = angleDeg * Math.PI / 180;
-  var recoil = recoilOffset || 0;
-  var s = Math.max(currentPPM, 18); // min visual scale for readability
-
-  // Surface-normal tilt for curved ground
-  var tilt = surfaceNormalAngle(CANNON_BASE_X_M);
-  if (tilt !== 0) {
-    ctx.save();
-    var _gp = toCanvas(CANNON_BASE_X_M, 0);
-    ctx.translate(_gp.x, _gp.y);
-    ctx.rotate(tilt);
-    ctx.translate(-_gp.x, -_gp.y);
+  var pivot = toCanvas(CANNON_BASE_X_M,CANNON_BASE_Y_M);
+  var base = toCanvas(CANNON_BASE_X_M,0);
+  var s = currentPPM;
+  if (s < 6) {
+    ctx.save();ctx.fillStyle='#efc66b';ctx.beginPath();ctx.arc(base.x,base.y,4,0,Math.PI*2);ctx.fill();ctx.restore();return;
   }
-
-  // ── Rampart wall ──
-  var wallW  = 1.4 * s;
-  var wallTop = pivCY;
-  var wallBot = groundYAtPhysX(CANNON_BASE_X_M);
-  var topHW  = wallW * 0.45;
-  var botHW  = wallW * 0.55;
-
-  var stoneGrad = ctx.createLinearGradient(0, wallTop, 0, wallBot);
-  stoneGrad.addColorStop(0, '#8a8278');
-  stoneGrad.addColorStop(0.5, '#7a7268');
-  stoneGrad.addColorStop(1, '#6a6258');
-  ctx.fillStyle = stoneGrad;
-  ctx.beginPath();
-  ctx.moveTo(pivCX-topHW, wallTop);
-  ctx.lineTo(pivCX+topHW, wallTop);
-  ctx.lineTo(pivCX+botHW, wallBot);
-  ctx.lineTo(pivCX-botHW, wallBot);
-  ctx.closePath();
-  ctx.fill();
-
-  // Stone mortar lines
-  ctx.strokeStyle = 'rgba(80,70,60,0.5)';
-  ctx.lineWidth = 1;
-  var blockH = Math.max(7, (wallBot-wallTop)/5);
-  for (var row = 0; row < 5; row++) {
-    var y = wallTop + blockH*(row+1);
-    if (y >= wallBot) break;
-    var frac = (y-wallTop)/(wallBot-wallTop);
-    var hw = topHW + (botHW-topHW)*frac;
-    ctx.beginPath();
-    ctx.moveTo(pivCX-hw+2, y);
-    ctx.lineTo(pivCX+hw-2, y);
-    ctx.stroke();
-    var vOff = (row%2) * 0.5;
-    var bw = hw*2/3;
-    for (var v = 0; v < 3; v++) {
-      var vx = pivCX-hw + (v+vOff)*bw;
-      if (vx > pivCX-hw+2 && vx < pivCX+hw-2) {
-        ctx.beginPath();
-        ctx.moveTo(vx, y-blockH+1);
-        ctx.lineTo(vx, y);
-        ctx.stroke();
-      }
+  ctx.save();ctx.translate(pivot.x,pivot.y);
+  ctx.rotate(surfaceNormalAngle(CANNON_BASE_X_M));
+  ctx.strokeStyle='#2d4249';ctx.lineWidth=Math.max(1.5,s*.024);
+  ctx.lineCap='round';ctx.lineJoin='round';
+  // A sturdy field carriage: warm timber, a cream mounting plate and brass hubs.
+  ctx.beginPath();ctx.moveTo(-s*.33,-s*.08);ctx.lineTo(s*.24,-s*.08);
+  ctx.lineTo(s*.75,s*.70);ctx.lineTo(-s*.65,s*.70);ctx.closePath();
+  ctx.fillStyle='#99764e';ctx.fill();ctx.stroke();
+  ctx.strokeStyle='#cfaf79';ctx.lineWidth=Math.max(1,s*.016);
+  ctx.beginPath();ctx.moveTo(-s*.15,s*.14);ctx.lineTo(s*.31,s*.59);ctx.stroke();
+  ctx.strokeStyle='#2d4249';ctx.lineWidth=Math.max(1.5,s*.024);
+  [-.37,.44].forEach(wx=>{
+    var y=s*.63,r=s*.35;
+    ctx.beginPath();ctx.arc(wx*s,y,r,0,Math.PI*2);ctx.fillStyle='#4b5754';ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.arc(wx*s,y,r*.77,0,Math.PI*2);ctx.fillStyle='#bb945a';ctx.fill();ctx.stroke();
+    for(var i=0;i<8;i++){
+      var t=i*Math.PI/4;
+      ctx.beginPath();ctx.moveTo(wx*s,y);ctx.lineTo(wx*s+Math.cos(t)*r*.72,y+Math.sin(t)*r*.72);ctx.stroke();
     }
-  }
-
-  // Crenellation
-  var crenW = Math.max(5, wallW*0.14);
-  var crenH = Math.max(6, (wallBot-wallTop)*0.15);
-  ctx.fillStyle = '#8a8278';
-  ctx.fillRect(pivCX-topHW, wallTop-crenH, crenW, crenH);
-  ctx.fillRect(pivCX+topHW-crenW, wallTop-crenH, crenW, crenH);
-  ctx.strokeStyle = 'rgba(80,70,60,0.5)';
-  ctx.strokeRect(pivCX-topHW, wallTop-crenH, crenW, crenH);
-  ctx.strokeRect(pivCX+topHW-crenW, wallTop-crenH, crenW, crenH);
-
-  // Platform cap
-  ctx.fillStyle = '#908880';
-  ctx.fillRect(pivCX-topHW, wallTop, topHW*2, Math.max(3, s*0.04));
-
-  // ── Metal pivot mount ──
-  var bracketR = Math.max(8, 0.16*s);
-  ctx.fillStyle = '#4a4a4a';
-  ctx.beginPath();
-  ctx.arc(pivCX, wallTop, bracketR, Math.PI, 0);
-  ctx.fill();
-  ctx.strokeStyle = '#333';
-  ctx.lineWidth = Math.max(1, s*0.015);
-  ctx.beginPath();
-  ctx.arc(pivCX, wallTop, bracketR, Math.PI, 0);
-  ctx.stroke();
-
-  // Pivot bolt
-  ctx.fillStyle = '#666';
-  ctx.beginPath();
-  ctx.arc(pivCX, wallTop, Math.max(3, s*0.04), 0, Math.PI*2);
-  ctx.fill();
-
-  // ── Barrel ──
-  ctx.save();
-  ctx.translate(pivCX, pivCY);
-  ctx.rotate(-rad);
-
-  var bLen = BARREL_LENGTH_M * s;
-  var bW   = Math.max(9, 0.275*s);
-  var tipW = Math.max(6, 0.19*s);
-  var bStart = Math.max(-5, -0.12*s) - recoil;
-
-  ctx.beginPath();
-  ctx.moveTo(bStart, -bW/2);
-  ctx.lineTo(bStart+bLen, -tipW/2);
-  ctx.lineTo(bStart+bLen,  tipW/2);
-  ctx.lineTo(bStart,  bW/2);
-  ctx.closePath();
-
-  var bGrad = ctx.createLinearGradient(0, -bW/2, 0, bW/2);
-  bGrad.addColorStop(0, '#555');
-  bGrad.addColorStop(0.5, '#2d2d2d');
-  bGrad.addColorStop(1, '#444');
-  ctx.fillStyle = bGrad;
-  ctx.fill();
-  ctx.strokeStyle = '#1a1a1a';
-  ctx.lineWidth = Math.max(1, s*0.018);
-  ctx.stroke();
-
-  // Barrel rings
-  ctx.strokeStyle = '#666';
-  ctx.lineWidth = Math.max(1.5, s*0.022);
-  var rSpace = Math.max(12, 0.38*s);
-  for (var ring = rSpace*0.5; ring < bLen-5; ring += rSpace) {
-    var ringFrac = ring/bLen;
-    var rw = bW/2 - (bW-tipW)/2*ringFrac - 1;
-    ctx.beginPath();
-    ctx.moveTo(bStart+ring, -rw);
-    ctx.lineTo(bStart+ring,  rw);
-    ctx.stroke();
-  }
-
-  // Bore
-  ctx.fillStyle = '#111';
-  ctx.beginPath();
-  ctx.arc(bStart+bLen, 0, Math.max(2.5, tipW/2-2), 0, Math.PI*2);
-  ctx.fill();
-
-  // Fuse
-  ctx.strokeStyle = '#aa8855';
-  ctx.lineWidth = Math.max(1.5, s*0.02);
-  var fuseLen = Math.max(8, s*0.12);
-  ctx.beginPath();
-  ctx.moveTo(bStart, 0);
-  ctx.lineTo(bStart-fuseLen, -fuseLen*0.65);
-  ctx.stroke();
-  ctx.fillStyle = '#ffaa33';
-  ctx.beginPath();
-  ctx.arc(bStart-fuseLen, -fuseLen*0.65, Math.max(2, s*0.03), 0, Math.PI*2);
-  ctx.fill();
-
+    ctx.beginPath();ctx.arc(wx*s,y,r*.23,0,Math.PI*2);ctx.fillStyle='#edc775';ctx.fill();ctx.stroke();
+  });
+  ctx.save();ctx.rotate(-angleDeg*Math.PI/180);
+  var length=BARREL_LENGTH_M*s;
+  var shift=-(recoilOffset||0);
+  var start=-s*.25+shift,end=length+shift;
+  var width=s*.37;
+  ctx.beginPath();ctx.moveTo(start,-width*.52);
+  ctx.quadraticCurveTo(start-s*.16,0,start,width*.52);
+  ctx.lineTo(end,width*.38);ctx.lineTo(end,-width*.38);ctx.closePath();
+  ctx.fillStyle='#304e64';ctx.fill();ctx.stroke();
+  ctx.strokeStyle='#78909a';ctx.lineWidth=Math.max(1,s*.028);
+  ctx.beginPath();ctx.moveTo(start+s*.06,-width*.29);ctx.lineTo(end-s*.09,-width*.23);ctx.stroke();
+  ctx.strokeStyle='#263c48';ctx.lineWidth=Math.max(1,s*.019);
+  [start+s*.16,end-s*.09].forEach(rx=>{
+    ctx.beginPath();ctx.roundRect(rx-s*.038,-width*.55,s*.076,width*1.1,s*.022);
+    ctx.fillStyle='#e7bc6b';ctx.fill();ctx.stroke();
+  });
+  ctx.beginPath();ctx.ellipse(end,0,s*.05,width*.38,0,0,Math.PI*2);
+  ctx.fillStyle='#172e39';ctx.fill();ctx.strokeStyle='#edc778';ctx.lineWidth=Math.max(2,s*.042);ctx.stroke();
   ctx.restore();
-  if (tilt !== 0) ctx.restore();
+  ctx.beginPath();ctx.arc(0,0,s*.16,0,Math.PI*2);ctx.fillStyle='#f0c878';ctx.fill();
+  ctx.strokeStyle='#304b53';ctx.lineWidth=Math.max(1.5,s*.025);ctx.stroke();
+  ctx.beginPath();ctx.arc(0,0,s*.048,0,Math.PI*2);ctx.fillStyle='#304e64';ctx.fill();
+  ctx.restore();
 }
 
 // ── Cannonball ─────────────────────────────────────────────────────────────
@@ -1692,210 +1690,26 @@ function drawMuzzleFlash(angleDeg, progress) {
 // Each stickman is ~0.6 m tall in physics units. Poses are parametric on timer.
 
 function drawStickman(physX, physY, poseData) {
-  var _sm = toCanvas(physX, physY);
-  var cx = _sm.x;
-  var cy = _sm.y;
-  var s = Math.max(18, currentPPM);
-  var h = s * 1.35;           // total height in canvas pixels (3x original)
-  var t = poseData.timer || 0;
-  var dir = poseData.direction || 1;
-  var pose = poseData.pose || 'idle';
-
-  var headR = h * 0.1;
-  var bodyLen = h * 0.3;
-  var legLen = h * 0.28;
-  var armLen = h * 0.22;
-
-  ctx.save();
-  ctx.translate(cx, cy);
-
-  // ── Pose parameters ──
-  var armL = 0, armR = 0, legL = 0, legR = 0, lean = 0, jumpY = 0;
-
-  switch (pose) {
-    case 'idle':
-      jumpY = Math.sin(t * 3) * 1.5;
-      armL = Math.sin(t * 2) * 0.1;
-      armR = Math.sin(t * 2 + 0.5) * 0.1;
-      break;
-
-    case 'running':
-      lean = dir * 0.3;
-      legL = Math.sin(t * 14) * 0.7;
-      legR = Math.sin(t * 14 + Math.PI) * 0.7;
-      armL = Math.sin(t * 14 + Math.PI) * 0.6;
-      armR = Math.sin(t * 14) * 0.6;
-      break;
-
-    case 'screwing':
-      // Both arms forward & rotating (wrench motion toward the barrel above)
-      armL = -1.4 + Math.sin(t * 18) * 0.4;
-      armR = -1.4 + Math.cos(t * 18) * 0.4;
-      lean = Math.sin(t * 8) * 0.08;
-      // Slight jump with effort
-      jumpY = Math.abs(Math.sin(t * 9)) * 2;
-      break;
-
-    case 'carrying':
-      // Arms up holding a barrel segment overhead
-      armL = -2.5;
-      armR = -2.5;
-      lean = dir * 0.15;
-      legL = Math.sin(t * 10) * 0.5;
-      legR = Math.sin(t * 10 + Math.PI) * 0.5;
-      break;
-
-    case 'panicked':
-      armL = Math.sin(t * 22) * 1.5;
-      armR = Math.sin(t * 22 + 1.2) * 1.5;
-      legL = Math.sin(t * 16) * 0.5;
-      legR = Math.sin(t * 16 + Math.PI) * 0.5;
-      jumpY = Math.abs(Math.sin(t * 12)) * h * 0.18;
-      lean = Math.sin(t * 10) * 0.2;
-      break;
-
-    case 'celebrating':
-      armL = -2.2 + Math.sin(t * 8) * 0.3;
-      armR = -2.2 + Math.sin(t * 8 + 0.5) * 0.3;
-      jumpY = Math.abs(Math.sin(t * 6)) * h * 0.22;
-      break;
+  if(currentPPM<16)return;
+  var point=toCanvas(physX,physY);
+  var pose=poseData.pose||'idle';
+  var size=currentPPM*.76;
+  drawCrew(ctx,point.x,point.y,size,{
+    type:'worker',
+    state:pose==='running'?'running_away':pose==='panicked'?'startled':pose,
+    stateTimer:poseData.timer||0,
+    direction:poseData.direction||1
+  });
+  ctx.save();ctx.translate(point.x,point.y);ctx.scale(size/100,size/100);
+  ctx.strokeStyle='#2d4249';ctx.lineWidth=2;ctx.lineCap='round';
+  if(pose==='carrying'){
+    ctx.beginPath();ctx.roundRect(-34,-118,65,13,3);ctx.fillStyle='#3c6070';ctx.fill();ctx.stroke();
+    ctx.fillStyle='#e9bd6b';ctx.fillRect(-28,-118,5,13);ctx.fillRect(20,-118,5,13);
+  } else if(pose==='screwing'){
+    ctx.save();ctx.translate(28,-37);ctx.rotate(Math.sin((poseData.timer||0)*8)*.4);
+    ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(11,-22);ctx.lineTo(17,-24);ctx.stroke();
+    ctx.restore();
   }
-
-  ctx.translate(0, -jumpY);
-
-  // ── Hard hat ──
-  var headCX = Math.sin(lean) * bodyLen * 0.2;
-  var headCY = -(bodyLen + legLen);
-  ctx.fillStyle = '#ffcc00';
-  ctx.beginPath();
-  ctx.ellipse(headCX, headCY - headR * 0.6, headR * 1.35, headR * 0.5, 0, Math.PI, 0);
-  ctx.fill();
-  // Hat brim
-  ctx.fillStyle = '#e6b800';
-  ctx.fillRect(headCX - headR * 1.4, headCY - headR * 0.25, headR * 2.8, headR * 0.25);
-
-  // ── Head ──
-  ctx.fillStyle = '#f5d7a0';
-  ctx.beginPath();
-  ctx.arc(headCX, headCY, headR, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Eyes
-  ctx.fillStyle = '#222';
-  var eyeOff = dir * headR * 0.3;
-  ctx.beginPath();
-  ctx.arc(headCX + eyeOff, headCY - headR * 0.1, headR * 0.15, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Panicked/startled mouth
-  if (pose === 'panicked') {
-    ctx.fillStyle = '#222';
-    ctx.beginPath();
-    ctx.arc(headCX + eyeOff * 0.5, headCY + headR * 0.4, headR * 0.2, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // ── Body (blue overalls) ──
-  var neckX = headCX;
-  var neckY = headCY + headR;
-  var hipX = Math.sin(lean) * bodyLen * 0.3;
-  var hipY = -legLen;
-  ctx.strokeStyle = '#2255aa';
-  ctx.lineWidth = Math.max(2.5, s * 0.035);
-  ctx.beginPath();
-  ctx.moveTo(neckX, neckY);
-  ctx.lineTo(hipX, hipY);
-  ctx.stroke();
-
-  // ── Legs ──
-  ctx.strokeStyle = '#2255aa';
-  ctx.lineWidth = Math.max(2, s * 0.028);
-  ctx.beginPath();
-  ctx.moveTo(hipX, hipY);
-  ctx.lineTo(hipX + Math.sin(legL) * legLen * 0.55, 0);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(hipX, hipY);
-  ctx.lineTo(hipX + Math.sin(legR) * legLen * 0.55, 0);
-  ctx.stroke();
-
-  // Boots
-  ctx.fillStyle = '#554422';
-  var bootW = Math.max(3, s * 0.03);
-  ctx.fillRect(hipX + Math.sin(legL) * legLen * 0.55 - bootW * 0.5, -bootW * 0.6, bootW, bootW * 0.6);
-  ctx.fillRect(hipX + Math.sin(legR) * legLen * 0.55 - bootW * 0.5, -bootW * 0.6, bootW, bootW * 0.6);
-
-  // ── Arms ──
-  ctx.strokeStyle = '#f5d7a0';
-  ctx.lineWidth = Math.max(1.5, s * 0.022);
-  var shX = neckX;
-  var shY = neckY + bodyLen * 0.12;
-  // Left arm
-  ctx.beginPath();
-  ctx.moveTo(shX, shY);
-  ctx.lineTo(shX + Math.sin(armL) * armLen, shY + Math.cos(armL) * armLen);
-  ctx.stroke();
-  // Right arm
-  ctx.beginPath();
-  ctx.moveTo(shX, shY);
-  ctx.lineTo(shX + Math.sin(armR) * armLen, shY + Math.cos(armR) * armLen);
-  ctx.stroke();
-
-  // Gloves
-  ctx.fillStyle = '#cc9922';
-  var gloveR = Math.max(1.5, s * 0.02);
-  ctx.beginPath();
-  ctx.arc(shX + Math.sin(armL) * armLen, shY + Math.cos(armL) * armLen, gloveR, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(shX + Math.sin(armR) * armLen, shY + Math.cos(armR) * armLen, gloveR, 0, Math.PI * 2);
-  ctx.fill();
-
-  // ── Wrench (when screwing) ──
-  if (pose === 'screwing') {
-    var wrenchHandX = shX + Math.sin(armL) * armLen;
-    var wrenchHandY = shY + Math.cos(armL) * armLen;
-    ctx.strokeStyle = '#888';
-    ctx.lineWidth = Math.max(1, s * 0.015);
-    var wrenchLen = armLen * 0.6;
-    var wrenchAng = t * 18;
-    ctx.beginPath();
-    ctx.moveTo(wrenchHandX, wrenchHandY);
-    ctx.lineTo(wrenchHandX + Math.sin(wrenchAng) * wrenchLen,
-               wrenchHandY - Math.abs(Math.cos(wrenchAng)) * wrenchLen);
-    ctx.stroke();
-    // Wrench head
-    ctx.fillStyle = '#999';
-    var whx = wrenchHandX + Math.sin(wrenchAng) * wrenchLen;
-    var why = wrenchHandY - Math.abs(Math.cos(wrenchAng)) * wrenchLen;
-    ctx.fillRect(whx - 2.5, why - 1, 5, 3);
-  }
-
-  // ── Barrel segment overhead (when carrying) ──
-  if (pose === 'carrying') {
-    ctx.fillStyle = '#444';
-    var segW = Math.max(12, s * 0.25);
-    var segH = Math.max(3, s * 0.05);
-    ctx.fillRect(headCX - segW / 2, headCY - headR * 2 - segH, segW, segH);
-    // Dark bore circle on end
-    ctx.fillStyle = '#222';
-    ctx.beginPath();
-    ctx.arc(headCX + dir * segW / 2, headCY - headR * 2 - segH / 2, segH * 0.4, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // ── Sweat drops (when panicked) ──
-  if (pose === 'panicked') {
-    ctx.fillStyle = 'rgba(100,180,230,0.7)';
-    for (var sw = 0; sw < 2; sw++) {
-      var swA = t * 8 + sw * 3;
-      var swDist = headR * 1.8 + Math.abs(Math.sin(swA)) * headR;
-      ctx.beginPath();
-      ctx.arc(headCX + Math.cos(swA) * swDist, headCY + Math.sin(swA) * swDist * 0.5 - headR, 1.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
   ctx.restore();
 }
 
@@ -2041,614 +1855,46 @@ function drawCharacter(char) {
     drawChar.state = 'startled';
   }
 
-  var cx = toCanvasX(drawChar.x);
-  var cy = groundYAtPhysX(drawChar.x);
-  var s = Math.max(18, currentPPM); // min visual scale so characters stay visible
+  var position = toCanvas(drawChar.x, 0);
+  var cx = position.x;
+  var cy = position.y;
+  var s = currentPPM;
+  var docked = s < 26 || cx < 30 || cx > W - 30 || cy < 70 || cy > H + 30;
+  if (docked) {
+    // A labelled reaction portrait, rather than a giant character on a planet.
+    cx = 52; cy = H - 23; s = 43;
+    ctx.save();
+    ctx.beginPath();ctx.roundRect(13,H-108,80,99,18);
+    ctx.fillStyle='rgba(255,245,220,.94)';ctx.fill();
+    ctx.strokeStyle='rgba(48,73,68,.2)';ctx.lineWidth=1;ctx.stroke();
+    ctx.fillStyle='#536969';ctx.font='600 10px system-ui, sans-serif';
+    ctx.textAlign='center';ctx.fillText('GROUND CREW',53,H-15);
+    ctx.restore();
+    cy -= 10;
+  }
+  var isCrew = ['golfer','alien','spaceman','robot','icerobot'].includes(drawChar.type);
+  if (isCrew) {
+    drawCrew(ctx,cx,cy,s*1.32,drawChar);
+  } else {
+    // The planet-specific guests keep their own silhouettes and share the same LOD.
+    s = docked ? 37 : Math.max(24,s);
 
   switch (drawChar.type) {
-    case 'golfer':    drawGolfer(cx, cy, s, drawChar); break;
-    case 'alien':     drawAlien(cx, cy, s, drawChar); break;
-    case 'spaceman':  drawSpaceman(cx, cy, s, drawChar); break;
-    case 'robot':     drawRobot(cx, cy, s, drawChar); break;
     case 'newt':      drawNewt(cx, cy, s, drawChar); break;
     case 'whale':     drawWhale(cx, cy, s, drawChar); break;
     case 'snowman':   drawSnowman(cx, cy, s, drawChar); break;
     case 'submarine': drawSubmarine(cx, cy, s, drawChar); break;
-    case 'icerobot':  drawIceRobot(cx, cy, s, drawChar); break;
+  }
   }
 
   // Thought bubble (drawn above head)
-  if (char.bubbleText && (char.state === 'idle' || char.state === 'walking' ||
-      char.state === 'spouting' || char.state === 'rocket_startled' ||
-      char.state === 'startled')) {
+  if (char.banter !== false && char.bubbleText) {
     var bubbleYOff = s * 1.7;
     if (drawChar.type === 'submarine') bubbleYOff = s * 1.2;
     else if (drawChar.type === 'newt') bubbleYOff = s * 0.8;
     else if (drawChar.type === 'whale') bubbleYOff = s * 2.0;
-    drawThoughtBubble(cx, cy - bubbleYOff, s, char.bubbleText);
+    drawThoughtBubble(cx, docked ? H - 116 : cy - bubbleYOff, s, char.bubbleText);
   }
-}
-
-// ── Golfer (Earth) ─────────────────────────────────────────────────────────
-function drawGolfer(cx, cy, s, char) {
-  var t  = char.stateTimer;
-  var dir = char.direction;
-  var h  = s * 1.35;
-  var ol = Math.max(1.2, h * 0.012);   // outline width scales with size
-  var headR  = h * 0.18;               // BIG cartoon head
-  var bodyH  = h * 0.22, bodyW = h * 0.18;
-  var legLen = h * 0.26, legW = h * 0.07;
-  var armLen = h * 0.20, armW = h * 0.055;
-  var shoeW  = h * 0.08, shoeH = h * 0.04;
-  var hipY   = 0;                       // hip at ground level (feet extend below)
-
-  ctx.save();
-  ctx.translate(cx, cy);
-
-  /* ── squashed ───────────────────────────────────── */
-  if (char.state === 'squashed') {
-    var sq = Math.min(1, t / 0.8);
-    dropShadow(0, 0, h * 0.35, h * 0.04, 0.25);
-    outlinedEllipse(0, -h * 0.06, h * 0.3 * (1 + sq * 0.3), h * 0.06 * (1 - sq * 0.5), '#dbc49a', '#6a5030', ol);
-    // Stars
-    ctx.fillStyle = '#ffdd44';
-    for (var si = 0; si < 3; si++) {
-      var sa = t * 8 + si * 2.1;
-      ctx.beginPath(); ctx.arc(Math.cos(sa) * h * 0.35, -h * 0.18 + Math.sin(sa * 1.3) * h * 0.08, Math.max(2, h * 0.018), 0, Math.PI * 2); ctx.fill();
-    }
-    ctx.restore(); return;
-  }
-
-  /* ── animation state ───────────────────────────── */
-  var walk = 0, arm = 0, lean = 0, jumpY = 0;
-  if (char.state === 'walking' || char.state === 'returning') {
-    walk = Math.sin(t * 6) * 0.4; arm = Math.sin(t * 6) * 0.3;
-  } else if (char.state === 'startled') {
-    jumpY = Math.sin(Math.min(t, 0.5) * Math.PI) * h * 0.5;
-    arm = Math.sin(t * 25) * 1.2;
-  } else if (char.state === 'running_away') {
-    walk = Math.sin(t * 16) * 0.6; arm = Math.sin(t * 16 + Math.PI) * 0.8;
-    lean = 0.2 * dir;
-  }
-  ctx.translate(0, -jumpY);
-  ctx.rotate(lean);
-
-  // Drop shadow
-  dropShadow(0, 0, h * 0.2, h * 0.03, 0.18);
-
-  /* ── legs ───────────────────────────────────────── */
-  var hipX = 0, hipYa = -bodyH * 0.15;
-  // Back leg
-  var bfx = Math.sin(walk + Math.PI) * legLen * 0.35;
-  cartoonLimb(hipX - bodyW * 0.25, hipYa, hipX + bfx - bodyW * 0.1, hipYa + legLen, legW, legW * 0.85, '#556b2f', '#2a3a15', ol);
-  // Shoe
-  outlinedEllipse(hipX + bfx - bodyW * 0.1, hipYa + legLen + shoeH * 0.2, shoeW, shoeH, '#443322', '#221100', ol);
-  // Front leg
-  var ffx = Math.sin(walk) * legLen * 0.35;
-  cartoonLimb(hipX + bodyW * 0.25, hipYa, hipX + ffx + bodyW * 0.1, hipYa + legLen, legW, legW * 0.85, '#556b2f', '#2a3a15', ol);
-  outlinedEllipse(hipX + ffx + bodyW * 0.1, hipYa + legLen + shoeH * 0.2, shoeW, shoeH, '#443322', '#221100', ol);
-
-  /* ── body (polo shirt) ──────────────────────────── */
-  var bodyTop = hipYa - bodyH;
-  gradientEllipse(0, hipYa - bodyH * 0.5, bodyW, bodyH * 0.55, '#f0eed8', '#d4d0b8', '#6a5030', ol);
-  // Red stripe
-  ctx.strokeStyle = '#cc4444'; ctx.lineWidth = Math.max(1.5, h * 0.015);
-  ctx.beginPath(); ctx.moveTo(-bodyW * 0.85, hipYa - bodyH * 0.25); ctx.lineTo(bodyW * 0.85, hipYa - bodyH * 0.25); ctx.stroke();
-  // Collar
-  ctx.strokeStyle = '#bab6a0'; ctx.lineWidth = Math.max(1, h * 0.01);
-  ctx.beginPath(); ctx.moveTo(-bodyW * 0.2, bodyTop + bodyH * 0.08); ctx.lineTo(0, bodyTop + bodyH * 0.18); ctx.lineTo(bodyW * 0.2, bodyTop + bodyH * 0.08); ctx.stroke();
-
-  /* ── back arm ───────────────────────────────────── */
-  var shoulderY = bodyTop + bodyH * 0.18;
-  var baX = -dir * bodyW * 0.75;
-  var bhX = baX + Math.sin(-arm) * armLen * 0.9;
-  var bhY = shoulderY + Math.cos(-arm) * armLen * 0.9;
-  cartoonLimb(baX, shoulderY, bhX, bhY, armW, armW * 0.7, '#dbc49a', '#8a7050', ol);
-  outlinedCircle(bhX, bhY, armW * 0.45, '#dbc49a', '#8a7050', ol * 0.7); // hand
-
-  /* ── front arm + club ───────────────────────────── */
-  var faX = dir * bodyW * 0.75;
-  var fhX = faX + Math.sin(arm) * armLen * 0.9;
-  var fhY = shoulderY + Math.cos(arm) * armLen * 0.9;
-  cartoonLimb(faX, shoulderY, fhX, fhY, armW, armW * 0.7, '#dbc49a', '#8a7050', ol);
-  // Golf glove
-  outlinedCircle(fhX, fhY, armW * 0.48, '#eee', '#888', ol * 0.7);
-
-  // Golf club
-  if (char.state === 'idle' || char.state === 'walking') {
-    var cSwing = char.state === 'idle' ? Math.sin(t * 3) * 0.5 : 0.2;
-    var cEndX = fhX + Math.sin(cSwing + 0.3) * armLen * 1.3;
-    var cEndY = fhY + Math.cos(cSwing + 0.3) * armLen * 1.3;
-    ctx.strokeStyle = '#777'; ctx.lineWidth = Math.max(1.5, h * 0.012);
-    ctx.beginPath(); ctx.moveTo(fhX, fhY); ctx.lineTo(cEndX, cEndY); ctx.stroke();
-    outlinedPath(function() {
-      ctx.moveTo(cEndX - 4, cEndY - 1); ctx.lineTo(cEndX + 4, cEndY - 1);
-      ctx.lineTo(cEndX + 5, cEndY + 2); ctx.lineTo(cEndX - 3, cEndY + 2); ctx.closePath();
-    }, '#555', '#333', ol * 0.6);
-  }
-  // Club flying off
-  if (char.state === 'startled' && t > 0.05) {
-    ctx.save();
-    ctx.translate(-dir * t * 40, shoulderY - t * 80 + t * t * 120);
-    ctx.rotate(t * 12);
-    ctx.strokeStyle = '#777'; ctx.lineWidth = Math.max(1.5, h * 0.012);
-    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, armLen * 1.2); ctx.stroke();
-    ctx.fillStyle = '#555'; ctx.fillRect(-4, armLen * 1.2, 8, 4);
-    ctx.restore();
-  }
-
-  /* ── head ───────────────────────────────────────── */
-  var headY = bodyTop - headR * 0.4;
-  gradientCircle(0, headY, headR, '#eed8b8', '#c4a87a', '#6a5030', ol);
-  // Rosy cheeks
-  ctx.fillStyle = 'rgba(220,140,120,0.25)';
-  ctx.beginPath(); ctx.arc(-headR * 0.45, headY + headR * 0.2, headR * 0.18, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(headR * 0.45, headY + headR * 0.2, headR * 0.18, 0, Math.PI * 2); ctx.fill();
-  // Nose
-  ctx.fillStyle = '#c4a07a';
-  ctx.beginPath(); ctx.arc(dir * headR * 0.1, headY + headR * 0.08, headR * 0.1, 0, Math.PI * 2); ctx.fill();
-
-  // Eyes
-  var eyeDir = (char.state === 'running_away') ? -dir : dir;
-  var eyeState = (char.state === 'startled' || char.state === 'running_away') ? 'startled'
-               : (char.state === 'idle') ? 'happy' : 'normal';
-  cartoonEye(-headR * 0.3, headY - headR * 0.12, headR * 0.22, '#664422', {x: eyeDir, y: 0}, eyeState);
-  cartoonEye(headR * 0.3, headY - headR * 0.12, headR * 0.22, '#664422', {x: eyeDir, y: 0}, eyeState);
-
-  // Mouth
-  if (char.state === 'startled' || char.state === 'running_away') {
-    outlinedCircle(dir * headR * 0.05, headY + headR * 0.42, headR * 0.15, '#422', '#211', ol * 0.6);
-  } else {
-    ctx.strokeStyle = '#6a4a2a'; ctx.lineWidth = Math.max(1, h * 0.008);
-    ctx.beginPath(); ctx.arc(0, headY + headR * 0.25, headR * 0.22, 0.15, Math.PI - 0.15); ctx.stroke();
-  }
-
-  /* ── flat cap ───────────────────────────────────── */
-  var capY = headY - headR * 0.7;
-  if (char.state !== 'startled' || t < 0.1) {
-    outlinedPath(function() {
-      ctx.moveTo(-headR * 1.1, capY + headR * 0.25);
-      ctx.quadraticCurveTo(-headR * 1.15, capY - headR * 0.1, 0, capY - headR * 0.15);
-      ctx.quadraticCurveTo(headR * 1.15, capY - headR * 0.1, headR * 1.1, capY + headR * 0.25);
-      ctx.closePath();
-    }, '#5a4a3a', '#2a1a0a', ol);
-    // Brim
-    outlinedPath(function() {
-      ctx.moveTo(dir * headR * 0.2, capY + headR * 0.22);
-      ctx.quadraticCurveTo(dir * headR * 1.3, capY + headR * 0.15, dir * headR * 1.5, capY + headR * 0.35);
-      ctx.lineTo(dir * headR * 0.2, capY + headR * 0.35);
-      ctx.closePath();
-    }, '#4a3a2a', '#2a1a0a', ol);
-  }
-  // Hat flying off
-  if (char.state === 'startled' && t > 0.1) {
-    ctx.save();
-    ctx.translate(dir * t * 30, capY - t * 60 + t * t * 80);
-    ctx.rotate(t * 8);
-    outlinedEllipse(0, 0, headR * 1.3, headR * 0.32, '#5a4a3a', '#2a1a0a', ol);
-    ctx.restore();
-  }
-
-  ctx.restore();
-}
-
-// ── Alien (Mars) ───────────────────────────────────────────────────────────
-function drawAlien(cx, cy, s, char) {
-  var t  = char.stateTimer;
-  var dir = char.direction;
-  var h  = s * 1.05;
-  var bodyR = h * 0.38;
-  var ol = Math.max(1.2, h * 0.012);
-
-  ctx.save();
-  ctx.translate(cx, cy);
-
-  /* ── squashed ───────────────────────────────────── */
-  if (char.state === 'squashed') {
-    var sq = Math.min(1, t / 0.8);
-    dropShadow(0, 0, bodyR * 1.3, bodyR * 0.08, 0.25);
-    outlinedEllipse(0, -bodyR * 0.06, bodyR * 1.4 * (1 + sq * 0.2), bodyR * 0.12 * (1 - sq * 0.4), '#4a8a4a', '#1a4a1a', ol);
-    ctx.fillStyle = '#ffdd44';
-    for (var si = 0; si < 3; si++) {
-      var sa = t * 10 + si * 2.1;
-      ctx.beginPath(); ctx.arc(Math.cos(sa) * bodyR, -bodyR * 0.3 + Math.sin(sa * 1.3) * bodyR * 0.15, Math.max(2, h * 0.018), 0, Math.PI * 2); ctx.fill();
-    }
-    ctx.restore(); return;
-  }
-
-  /* ── animation ──────────────────────────────────── */
-  var wx = 0, wy = 0, bsc = 1, jumpY = 0;
-  if (char.state === 'walking' || char.state === 'returning') {
-    wx = Math.sin(t * 5) * bodyR * 0.15;
-    wy = Math.abs(Math.sin(t * 10)) * bodyR * 0.08;
-  } else if (char.state === 'startled') {
-    bsc = 1 + Math.sin(t * 15) * 0.12;
-    jumpY = Math.sin(Math.min(t, 0.4) * Math.PI) * h * 0.5;
-  } else if (char.state === 'running_away') {
-    wx = Math.sin(t * 20) * bodyR * 0.3;
-    wy = Math.abs(Math.sin(t * 20)) * bodyR * 0.15;
-  }
-  ctx.translate(wx, -wy - jumpY);
-
-  // Drop shadow
-  dropShadow(0, 0, bodyR * 0.55, bodyR * 0.05, 0.18);
-
-  /* ── legs (stubby filled) ──────────────────────── */
-  if (char.state === 'running_away') {
-    ctx.globalAlpha = 0.35;
-    for (var l = 0; l < 6; l++) {
-      var la = t * 30 + l * Math.PI / 3;
-      cartoonLimb(0, -bodyR * 0.05, Math.cos(la) * bodyR * 0.5, Math.sin(la) * bodyR * 0.2 + bodyR * 0.1, bodyR * 0.14, bodyR * 0.10, '#3a7a3a', '#1a4a1a', ol);
-    }
-    ctx.globalAlpha = 1;
-  } else {
-    var lsw = (char.state === 'walking' || char.state === 'returning') ? Math.sin(t * 5) * 0.4 : 0;
-    // Feet
-    var lfx = -bodyR * 0.25 + Math.sin(lsw) * bodyR * 0.25;
-    var rfx = bodyR * 0.25 + Math.sin(lsw + Math.PI) * bodyR * 0.25;
-    cartoonLimb(-bodyR * 0.25, -bodyR * 0.08, lfx, bodyR * 0.06, bodyR * 0.14, bodyR * 0.11, '#3a7a3a', '#1a4a1a', ol);
-    outlinedEllipse(lfx, bodyR * 0.08, bodyR * 0.11, bodyR * 0.05, '#2a6a2a', '#1a4a1a', ol * 0.7);
-    cartoonLimb(bodyR * 0.25, -bodyR * 0.08, rfx, bodyR * 0.06, bodyR * 0.14, bodyR * 0.11, '#3a7a3a', '#1a4a1a', ol);
-    outlinedEllipse(rfx, bodyR * 0.08, bodyR * 0.11, bodyR * 0.05, '#2a6a2a', '#1a4a1a', ol * 0.7);
-  }
-
-  /* ── body (gradient circle + outline) ──────────── */
-  ctx.save();
-  ctx.scale(bsc, bsc);
-  gradientCircle(0, -bodyR * 0.52, bodyR, '#6abf6a', '#2a5a2a', '#1a3a1a', ol);
-  // Belly highlight
-  ctx.fillStyle = 'rgba(180,255,180,0.12)';
-  ctx.beginPath(); ctx.arc(-bodyR * 0.15, -bodyR * 0.7, bodyR * 0.45, 0, Math.PI * 2); ctx.fill();
-
-  /* ── three eyes ────────────────────────────────── */
-  var eyeY = -bodyR * 0.58;
-  var eSz  = bodyR * 0.17;
-  var eState = (char.state === 'startled') ? 'startled'
-             : (char.state === 'running_away') ? 'startled'
-             : (char.state === 'idle') ? 'happy' : 'normal';
-  var eBig = (char.state === 'startled') ? 1.5 : 1.0;
-  cartoonEye(-bodyR * 0.28, eyeY, eSz * eBig, '#aadd00', {x: dir, y: 0}, eState);
-  cartoonEye(bodyR * 0.28, eyeY, eSz * eBig, '#aadd00', {x: dir, y: 0}, eState);
-  cartoonEye(0, eyeY - bodyR * 0.28, eSz * 0.85 * eBig, '#aadd00', {x: dir, y: -0.3}, eState);
-
-  /* ── mouth ──────────────────────────────────────── */
-  if (char.state === 'startled' || char.state === 'running_away') {
-    outlinedEllipse(0, -bodyR * 0.2, bodyR * 0.13, bodyR * 0.1, '#1a4a1a', '#0a2a0a', ol * 0.7);
-  } else {
-    ctx.strokeStyle = '#1a4a1a'; ctx.lineWidth = Math.max(1, ol * 0.7);
-    ctx.beginPath(); ctx.arc(0, -bodyR * 0.28, bodyR * 0.18, 0.15, Math.PI - 0.15); ctx.stroke();
-  }
-  ctx.restore(); // undo body scale
-
-  /* ── tentacle arms (thick Bézier + outline) ───── */
-  var aw = (char.state === 'startled') ? Math.sin(t * 20) * 1.0
-         : (char.state === 'running_away') ? Math.sin(t * 15) * 0.8
-         : Math.sin(t * 2) * 0.25;
-  var tw = Math.max(2.5, bodyR * 0.09);
-  // Left tentacle
-  outlinedPath(function() {
-    ctx.moveTo(-bodyR * 0.72, -bodyR * 0.45);
-    ctx.quadraticCurveTo(-bodyR * 1.25, -bodyR * 0.65 + Math.sin(aw) * bodyR * 0.4,
-                         -bodyR * 1.0, -bodyR * 0.15 + Math.cos(aw) * bodyR * 0.3);
-    ctx.lineTo(-bodyR * 0.95, -bodyR * 0.1 + Math.cos(aw) * bodyR * 0.3);
-    ctx.quadraticCurveTo(-bodyR * 1.15, -bodyR * 0.55 + Math.sin(aw) * bodyR * 0.35,
-                         -bodyR * 0.62, -bodyR * 0.38);
-    ctx.closePath();
-  }, '#3a7a3a', '#1a4a1a', ol);
-  // Suction cups on left
-  outlinedCircle(-bodyR * 1.0, -bodyR * 0.12 + Math.cos(aw) * bodyR * 0.3, tw * 0.45, '#55aa55', '#1a4a1a', ol * 0.5);
-
-  // Right tentacle
-  outlinedPath(function() {
-    ctx.moveTo(bodyR * 0.72, -bodyR * 0.45);
-    ctx.quadraticCurveTo(bodyR * 1.25, -bodyR * 0.65 + Math.sin(aw + 1) * bodyR * 0.4,
-                         bodyR * 1.0, -bodyR * 0.15 + Math.cos(aw + 1) * bodyR * 0.3);
-    ctx.lineTo(bodyR * 0.95, -bodyR * 0.1 + Math.cos(aw + 1) * bodyR * 0.3);
-    ctx.quadraticCurveTo(bodyR * 1.15, -bodyR * 0.55 + Math.sin(aw + 1) * bodyR * 0.35,
-                         bodyR * 0.62, -bodyR * 0.38);
-    ctx.closePath();
-  }, '#3a7a3a', '#1a4a1a', ol);
-  outlinedCircle(bodyR * 1.0, -bodyR * 0.12 + Math.cos(aw + 1) * bodyR * 0.3, tw * 0.45, '#55aa55', '#1a4a1a', ol * 0.5);
-
-  /* ── antennae (thick stalks + glow bulbs) ──────── */
-  var antW = Math.max(2, bodyR * 0.06);
-  var antGlow = 0.5 + Math.sin(t * 4) * 0.4;
-  // Left antenna
-  cartoonLimb(-bodyR * 0.15, -bodyR * 1.3, -bodyR * 0.3, -bodyR * 1.6, antW, antW * 0.5, '#3a7a3a', '#1a4a1a', ol * 0.7);
-  gradientCircle(-bodyR * 0.3, -bodyR * 1.62, bodyR * 0.07, '#ccffcc', '#55cc55', '#1a4a1a', ol * 0.6);
-  ctx.fillStyle = 'rgba(170,255,170,' + antGlow * 0.3 + ')';
-  ctx.beginPath(); ctx.arc(-bodyR * 0.3, -bodyR * 1.62, bodyR * 0.14, 0, Math.PI * 2); ctx.fill();
-  // Right antenna
-  cartoonLimb(bodyR * 0.15, -bodyR * 1.3, bodyR * 0.3, -bodyR * 1.6, antW, antW * 0.5, '#3a7a3a', '#1a4a1a', ol * 0.7);
-  gradientCircle(bodyR * 0.3, -bodyR * 1.62, bodyR * 0.07, '#ccffcc', '#55cc55', '#1a4a1a', ol * 0.6);
-  ctx.fillStyle = 'rgba(170,255,170,' + antGlow * 0.3 + ')';
-  ctx.beginPath(); ctx.arc(bodyR * 0.3, -bodyR * 1.62, bodyR * 0.14, 0, Math.PI * 2); ctx.fill();
-
-  ctx.restore();
-}
-
-// ── Spaceman (Moon) ────────────────────────────────────────────────────────
-function drawSpaceman(cx, cy, s, char) {
-  var t  = char.stateTimer;
-  var dir = char.direction;
-  var h  = s * 1.5;
-  var ol = Math.max(1.2, h * 0.012);
-  var helmetR = h * 0.19;
-  var bodyW   = h * 0.16, bodyH = h * 0.24;
-  var legLen  = h * 0.22, legW = h * 0.065;
-  var armLen  = h * 0.20, armW = h * 0.055;
-  var bootW   = h * 0.07, bootH = h * 0.04;
-
-  ctx.save();
-  ctx.translate(cx, cy);
-
-  /* ── squashed ───────────────────────────────────── */
-  if (char.state === 'squashed') {
-    var sq = Math.min(1, t / 0.8);
-    dropShadow(0, 0, h * 0.35, h * 0.04, 0.25);
-    outlinedEllipse(0, -h * 0.05, h * 0.33 * (1 + sq * 0.25), h * 0.06 * (1 - sq * 0.5), '#ddd', '#888', ol);
-    outlinedEllipse(0, -h * 0.07, h * 0.12, h * 0.03, '#88ccee', '#558899', ol * 0.6);
-    ctx.fillStyle = '#ffdd44';
-    for (var si = 0; si < 3; si++) {
-      var sa = t * 8 + si * 2.1;
-      ctx.beginPath(); ctx.arc(Math.cos(sa) * h * 0.3, -h * 0.2 + Math.sin(sa * 1.3) * h * 0.1, Math.max(2, h * 0.018), 0, Math.PI * 2); ctx.fill();
-    }
-    ctx.restore(); return;
-  }
-
-  /* ── animation ──────────────────────────────────── */
-  var bounceY = 0, legSw = 0, armSw = 0;
-  if (char.state === 'walking' || char.state === 'returning') {
-    var rb = Math.sin(t * 3);
-    bounceY = Math.max(0, rb) * h * 0.25;
-    legSw = Math.sin(t * 3) * 0.35;
-    armSw = Math.sin(t * 3 + 0.5) * 0.2;
-  } else if (char.state === 'startled') {
-    var jt = Math.min(t, 1.0);
-    bounceY = (jt * 2.5 - jt * jt * 1.5) * h * 0.8;
-    armSw = Math.sin(t * 18) * 1.0;
-  } else if (char.state === 'running_away') {
-    var lp = (t * 2.5) % 1.0;
-    bounceY = Math.sin(lp * Math.PI) * h * 0.7;
-    legSw = Math.sin(t * 8) * 0.6;
-    armSw = Math.sin(t * 8 + Math.PI) * 0.7;
-  }
-  ctx.translate(0, -bounceY);
-
-  // Drop shadow
-  dropShadow(0, legLen + bootH * 0.3, h * 0.22, h * 0.025, 0.15);
-
-  /* ── legs (filled tubes + boots) ───────────────── */
-  var lx1 = -bodyW * 0.55, lx2 = bodyW * 0.55;
-  var lfx1 = lx1 + Math.sin(legSw) * legLen * 0.4;
-  var lfx2 = lx2 + Math.sin(legSw + Math.PI) * legLen * 0.4;
-  cartoonLimb(lx1, 0, lfx1, legLen, legW, legW * 0.9, '#ccc', '#888', ol);
-  cartoonLimb(lx2, 0, lfx2, legLen, legW, legW * 0.9, '#ccc', '#888', ol);
-  // Boots
-  outlinedEllipse(lfx1, legLen + bootH * 0.1, bootW, bootH, '#777', '#444', ol);
-  outlinedEllipse(lfx2, legLen + bootH * 0.1, bootW, bootH, '#777', '#444', ol);
-
-  /* ── backpack ───────────────────────────────────── */
-  outlinedPath(function() {
-    roundRect(-bodyW * 1.25, -bodyH * 0.75, bodyW * 0.4, bodyH * 0.7, h * 0.02);
-  }, '#999', '#666', ol);
-
-  /* ── body (suit torso) ──────────────────────────── */
-  gradientEllipse(0, -bodyH * 0.42, bodyW * 1.05, bodyH * 0.55, '#e8e8e8', '#b0b0b0', '#777', ol);
-  // Red stripe
-  ctx.strokeStyle = '#cc4444'; ctx.lineWidth = Math.max(1.5, h * 0.013);
-  ctx.beginPath(); ctx.moveTo(-bodyW * 0.9, -bodyH * 0.22); ctx.lineTo(bodyW * 0.9, -bodyH * 0.22); ctx.stroke();
-  // Suit collar ring
-  outlinedEllipse(0, -bodyH * 0.85, bodyW * 0.5, h * 0.02, '#bbb', '#777', ol * 0.6);
-
-  /* ── arms (filled + gloves) ─────────────────────── */
-  var shY = -bodyH * 0.65;
-  var laX = -bodyW * 1.05 - Math.cos(armSw) * armLen;
-  var laY = shY + Math.sin(armSw) * armLen + armLen * 0.5;
-  var raX = bodyW * 1.05 + Math.cos(-armSw) * armLen;
-  var raY = shY + Math.sin(-armSw) * armLen + armLen * 0.5;
-  cartoonLimb(-bodyW * 1.05, shY, laX, laY, armW, armW * 0.8, '#ddd', '#999', ol);
-  cartoonLimb(bodyW * 1.05, shY, raX, raY, armW, armW * 0.8, '#ddd', '#999', ol);
-  // Gloves
-  outlinedCircle(laX, laY, armW * 0.5, '#eee', '#999', ol * 0.7);
-  outlinedCircle(raX, raY, armW * 0.5, '#eee', '#999', ol * 0.7);
-
-  /* ── helmet (big bubble) ────────────────────────── */
-  var hY = -bodyH - helmetR * 0.35;
-  // Outer shell
-  gradientCircle(0, hY, helmetR * 1.15, '#eaeaea', '#b0b0b0', '#777', ol);
-  // Visor
-  var vG = ctx.createLinearGradient(-helmetR * 0.6, hY - helmetR * 0.3, helmetR * 0.6, hY + helmetR * 0.3);
-  vG.addColorStop(0, 'rgba(100,180,230,0.85)');
-  vG.addColorStop(0.5, 'rgba(220,200,120,0.7)');
-  vG.addColorStop(1, 'rgba(100,180,230,0.85)');
-  ctx.fillStyle = vG;
-  ctx.beginPath(); ctx.arc(0, hY, helmetR * 0.75, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = '#6688aa'; ctx.lineWidth = ol * 0.7;
-  ctx.beginPath(); ctx.arc(0, hY, helmetR * 0.75, 0, Math.PI * 2); ctx.stroke();
-  // Visor glint
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  ctx.beginPath(); ctx.arc(-helmetR * 0.25, hY - helmetR * 0.25, helmetR * 0.2, 0, Math.PI * 2); ctx.fill();
-
-  /* ── face through visor ─────────────────────────── */
-  if (char.state === 'startled' || char.state === 'running_away') {
-    cartoonEye(-helmetR * 0.22, hY - helmetR * 0.05, helmetR * 0.18, '#446688', {x: 0, y: 0}, 'startled');
-    cartoonEye(helmetR * 0.22, hY - helmetR * 0.05, helmetR * 0.18, '#446688', {x: 0, y: 0}, 'startled');
-    outlinedCircle(0, hY + helmetR * 0.28, helmetR * 0.13, '#333', '#111', ol * 0.5);
-    // Sweat drops
-    if (char.state === 'startled') {
-      ctx.fillStyle = 'rgba(100,180,230,0.6)';
-      for (var sw = 0; sw < 3; sw++) {
-        var swA = t * 6 + sw * 2.2;
-        var swD = helmetR * 1.3 + t * 20;
-        ctx.beginPath(); ctx.arc(Math.cos(swA) * swD, hY + Math.sin(swA) * swD * 0.5, Math.max(2, h * 0.014), 0, Math.PI * 2); ctx.fill();
-      }
-    }
-  } else {
-    // Calm face — just visor reflection
-    cartoonEye(-helmetR * 0.2, hY - helmetR * 0.05, helmetR * 0.14, '#446688', {x: dir, y: 0}, char.state === 'idle' ? 'happy' : 'normal');
-    cartoonEye(helmetR * 0.2, hY - helmetR * 0.05, helmetR * 0.14, '#446688', {x: dir, y: 0}, char.state === 'idle' ? 'happy' : 'normal');
-    // Gentle smile
-    ctx.strokeStyle = '#335566'; ctx.lineWidth = Math.max(1, ol * 0.6);
-    ctx.beginPath(); ctx.arc(0, hY + helmetR * 0.15, helmetR * 0.18, 0.15, Math.PI - 0.15); ctx.stroke();
-  }
-
-  ctx.restore();
-}
-
-// ── Robot (Mercury) ────────────────────────────────────────────────────────
-function drawRobot(cx, cy, s, char) {
-  var t  = char.stateTimer;
-  var dir = char.direction;
-  var h  = s * 1.2;
-  var ol = Math.max(1.2, h * 0.012);
-  var headW = h * 0.18, headH = h * 0.15;
-  var bodyW = h * 0.2, bodyH = h * 0.28;
-  var legW2 = h * 0.07, legH2 = h * 0.2;
-  var armW2 = h * 0.055, armH2 = h * 0.18;
-  var footW = legW2 * 1.5, footH = h * 0.035;
-
-  ctx.save();
-  ctx.translate(cx, cy);
-
-  /* ── squashed ───────────────────────────────────── */
-  if (char.state === 'squashed') {
-    var sq = Math.min(1, t / 0.8);
-    dropShadow(0, 0, bodyW * 1.4, h * 0.04, 0.25);
-    outlinedEllipse(0, -h * 0.04, bodyW * 1.3 * (1 + sq * 0.3), h * 0.04 * (1 - sq * 0.5), '#8a7a65', '#5a4a35', ol);
-    ctx.fillStyle = '#aaa';
-    for (var bi = 0; bi < 4; bi++) {
-      var ba = t * 5 + bi * 1.6, bd = t * 40 + bi * 8;
-      ctx.beginPath(); ctx.arc(Math.cos(ba) * bd, -h * 0.1 + Math.sin(ba * 1.3) * bd * 0.5, Math.max(1.5, h * 0.012), 0, Math.PI * 2); ctx.fill();
-    }
-    ctx.restore(); return;
-  }
-
-  /* ── animation ──────────────────────────────────── */
-  var wc = 0, lean = 0, armAng = 0;
-  if (char.state === 'walking' || char.state === 'returning') {
-    wc = Math.floor(t * 4) % 2;
-    lean = Math.sin(t * 4) * 0.03;
-    armAng = Math.sin(t * 4) * 0.15;
-  } else if (char.state === 'running_away') {
-    wc = Math.floor(t * 14) % 2;
-    lean = -0.15 * dir;
-    armAng = Math.sin(t * 14) * 0.4;
-  } else if (char.state === 'startled') {
-    lean = Math.sin(t * 20) * 0.08;
-    armAng = -1.2;
-  }
-  ctx.rotate(lean);
-
-  // Drop shadow
-  dropShadow(0, legH2 + footH, h * 0.2, h * 0.025, 0.15);
-
-  /* ── heat shimmer ──────────────────────────────── */
-  ctx.strokeStyle = 'rgba(255,200,100,0.12)'; ctx.lineWidth = 1;
-  for (var hi = 0; hi < 3; hi++) {
-    var hx0 = (hi - 1) * bodyW * 0.8;
-    ctx.beginPath();
-    for (var hy = 0; hy < 4; hy++) {
-      var yy = hy * h * 0.08, xx = hx0 + Math.sin(t * 4 + hy * 1.5 + hi) * 3;
-      if (hy === 0) ctx.moveTo(xx, yy); else ctx.lineTo(xx, yy);
-    }
-    ctx.stroke();
-  }
-
-  /* ── legs (filled rectangles + feet) ───────────── */
-  var lo1 = wc === 0 ? -legH2 * 0.15 : 0;
-  var lo2 = wc === 1 ? -legH2 * 0.15 : 0;
-  outlinedPath(function() { roundRect(-bodyW * 0.55, lo1, legW2, legH2 - lo1, h * 0.01); }, '#7a6a55', '#4a3a25', ol);
-  outlinedPath(function() { roundRect(bodyW * 0.55 - legW2, lo2, legW2, legH2 - lo2, h * 0.01); }, '#7a6a55', '#4a3a25', ol);
-  // Feet
-  outlinedPath(function() { roundRect(-bodyW * 0.6, legH2 - footH * 0.2, footW, footH, h * 0.008); }, '#6a5a45', '#3a2a15', ol);
-  outlinedPath(function() { roundRect(bodyW * 0.55 - legW2 * 0.5, legH2 - footH * 0.2, footW, footH, h * 0.008); }, '#6a5a45', '#3a2a15', ol);
-
-  /* ── body (boxy with rivets + gauge) ───────────── */
-  var bY = -bodyH - legH2 * 0.08;
-  gradientEllipse(0, bY + bodyH * 0.5, bodyW * 1.05, bodyH * 0.55, '#9a8a70', '#6a5a45', '#4a3a25', ol);
-  // Rivets
-  var rr = Math.max(1.5, h * 0.013);
-  outlinedCircle(-bodyW * 0.7, bY + bodyH * 0.2, rr, '#bbb', '#777', ol * 0.5);
-  outlinedCircle(bodyW * 0.7, bY + bodyH * 0.2, rr, '#bbb', '#777', ol * 0.5);
-  outlinedCircle(-bodyW * 0.7, bY + bodyH * 0.8, rr, '#bbb', '#777', ol * 0.5);
-  outlinedCircle(bodyW * 0.7, bY + bodyH * 0.8, rr, '#bbb', '#777', ol * 0.5);
-  // Chest gauge
-  outlinedCircle(0, bY + bodyH * 0.5, bodyW * 0.25, 'rgba(50,50,50,0.15)', '#555', ol * 0.6);
-  ctx.strokeStyle = '#cc3333'; ctx.lineWidth = Math.max(1, ol * 0.5);
-  var nA = t * 2.5;
-  ctx.beginPath(); ctx.moveTo(0, bY + bodyH * 0.5);
-  ctx.lineTo(Math.cos(nA) * bodyW * 0.2, bY + bodyH * 0.5 + Math.sin(nA) * bodyW * 0.2); ctx.stroke();
-
-  /* ── arms (with pincers) ───────────────────────── */
-  var aY = bY + bodyH * 0.25;
-  // Left arm
-  ctx.save(); ctx.translate(-bodyW, aY); ctx.rotate(armAng);
-  outlinedPath(function() { roundRect(-armW2, 0, armW2, armH2, h * 0.008); }, '#7a6a55', '#4a3a25', ol);
-  // Pincer left
-  ctx.strokeStyle = '#4a3a25'; ctx.lineWidth = Math.max(1.5, ol);
-  ctx.beginPath(); ctx.moveTo(-armW2 * 0.5, armH2); ctx.lineTo(-armW2 * 1.8, armH2 + armH2 * 0.22); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(-armW2 * 0.5, armH2); ctx.lineTo(armW2 * 0.3, armH2 + armH2 * 0.22); ctx.stroke();
-  ctx.restore();
-  // Right arm
-  ctx.save(); ctx.translate(bodyW, aY); ctx.rotate(-armAng);
-  outlinedPath(function() { roundRect(0, 0, armW2, armH2, h * 0.008); }, '#7a6a55', '#4a3a25', ol);
-  ctx.strokeStyle = '#4a3a25'; ctx.lineWidth = Math.max(1.5, ol);
-  ctx.beginPath(); ctx.moveTo(armW2 * 0.5, armH2); ctx.lineTo(-armW2 * 0.3, armH2 + armH2 * 0.22); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(armW2 * 0.5, armH2); ctx.lineTo(armW2 * 1.8, armH2 + armH2 * 0.22); ctx.stroke();
-  ctx.restore();
-
-  /* ── head ───────────────────────────────────────── */
-  var hYr = bY - headH * 0.1;
-  outlinedPath(function() { roundRect(-headW, hYr, headW * 2, headH, h * 0.018); }, '#9a8a75', '#5a4a35', ol);
-  // LED eyes
-  var blink = Math.floor(t * 2) % 3;
-  var lcol = blink === 0 ? '#ff3333' : '#33ff33';
-  var rcol = blink === 1 ? '#ff3333' : '#33ff33';
-  outlinedCircle(-headW * 0.45, hYr + headH * 0.45, headW * 0.18, lcol, '#333', ol * 0.5);
-  outlinedCircle(headW * 0.45, hYr + headH * 0.45, headW * 0.18, rcol, '#333', ol * 0.5);
-  // LED glow
-  ctx.fillStyle = 'rgba(' + (blink === 0 ? '255,50,50' : '50,255,50') + ',0.15)';
-  ctx.beginPath(); ctx.arc(-headW * 0.45, hYr + headH * 0.45, headW * 0.3, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = 'rgba(' + (blink === 1 ? '255,50,50' : '50,255,50') + ',0.15)';
-  ctx.beginPath(); ctx.arc(headW * 0.45, hYr + headH * 0.45, headW * 0.3, 0, Math.PI * 2); ctx.fill();
-
-  /* ── antenna ────────────────────────────────────── */
-  var antH = h * 0.1;
-  var antBob = (char.state === 'startled') ? Math.sin(t * 25) * antH * 0.5 : Math.sin(t * 3) * antH * 0.15;
-  ctx.strokeStyle = '#666'; ctx.lineWidth = Math.max(1.5, ol);
-  ctx.beginPath();
-  ctx.moveTo(0, hYr);
-  ctx.lineTo(-headW * 0.2, hYr - antH * 0.33 + antBob * 0.3);
-  ctx.lineTo(headW * 0.2, hYr - antH * 0.66 + antBob * 0.6);
-  ctx.lineTo(0, hYr - antH + antBob);
-  ctx.stroke();
-  gradientCircle(0, hYr - antH + antBob, headW * 0.13, (char.state === 'startled' ? '#ff6666' : '#ffdd44'), (char.state === 'startled' ? '#cc2222' : '#cc9900'), '#444', ol * 0.5);
-  // Glow
-  ctx.fillStyle = 'rgba(255,220,60,0.15)';
-  ctx.beginPath(); ctx.arc(0, hYr - antH + antBob, headW * 0.25, 0, Math.PI * 2); ctx.fill();
-
-  /* ── startled sparks ───────────────────────────── */
-  if (char.state === 'startled') {
-    ctx.strokeStyle = 'rgba(255,220,60,0.8)'; ctx.lineWidth = Math.max(1, ol * 0.6);
-    for (var sk = 0; sk < 4; sk++) {
-      var sa2 = t * 8 + sk * 1.57, sd2 = h * 0.2 + Math.sin(t * 12 + sk) * h * 0.1;
-      ctx.beginPath();
-      ctx.moveTo(Math.cos(sa2) * sd2 * 0.6, hYr - antH * 0.5 + Math.sin(sa2) * sd2 * 0.6);
-      ctx.lineTo(Math.cos(sa2) * sd2, hYr - antH * 0.5 + Math.sin(sa2) * sd2); ctx.stroke();
-    }
-  }
-
-  /* ── running smoke ─────────────────────────────── */
-  if (char.state === 'running_away') {
-    for (var si2 = 0; si2 < 3; si2++) {
-      var sdist = -dir * (si2 + 1) * h * 0.15 + Math.sin(t * 5 + si2) * 3;
-      ctx.fillStyle = 'rgba(120,120,120,0.12)';
-      ctx.beginPath(); ctx.arc(sdist, legH2 * 0.3, h * 0.04 + si2 * 2, 0, Math.PI * 2); ctx.fill();
-    }
-  }
-
-  ctx.restore();
 }
 
 // ── Newt (Venus) ───────────────────────────────────────────────────────────
@@ -3060,166 +2306,6 @@ function drawSubmarine(cx, cy, s, char) {
   ctx.restore();
 }
 
-// ── Ice Robot (Uranus) ─────────────────────────────────────────────────────
-function drawIceRobot(cx, cy, s, char) {
-  var t  = char.stateTimer;
-  var dir = char.direction;
-  var h  = s * 1.3;
-  var ol = Math.max(1.2, h * 0.012);
-  var headW = h * 0.14, headH = h * 0.12;
-  var bodyW = h * 0.15, bodyH = h * 0.25;
-  var uArm = h * 0.12, lArm = h * 0.1;
-  var uLeg = h * 0.14, lLeg = h * 0.13;
-  var legW0 = h * 0.035, armW0 = h * 0.03;
-
-  ctx.save();
-  ctx.translate(cx, cy);
-
-  /* ── squashed (shatter) ─────────────────────────── */
-  if (char.state === 'squashed') {
-    var sq = Math.min(1, t / 0.6);
-    for (var fi = 0; fi < 8; fi++) {
-      var fa = fi * 0.785 + t * 2, fd = sq * h * 0.3;
-      var fSz = h * 0.04 * (1 - sq * 0.5);
-      ctx.save();
-      ctx.translate(Math.cos(fa) * fd, -h * 0.3 + Math.sin(fa) * fd);
-      ctx.rotate(fa * 2);
-      outlinedPath(function() { roundRect(-fSz, -fSz * 0.6, fSz * 2, fSz * 1.2, h * 0.004); }, '#88ccdd', '#5599aa', ol * 0.5);
-      ctx.restore();
-    }
-    if (t > 2) {
-      var re = Math.min(1, (t - 2) / 1);
-      ctx.globalAlpha = re * 0.5;
-      outlinedPath(function() { roundRect(-bodyW, -h * 0.5, bodyW * 2, h * 0.5, h * 0.01); }, '#88ccdd', '#5599aa', ol);
-      ctx.globalAlpha = 1;
-    }
-    ctx.restore(); return;
-  }
-
-  /* ── animation ──────────────────────────────────── */
-  var legPh = 0, armPh = 0, lean = 0, visorCol = '#00ddff';
-  if (char.state === 'walking' || char.state === 'returning') {
-    legPh = t * 4; armPh = t * 4 + Math.PI; lean = Math.sin(t * 4) * 0.03;
-  } else if (char.state === 'running_away') {
-    legPh = t * 12; armPh = t * 12 + Math.PI; lean = 0.15 * dir;
-  } else if (char.state === 'startled') {
-    visorCol = '#ff3333'; lean = -0.05 * dir;
-  } else if (char.state === 'idle') {
-    lean = Math.sin(t * 2) * 0.01;
-  }
-  ctx.rotate(lean);
-
-  // Drop shadow
-  dropShadow(0, uLeg + lLeg * 0.9, bodyW * 0.65, h * 0.02, 0.13);
-
-  // Frost particles
-  ctx.fillStyle = 'rgba(200,230,255,0.35)';
-  for (var fp = 0; fp < 5; fp++) {
-    var fpAge = (t * 0.6 + fp * 0.45) % 2;
-    var fpx0 = (fp - 2) * bodyW * 0.7;
-    var fpy0 = -bodyH * 0.3 + fpAge * h * 0.15;
-    ctx.beginPath(); ctx.arc(fpx0 + Math.sin(t + fp) * 2, fpy0, 1 + Math.sin(fp) * 0.5, 0, Math.PI * 2); ctx.fill();
-  }
-
-  /* ── digitigrade legs (reverse-jointed, filled) ── */
-  for (var li = 0; li < 2; li++) {
-    var lx = (li === 0) ? -bodyW * 0.5 : bodyW * 0.5;
-    var lPh = legPh + li * Math.PI;
-    var knX = lx + Math.sin(lPh) * uLeg * 0.3;
-    var knY = uLeg * 0.6;
-    var ftX = lx + Math.sin(lPh) * uLeg * 0.15;
-    var ftY = uLeg + lLeg * 0.85;
-    cartoonLimb(lx, 0, knX, knY, legW0, legW0 * 0.9, '#7aadbb', '#4d8899', ol);
-    outlinedCircle(knX, knY, h * 0.016, '#6699aa', '#4d7788', ol * 0.5);
-    cartoonLimb(knX, knY, ftX, ftY, legW0 * 0.9, legW0 * 0.7, '#7aadbb', '#4d8899', ol);
-    outlinedCircle(ftX, ftY, h * 0.022, '#7aadbb', '#4d8899', ol * 0.5);
-  }
-
-  /* ── body (angular tapered torso + frost veins) ── */
-  outlinedPath(function() {
-    ctx.moveTo(-bodyW, -bodyH);
-    ctx.lineTo(bodyW, -bodyH);
-    ctx.lineTo(bodyW * 0.7, 0);
-    ctx.lineTo(-bodyW * 0.7, 0);
-    ctx.closePath();
-  }, '#88ccdd', '#4d8899', ol);
-  // Ice veins
-  ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = Math.max(0.5, ol * 0.3);
-  ctx.beginPath(); ctx.moveTo(-bodyW * 0.3, -bodyH * 0.8); ctx.lineTo(-bodyW * 0.1, -bodyH * 0.4); ctx.lineTo(-bodyW * 0.4, -bodyH * 0.1); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(bodyW * 0.2, -bodyH * 0.9); ctx.lineTo(bodyW * 0.4, -bodyH * 0.5); ctx.lineTo(bodyW * 0.15, -bodyH * 0.2); ctx.stroke();
-  // Core glow
-  ctx.fillStyle = 'rgba(0,220,255,0.07)';
-  ctx.beginPath(); ctx.ellipse(0, -bodyH * 0.5, bodyW * 0.5, bodyH * 0.35, 0, 0, Math.PI * 2); ctx.fill();
-
-  /* ── arms (segmented + claws) ──────────────────── */
-  for (var ai = 0; ai < 2; ai++) {
-    var ax = ai === 0 ? -bodyW : bodyW;
-    var aPh = armPh + ai * Math.PI;
-    var aS = ai === 0 ? -1 : 1;
-    var shY = -bodyH * 0.85;
-    var elX = ax + aS * uArm * 0.5 + Math.sin(aPh) * uArm * 0.3;
-    var elY = shY + uArm * 0.7;
-    var haX = elX + aS * lArm * 0.3 + Math.sin(aPh + 0.5) * lArm * 0.2;
-    var haY = elY + lArm * 0.7;
-    cartoonLimb(ax, shY, elX, elY, armW0, armW0 * 0.85, '#7aadbb', '#4d8899', ol);
-    outlinedCircle(elX, elY, h * 0.013, '#6699aa', '#4d7788', ol * 0.4);
-    cartoonLimb(elX, elY, haX, haY, armW0 * 0.85, armW0 * 0.7, '#7aadbb', '#4d8899', ol);
-    // 3-pronged claw
-    ctx.strokeStyle = '#5599aa'; ctx.lineWidth = Math.max(1.2, ol * 0.7);
-    for (var ci2 = 0; ci2 < 3; ci2++) {
-      var ca = (ci2 - 1) * 0.4 + Math.PI * 0.5;
-      ctx.beginPath(); ctx.moveTo(haX, haY);
-      ctx.lineTo(haX + Math.cos(ca) * h * 0.025 * aS, haY + Math.sin(ca) * h * 0.025); ctx.stroke();
-    }
-  }
-
-  /* ── head (rounded trapezoid) ──────────────────── */
-  var hYi = -bodyH - headH;
-  outlinedPath(function() {
-    ctx.moveTo(-headW, hYi + headH);
-    ctx.lineTo(-headW * 0.7, hYi);
-    ctx.lineTo(headW * 0.7, hYi);
-    ctx.lineTo(headW, hYi + headH);
-    ctx.closePath();
-  }, '#88ccdd', '#4d8899', ol);
-
-  /* ── visor (glowing strip + scan) ──────────────── */
-  var vY = hYi + headH * 0.4, vW = headW * 1.4, vH = headH * 0.3;
-  ctx.fillStyle = visorCol;
-  ctx.fillRect(-vW * 0.5, vY, vW, vH);
-  ctx.strokeStyle = '#4d8899'; ctx.lineWidth = ol * 0.6;
-  ctx.strokeRect(-vW * 0.5, vY, vW, vH);
-  // Scanning sweep
-  var scX = (Math.sin(t * 2.5) * 0.5 + 0.5) * vW - vW * 0.5;
-  ctx.fillStyle = 'rgba(255,255,255,0.4)';
-  ctx.fillRect(scX - vW * 0.08, vY, vW * 0.16, vH);
-  // Visor glow
-  ctx.fillStyle = visorCol.replace(')', ',0.12)').replace('rgb', 'rgba').replace('#', '');
-  // Simpler glow
-  ctx.fillStyle = 'rgba(0,220,255,0.08)';
-  ctx.beginPath(); ctx.ellipse(0, vY + vH * 0.5, vW * 0.7, vH * 1.5, 0, 0, Math.PI * 2); ctx.fill();
-
-  /* ── startled ice cracks ───────────────────────── */
-  if (char.state === 'startled') {
-    ctx.strokeStyle = 'rgba(200,230,255,0.45)'; ctx.lineWidth = Math.max(1, ol * 0.5);
-    for (var ck = 0; ck < 5; ck++) {
-      var ckA = ck * 1.26, ckL = h * 0.1 + Math.sin(t * 3 + ck) * h * 0.03;
-      ctx.beginPath(); ctx.moveTo(0, uLeg + lLeg * 0.85);
-      ctx.lineTo(Math.cos(ckA) * ckL, uLeg + lLeg * 0.85 + Math.sin(ckA) * ckL * 0.3); ctx.stroke();
-    }
-  }
-
-  /* ── running frost trail ───────────────────────── */
-  if (char.state === 'running_away') {
-    ctx.fillStyle = 'rgba(200,230,255,0.18)';
-    for (var fi2 = 0; fi2 < 4; fi2++) {
-      ctx.beginPath(); ctx.arc(-dir * (fi2 + 1) * h * 0.08, -bodyH * 0.2 + Math.sin(t * 3 + fi2) * h * 0.05, h * 0.02, 0, Math.PI * 2); ctx.fill();
-    }
-  }
-
-  ctx.restore();
-}
-
 // ── Whale (Jupiter) ────────────────────────────────────────────────────────
 function drawWhale(cx, cy, s, char) {
   var t  = char.stateTimer;
@@ -3333,34 +2419,34 @@ function drawWhale(cx, cy, s, char) {
 }
 
 // ── Thought Bubble ─────────────────────────────────────────────────────────
-function drawThoughtBubble(cx, cy, s, text) {
-  var bubbleW = Math.max(50, s * 0.6);
-  var bubbleH = Math.max(18, s * 0.2);
-  var bx = cx + 8;
-  var by = cy - bubbleH - 10;
-
-  // Little trailing dots
-  ctx.fillStyle = 'rgba(255,255,255,0.7)';
-  ctx.beginPath(); ctx.arc(cx + 2, cy - 3, 2, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(cx + 5, cy - 8, 3, 0, Math.PI * 2); ctx.fill();
-
-  // Bubble
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
-  ctx.beginPath();
-  ctx.ellipse(bx + bubbleW * 0.5, by + bubbleH * 0.5, bubbleW * 0.55, bubbleH * 0.55, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.2)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.ellipse(bx + bubbleW * 0.5, by + bubbleH * 0.5, bubbleW * 0.55, bubbleH * 0.55, 0, 0, Math.PI * 2);
-  ctx.stroke();
-
-  // Text
-  ctx.fillStyle = '#333';
-  ctx.font = Math.max(8, Math.round(s * 0.09)) + 'px Courier New, monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText(text, bx + bubbleW * 0.5, by + bubbleH * 0.6);
-  ctx.textAlign = 'left'; // reset
+function drawThoughtBubble(cx, cy, _s, text) {
+  ctx.save();
+  ctx.font = '500 13px system-ui, sans-serif';
+  var maxWidth = Math.min(220, W - 40);
+  var lines = [], current = '';
+  for (var word of String(text).split(/\s+/)) {
+    var next = current ? current + ' ' + word : word;
+    if (current && ctx.measureText(next).width > maxWidth - 24) {
+      lines.push(current); current = word;
+    } else current = next;
+  }
+  if (current) lines.push(current);
+  var bubbleW = Math.min(maxWidth,Math.max(64,...lines.map(line=>ctx.measureText(line).width+24)));
+  var bubbleH = lines.length*18+18;
+  var bx = clamp(cx + 12,10,W-bubbleW-10);
+  var by = clamp(cy-bubbleH-12,10,H-bubbleH-10);
+  ctx.fillStyle='rgba(255,249,233,.97)';
+  ctx.strokeStyle='rgba(39,61,61,.55)';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.roundRect(bx,by,bubbleW,bubbleH,12);ctx.fill();ctx.stroke();
+  if(cy>by+bubbleH && cy<by+bubbleH+60) {
+    ctx.beginPath();ctx.moveTo(clamp(cx,bx+12,bx+bubbleW-12),by+bubbleH-1);
+    ctx.lineTo(clamp(cx-7,bx+6,bx+bubbleW-6),by+bubbleH+8);
+    ctx.lineTo(clamp(cx+12,bx+15,bx+bubbleW-6),by+bubbleH-1);
+    ctx.fill();ctx.stroke();
+  }
+  ctx.fillStyle='#2d4145';ctx.textAlign='left';ctx.textBaseline='top';
+  lines.forEach((line,i)=>ctx.fillText(line,bx+12,by+9+i*18));
+  ctx.restore();
 }
 
 // ── Shockwave Ring ─────────────────────────────────────────────────────────
@@ -3385,6 +2471,17 @@ var PAD_HEIGHT_M     = 0.15;  // Launch pad thickness
 var ROCKET_LENGTH_M  = 2.0;   // Full rocket nose-to-nozzle
 var ROCKET_WIDTH_M   = 0.40;  // Body tube diameter
 var NOZZLE_LENGTH_M  = 0.30;  // Base nozzle length (scales with ε)
+
+/** Physical vehicle-centre position while its nozzle rests on the launch pad. */
+function getRocketPadPosition(angleDeg, epsilon = 20) {
+  var angle = angleDeg * Math.PI / 180;
+  var nozzleLength = NOZZLE_LENGTH_M * Math.min(2,Math.max(.6,epsilon/20));
+  var centreOffset = ROCKET_LENGTH_M * .5 + nozzleLength;
+  return {
+    x: TOWER_BASE_X_M + Math.cos(angle) * centreOffset,
+    y: PAD_HEIGHT_M + Math.sin(angle) * centreOffset
+  };
+}
 
 /**
  * drawLaunchTower(angleDeg)
@@ -3524,7 +2621,7 @@ var SHAKE_AMPLITUDE = 0.02; // metres — subtle pixel jitter
 var SHAKE_FREQUENCY = 30;   // Hz
 
 function drawRocket(rocketState, angleDeg, epsilon) {
-  var s = Math.max(currentPPM, 18);
+  var s = Math.max(currentPPM, 8);
   var eps = epsilon || 20;
   var phase = rocketState ? rocketState.phase : 'pad';
 
@@ -3543,19 +2640,17 @@ function drawRocket(rocketState, angleDeg, epsilon) {
     var _rp = toCanvas(rocketState.x, rocketState.y);
     cx = _rp.x;
     cy = _rp.y;
-    // Orient nose along velocity vector
-    // Nose is at local -x, so add PI to point nose in flight direction
-    rot = Math.PI - Math.atan2(rocketState.vy || 0, rocketState.vx || 0.001);
+    // Attitude follows commanded thrust. Tangential velocity is a different vector.
+    var heading = Number.isFinite(rocketState.theta) ? rocketState.theta * Math.PI / 180 : angleDeg * Math.PI / 180;
+    rot = Math.PI - heading + surfaceNormalAngle(rocketState.x);
   } else {
     // On the pad / rail
     var rad = angleDeg * Math.PI / 180;
-    var padH = Math.max(4, PAD_HEIGHT_M * s);
-    // Rocket base sits at rail bottom, halfway up the rocket body
-    var railOffset = ROCKET_LENGTH_M * 0.5;
-    var _padPt = toCanvas(TOWER_BASE_X_M, 0);
-    cx = _padPt.x + Math.cos(rad) * railOffset * s;
-    cy = (_padPt.y - padH) - Math.sin(rad) * railOffset * s;
-    rot = Math.PI - rad;
+    var padPosition = getRocketPadPosition(angleDeg, eps);
+    var _padPt = toCanvas(padPosition.x,padPosition.y);
+    cx = _padPt.x;
+    cy = _padPt.y;
+    rot = Math.PI - rad + surfaceNormalAngle(padPosition.x);
 
     // ── Fizzle shake: jitter position while on pad ──
     if (phase === 'fizzle') {
@@ -3570,12 +2665,12 @@ function drawRocket(rocketState, angleDeg, epsilon) {
   ctx.translate(cx, cy);
   ctx.rotate(rot);
 
-  // Rocket drawn nose-right: nose at +x, nozzle at -x
+  // Nose is local -x; the nozzle exit is bodyEnd + nozzleLen on local +x.
   var bodyStart = -rocketLen / 2 + noseLen;
   var bodyEnd = rocketLen / 2;
 
   // ── Fins (drawn first, behind body) ──
-  ctx.fillStyle = '#cc3333';
+  ctx.fillStyle = '#d1844a';
   // Top fin
   ctx.beginPath();
   ctx.moveTo(bodyEnd - finLen, -rocketW / 2);
@@ -3592,7 +2687,7 @@ function drawRocket(rocketState, angleDeg, epsilon) {
   ctx.fill();
 
   // ── Nozzle bell ──
-  ctx.fillStyle = '#333';
+  ctx.fillStyle = '#354f5c';
   ctx.beginPath();
   ctx.moveTo(bodyEnd, -nozzleThroatW);
   ctx.lineTo(bodyEnd + nozzleLen, -nozzleExitW);
@@ -3606,17 +2701,17 @@ function drawRocket(rocketState, angleDeg, epsilon) {
 
   // ── Body tube ──
   var bodyGrad = ctx.createLinearGradient(0, -rocketW / 2, 0, rocketW / 2);
-  bodyGrad.addColorStop(0, '#f0f0f0');
-  bodyGrad.addColorStop(0.3, '#ffffff');
-  bodyGrad.addColorStop(0.7, '#e8e8e8');
-  bodyGrad.addColorStop(1, '#d0d0d0');
+  bodyGrad.addColorStop(0, '#fff6df');
+  bodyGrad.addColorStop(0.3, '#fffaed');
+  bodyGrad.addColorStop(0.7, '#e7ddc4');
+  bodyGrad.addColorStop(1, '#c3c4b3');
   ctx.fillStyle = bodyGrad;
   ctx.fillRect(bodyStart, -rocketW / 2, bodyEnd - bodyStart, rocketW);
 
   // Colour band (visual flair — changes with propellant family hint)
   var bandW = rocketLen * 0.08;
   var bandX = bodyStart + (bodyEnd - bodyStart) * 0.35;
-  ctx.fillStyle = 'rgba(0,100,200,0.7)';
+  ctx.fillStyle = '#507481';
   ctx.fillRect(bandX, -rocketW / 2, bandW, rocketW);
 
   // Body outline
@@ -3626,9 +2721,9 @@ function drawRocket(rocketState, angleDeg, epsilon) {
 
   // ── Nose cone (ogive-ish) ──
   var noseGrad = ctx.createLinearGradient(0, -rocketW / 2, 0, rocketW / 2);
-  noseGrad.addColorStop(0, '#e8e8e8');
-  noseGrad.addColorStop(0.5, '#ffffff');
-  noseGrad.addColorStop(1, '#d0d0d0');
+  noseGrad.addColorStop(0, '#7592a0');
+  noseGrad.addColorStop(0.5, '#4d7184');
+  noseGrad.addColorStop(1, '#2d4b5d');
   ctx.fillStyle = noseGrad;
   ctx.beginPath();
   ctx.moveTo(-rocketLen / 2, 0);
@@ -3651,7 +2746,7 @@ function drawRocket(rocketState, angleDeg, epsilon) {
   ctx.stroke();
 
   // Nose tip highlight
-  ctx.fillStyle = 'rgba(255,50,50,0.85)';
+  ctx.fillStyle = '#e9b765';
   ctx.beginPath();
   ctx.arc(-rocketLen / 2, 0, Math.max(2, rocketW * 0.12), 0, Math.PI * 2);
   ctx.fill();
@@ -3665,15 +2760,19 @@ function drawRocket(rocketState, angleDeg, epsilon) {
  * to the rocket's heading (theta in radians, measured from +x axis).
  * thrustFrac: 0-1, 0 = no exhaust, 1 = full thrust.
  */
-function drawExhaust(physX, physY, theta, thrustFrac) {
+function drawExhaust(physX, physY, theta, thrustFrac, epsilon = 20) {
   if (thrustFrac <= 0) return;
-  var s = Math.max(currentPPM, 18);
+  var s = Math.max(currentPPM, 8);
   var _ep = toCanvas(physX, physY);
-  var cx = _ep.x;
-  var cy = _ep.y;
+  var nozzleLength = NOZZLE_LENGTH_M * s * Math.min(2,Math.max(.6,epsilon/20));
+  var exitOffset = ROCKET_LENGTH_M * s / 2 + nozzleLength;
+  // Match drawRocket's nozzle anchor, including the local spherical frame.
+  var screenHeading = theta - surfaceNormalAngle(physX);
+  var cx = _ep.x - Math.cos(screenHeading) * exitOffset;
+  var cy = _ep.y + Math.sin(screenHeading) * exitOffset;
 
   // Nozzle exit is behind the rocket (opposite to heading)
-  var exhaustAngle = theta + Math.PI;
+  var exhaustAngle = screenHeading + Math.PI;
 
   var plumeLenBase = ROCKET_LENGTH_M * 0.8 * s * thrustFrac;
   var plumeW = ROCKET_WIDTH_M * 0.35 * s;
@@ -3815,7 +2914,11 @@ function drawWorld() {
   }
 }
 
-function clear() { ctx.clearRect(0, 0, W, H); }
+function clear() {
+  if (pixelRatio !== Math.max(1, window.devicePixelRatio || 1)) resize();
+  ctx.setTransform(pixelRatio,0,0,pixelRatio,0,0);
+  ctx.clearRect(0,0,W,H);
+}
 
 // ── Public Getters ─────────────────────────────────────────────────────────
 function isCurrentGas()         { return env.isGas; }
@@ -3844,7 +2947,7 @@ function getCurrentPPM()        { return currentPPM; }
 function getWholePlanetPPM() {
   var r = getPlanetRadius(displayedGravity);
   if (r <= 0 || W <= 0) return 0;
-  return W / (2.5 * r);
+  return Math.min(W,H) / (2.5 * r);
 }
 
 /** Returns the current planet-view blend factor (0 = follow, 1 = planet-centred). */
@@ -3881,6 +2984,8 @@ export const Renderer = {
   drawBall: drawBall,
   drawLandedBall: drawLandedBall,
   drawTrajectoryDot: drawTrajectoryDot,
+  drawGhost: drawGhost,
+  drawTarget: drawTarget,
   drawFlag: drawFlag,
   drawCrater: drawCrater,
   drawGasHole: drawGasHole,
@@ -3895,7 +3000,10 @@ export const Renderer = {
   drawFizzle: drawFizzle,
   toCanvasX: toCanvasX,
   toCanvasY: toCanvasY,
+  toCanvas: toCanvas,
+  screenToSurface: screenToSurface,
   getCannonTipPhys: getCannonTipPhys,
+  getRocketPadPosition: getRocketPadPosition,
   getCannonPivotCanvas: getCannonPivotCanvas,
   isCurrentGas: isCurrentGas,
   getNearestPlanetName: getNearestPlanetName,

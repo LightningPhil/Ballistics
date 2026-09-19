@@ -4,7 +4,7 @@
  * ============================================================================
  *
  * ROLE:  Contains the complete propellant library (metadata + slider bounds)
- *        and placeholder CEA-derived performance lookup/interpolation.
+ *        and an approximate isentropic performance model.
  *        No DOM access — pure data.
  *
  * EXPORTS (via window.RocketPropellants namespace):
@@ -15,8 +15,8 @@
  *
  * Placeholder grids use analytical isentropic approximations that give
  * reasonable "shape" for teaching. When real CEA JSON files are loaded
- * later, the lookupPerformance function will switch to interpolated data
- * automatically.
+ * later, the lookupPerformance function can be replaced with interpolated data.
+ * Mixture ratio is metadata only in this version; no chemistry is simulated.
  *
  * LOADED BY: <script src="rocket_propellants.js"> in index.html
  *            (before rocket_physics.js)
@@ -173,7 +173,7 @@ var REGISTRY = [
 ];
 
 // ── Quick ID lookup map ────────────────────────────────────────────────────
-var byId = {};
+var byId = Object.create(null);
 for (var i = 0; i < REGISTRY.length; i++) {
   byId[REGISTRY[i].id] = REGISTRY[i];
 }
@@ -211,7 +211,6 @@ var R_UNIVERSAL = 8314.46; // J/(kmol·K)
  */
 function idealCStar(gamma, molWt, Tc) {
   var g = gamma;
-  var M = molWt / 1000; // kg/mol
   var R = R_UNIVERSAL / (molWt); // J/(kg·K)  — note: molWt in g/mol → R_u/molWt
   // Gamma function: gamma * (2/(gamma+1))^((gamma+1)/(gamma-1))
   var exp = (g + 1) / (g - 1);
@@ -311,7 +310,7 @@ function computeCalibrationFactor(prop) {
 }
 
 // Pre-compute calibration factors
-var calibrationFactors = {};
+var calibrationFactors = Object.create(null);
 for (var j = 0; j < REGISTRY.length; j++) {
   calibrationFactors[REGISTRY[j].id] = computeCalibrationFactor(REGISTRY[j]);
 }
@@ -330,29 +329,32 @@ for (var j = 0; j < REGISTRY.length; j++) {
  * @param {number} Pa_Pa    Ambient pressure in Pascals (0 for vacuum)
  * @returns {{ cStar: number, Cf: number }} c* in m/s, Cf dimensionless
  */
+const nozzleCache = new Map<string, { cStar: number; vacuumCf: number }>();
+
 function lookupPerformance(id, MR, Pc_Pa, epsilon, Pa_Pa) {
   var prop = byId[id];
-  if (!prop) {
-    // Fallback: return conservative defaults
-    return { cStar: 1500, Cf: 1.5 };
+  if (!prop || !Number.isFinite(Pc_Pa) || Pc_Pa <= 0 ||
+      !Number.isFinite(epsilon) || epsilon < 1 || !Number.isFinite(Pa_Pa) || Pa_Pa < 0) {
+    return { cStar: 0, Cf: 0 };
   }
-
-  var ph = prop.placeholder;
-  var cal = calibrationFactors[id];
-
-  // c* — calibrated ideal
-  var cStarRaw = idealCStar(ph.gamma, ph.molWt, ph.Tc_K);
-  var cStar = cStarRaw * cal;
-
-  // Cf — ideal isentropic with pressure thrust term
-  var Me = exitMachFromEpsilon(ph.gamma, Math.max(1.01, epsilon));
-  var pe_pc = exitPressureRatio(ph.gamma, Me);
-  var Cf = idealCf(ph.gamma, Math.max(1.01, epsilon), pe_pc, Pa_Pa, Pc_Pa);
-
-  // Clamp Cf to physical range [0.8, 2.2]
-  Cf = Math.max(0.8, Math.min(2.2, Cf));
-
-  return { cStar: cStar, Cf: Cf };
+  const eps = Math.max(1.01, epsilon);
+  const key = id + ':' + eps;
+  let nozzle = nozzleCache.get(key);
+  if (!nozzle) {
+    const ph = prop.placeholder;
+    const Me = exitMachFromEpsilon(ph.gamma, eps);
+    nozzle = {
+      cStar: idealCStar(ph.gamma, ph.molWt, ph.Tc_K) * calibrationFactors[id],
+      vacuumCf: idealCf(ph.gamma, eps, exitPressureRatio(ph.gamma, Me), 0, Pc_Pa)
+    };
+    if (nozzleCache.size >= 128) nozzleCache.clear();
+    nozzleCache.set(key, nozzle);
+  }
+  // Ambient pressure reduces thrust. Never invent a minimum 0.8 coefficient
+  // when the nozzle cannot work at this pressure. Flow separation is outside
+  // this teaching model; negative predicted thrust is treated as no thrust.
+  const Cf = Pc_Pa <= Pa_Pa ? 0 : Math.max(0, nozzle.vacuumCf - eps * Pa_Pa / Pc_Pa);
+  return { cStar: nozzle.cStar, Cf };
 }
 
 // ── Expose namespace ───────────────────────────────────────────────────────

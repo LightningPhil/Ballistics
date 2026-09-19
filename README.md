@@ -1,76 +1,58 @@
 # Launch Lab
 
-A physics sandbox for exploring projectile motion and rocket propulsion. Fire cannons across different planets or design and launch rockets with real engine parameters.
+A playful physics field station. Launch a cannonball or rocket, watch what happens, change one thing and compare the next flight.
 
-## Features
+## Try it
 
-- **Cannon Mode** — Adjust angle, force, mass, and barrel length; fire projectiles and observe trajectories, energy conservation, and impact physics.
-- **Rocket Mode** — Select propellant combos, configure chamber pressure, nozzle geometry, and vehicle mass; simulate continuous-thrust flight with guidance modes (gravity turn, pitch program, prograde lock).
-- **Multi-planet environments** — Moon, Mercury, Mars, Venus, Earth, Jupiter, Saturn, Neptune, Uranus with accurate gravity and unique visual themes.
-- **Live telemetry** — Real-time readouts for velocity, altitude, energy, thrust, Isp, Δv, T/W ratio, and more.
-- **Nozzle cutaway** — Parametric cross-section overlay showing how engine parameters shape nozzle geometry.
+Use **Node.js 24 or later**.
 
-## Project Structure
-
-```
-├── index.html              # App shell and DOM structure
-├── src/
-│   ├── main.ts             # Entry point, animation loop, game state
-│   ├── physics.ts          # Cannon projectile physics engine
-│   ├── rocket_propellants.ts  # Propellant registry and performance tables
-│   ├── rocket_physics.ts   # Continuous-thrust rocket physics engine
-│   ├── nozzle_render.ts    # Parametric nozzle cutaway renderer
-│   ├── renderer.ts         # Canvas drawing (planets, vehicles, effects)
-│   ├── ui.ts               # DOM controls, sliders, readouts, tooltips
-│   └── style.css           # All visual styling
-├── docs/                   # Design specs and planning docs
-├── vite.config.ts          # Vite configuration
-├── tsconfig.json           # TypeScript configuration
-└── package.json
-```
-
-## Getting Started
-
-### Prerequisites
-
-- [Node.js](https://nodejs.org/) (v18+)
-
-### Install
-
-```bash
-npm install
-```
-
-### Development
-
-```bash
+```sh
+npm ci
 npm run dev
 ```
 
-Opens a local dev server with hot module replacement.
+Start with **Let it fly** or the ready-to-fly rocket. Four optional experiment cards offer a target, two different arcs, another world, and a fuel-efficient hop. All controls are available from the start; engine and guidance details live in the workshop sections.
 
-### Build
+## Watch, inspect, compare
 
-```bash
+- The analogue chronograph displays **simulation time**. Auto builds and sheds speed smoothly around ignition, burnout, guidance changes, apex and contact. It never runs below **1×**. Manual choices are 1×, 4×, 16× and 64×, with smooth transitions. Pause is a separate inspection action.
+- Replay, the time slider and **Next moment** use recorded flight data. Changing viewing speed cannot change the trajectory. Next moment deliberately pauses at an event; Auto does not impose pauses.
+- The previous flight is kept as a ghost. Pin a baseline while trying alternatives. Comparable flights use the same clock and camera; trajectories from different worlds are not overlaid.
+- Drag the reference flag or height line, or enter its value. Results show how far from the target the flight finished. The target is a measuring aid, not a collision object.
+- Full-path reveal and direction arrows are optional. Arrows distinguish velocity, thrust and gravity; their lengths are not a force/speed scale.
+- Sound and crew remarks have separate switches. Reduced-motion preferences suppress decorative movement. Hiding the page pauses the flight.
+- Saved flights are retained for this browser session, not persisted across reloads.
+
+## Physics and assumptions
+
+The shared solver records a run at a canonical 1/120-second step, with refined event times. Rocket thrust uses logarithmic variable-mass impulse and splits fuel depletion, guidance boundaries and contact. Both modes use spherical, inverse-square gravity and consistent surface-relative energy.
+
+Planet pressure follows an illustrative exponential profile and affects the rocket nozzle; **air resistance is not modelled**. Intermediate gravity settings represent imaginary worlds. Gas giants use a fictional launch platform at the one-bar reference level. Propellant properties are approximate; mixture-ratio changes alter tank proportions, not a chemical-equilibrium performance calculation. The nozzle cutaway illustrates the chosen engine design.
+
+A failed ignition shuts down immediately if outward thrust cannot exceed weight. Burning fuel on the pad until later lift-off is not simulated. An orbit must clear the planet; escape must be unpowered and outgoing. Such flights end after a short observation interval. Other runs are bounded at six simulated hours and report an observation limit honestly.
+
+## Validate and build
+
+```sh
+npm test
+npm run check
 npm run build
-```
-
-Type-checks with `tsc` then builds an optimised bundle into `dist/`.
-
-### Preview
-
-```bash
 npm run preview
 ```
 
-Serves the production build locally.
+Tests cover analytical rocket impulse, timestep convergence, exact fuel depletion, radial energy, impact and guidance events, environment parity, orbit/escape classification, recorded replay, cancellation, smooth time changes and renderer geometry. CI runs the tests and both builds on Node 24.
 
-## Tech Stack
+The build creates the web bundle in `dist/` and a portable, self-contained `dist-single/index.html`. The latter is committed and regenerated with source changes; CI also uploads a freshly built copy. Vite uses its native config loader, supported by Node 24.
 
-- **TypeScript**
-- **Vite**
-- **Canvas API** (no framework — all rendering is hand-written)
+## Source map
+
+- `src/physics.ts`, `src/rocket_physics.ts`, `src/environment.ts`: pure scientific model.
+- `src/flight.ts`: immutable settings, canonical recording, event snapshots and replay sampling.
+- `src/playback.ts`, `src/flight-deck.ts`: smooth viewing clock, inspection and comparison controls.
+- `src/main.ts`: experiment lifecycle and presentation effects.
+- `src/renderer.ts`, `src/crew.ts`, `src/nozzle_render.ts`: scene, illustrated crew and engine cutaway.
+- `src/ui.ts`, `index.html`, stylesheets: accessible experiment controls and responsive layout.
 
 ## License
 
-This project is proprietary and confidential. All rights reserved. See [LICENSE](LICENSE) for details.
+This project is proprietary and confidential. All rights reserved. See [LICENSE](LICENSE).

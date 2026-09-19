@@ -1,4 +1,7 @@
 import './style.css';
+import { FlightDeck } from './flight-deck.ts';
+import { recordFlight, sampleFlight, compatibleRuns, type FlightRecord } from './flight.ts';
+import { resolveEnvironment } from './environment.ts';
 import { Physics } from './physics.ts';
 import { RocketPropellants } from './rocket_propellants.ts';
 import { RocketPhysics } from './rocket_physics.ts';
@@ -24,6 +27,17 @@ import { UI } from './ui.ts';
  * LOADED BY:  <script src="main.js"> in index.html (last script)
  * ============================================================================
  */
+
+let deck: FlightDeck;
+let flightBuild: AbortController | null = null;
+let viewActive = false;
+let endDelivered = false;
+let restoring = false;
+let lastFlightTime = 0;
+let lastCrewRemark = -30;
+let crewReactionUntil = 0;
+const remarkCounts = new Map<string, number>();
+const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // ── State ──────────────────────────────────────────────────────────────────
 var canvas;
@@ -188,7 +202,7 @@ function fizzleReactCharacter() {
     return;
   }
   // Laughing reaction — character stops running and mocks the fizzle
-  var laughs = ['Ha ha ha!', 'LOL!', 'Nice try!', 'Pfft!', '*points*', 'Called it!', 'Womp womp'];
+  var laughs = ['We have made a heater.', 'More lift. Less luggage.', 'The launch pad remains undefeated.'];
   activeCharacter.state = 'idle';
   activeCharacter.stateTimer = 0;
   activeCharacter.bubbleText = laughs[Math.floor(Math.random() * laughs.length)];
@@ -213,9 +227,9 @@ function updateCharacter(dt) {
     ch.bubbleTimer -= dt;
     if (ch.bubbleTimer <= 0) ch.bubbleText = null;
   }
-  var canThink = (ch.state === 'idle' || ch.state === 'walking' || ch.state === 'spouting');
+  var canThink = deck?.banter && !viewActive && (ch.state === 'idle' || ch.state === 'walking' || ch.state === 'spouting');
   if (!ch.bubbleText && canThink) {
-    ch.thoughtCooldown -= dt;
+    ch.thoughtCooldown -= dt * 0.3;
     if (ch.thoughtCooldown <= 0) {
       var pool = CHAR_THOUGHTS[ch.type] || CHAR_THOUGHTS.golfer;
       ch.bubbleText = pool[Math.floor(Math.random() * pool.length)];
@@ -402,6 +416,7 @@ function syncCharacterToPlanet() {
 
 // ── Audio: Cannon boom synthesiser ─────────────────────────────────────────
 function playCannonBoom() {
+  if (!deck?.sound) return;
   try {
     if (!audioCtx) {
       audioCtx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
@@ -431,6 +446,7 @@ function playCannonBoom() {
 
 // ── Audio: Metallic clang for barrel modification ──────────────────────────
 function playClangSound() {
+  if (!deck?.sound) return;
   try {
     if (!audioCtx) {
       audioCtx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
@@ -486,7 +502,7 @@ function onBarrelChange(newLen) {
     barrelOldLen        = barrelDisplayedLen;
     barrelTargetLen     = newLen;
     barrelExtending     = (newLen > barrelOldLen);
-    barrelModDuration   = 0.6 + Math.abs(newLen - barrelOldLen) * 0.4;
+    barrelModDuration   = 0.18 + Math.abs(newLen - barrelOldLen) * 0.04;
     barrelAnimState     = 'lowering';
     barrelAnimTimer     = 0;
     barrelDisplayedAngle = currentAngle;
@@ -522,7 +538,7 @@ function updateBarrelAnimation(dt) {
   switch (barrelAnimState) {
 
     case 'lowering':
-      var lDur = 0.4;
+      var lDur = 0.12;
       var lT = Math.min(1, barrelAnimTimer / lDur);
       var easeOut = 1 - (1 - lT) * (1 - lT);
       barrelDisplayedAngle = barrelOldAngle * (1 - easeOut);
@@ -556,7 +572,7 @@ function updateBarrelAnimation(dt) {
       break;
 
     case 'raising':
-      var rDur = 0.4;
+      var rDur = 0.12;
       var rT = Math.min(1, barrelAnimTimer / rDur);
       var easeIn = rT * rT;
       barrelDisplayedAngle = barrelTargetAngle * easeIn;
@@ -762,7 +778,7 @@ function computeNeededZoom(rangeMetres, maxHeightMetres, marginFraction?) {
     ? Math.max(0, marginFraction)
     : DEFAULT_ROCKET_ZOOM_MARGIN;
   var fitFraction = 1 / (1 + marginFraction);
-  if (rangeMetres <= 0) return Renderer.DEFAULT_PPM;
+  rangeMetres = Math.max(1, rangeMetres);
 
   // Fit width and height with explicit extra margin.
   var horizPPM = (cW * fitFraction) / Math.max(1, rangeMetres);
@@ -771,7 +787,7 @@ function computeNeededZoom(rangeMetres, maxHeightMetres, marginFraction?) {
 
   var needed = Math.min(horizPPM, vertPPM);
   // Don't zoom IN beyond default, but allow unlimited zoom OUT
-  return Math.min(Renderer.DEFAULT_PPM, Math.max(0.01, needed));
+  return Math.min(Renderer.DEFAULT_PPM, Math.max(1e-9, needed));
 }
 
 function computeRocketZoomPlan(prediction, marginFraction) {
@@ -789,63 +805,19 @@ function computeRocketZoomPlan(prediction, marginFraction) {
 }
 
 // ── Firing sequence ────────────────────────────────────────────────────────
-function fire() {
-  // Only fire in cannon mode
-  if (currentMode !== 'cannon') return;
-
-  // If barrel animation is running, queue for later
-  if (barrelAnimState !== 'idle') {
-    pendingFire = true;
-    return;
-  }
-
-  var vals = UI.getValues();
-  currentGravity = vals.gravity;
-  currentPlanetRadius = Renderer.getPlanetRadius(currentGravity);
-
-  // Update renderer barrel length to match slider
+async function fire() {
+  if (currentMode !== 'cannon' || deck.busy || viewActive && !deck.clock.paused) return;
+  pendingFire = false; barrelAnimState = 'idle';
+  const vals = UI.getValues();
+  const environment = resolveEnvironment(vals.gravity);
+  const config = { ...vals, environment, planetRadius: environment.radius };
   Renderer.setBarrelLength(vals.barrelLength);
-  Renderer.setViewTransitionDuration(DEFAULT_CANNON_VIEW_SECONDS);
-
-  // Predict trajectory for zoom
-  var tip = Renderer.getCannonTipPhys(vals.angle);
-  var prediction = Physics.predictTrajectory(
-    vals.force, vals.mass, vals.angle, currentGravity,
-    tip.x, tip.y, vals.barrelLength, currentPlanetRadius
-  );
-
-  // Update max range and height (persist until clear)
-  maxRangeMetres = Math.max(maxRangeMetres, prediction.range);
-  maxHeightMetres = Math.max(maxHeightMetres, prediction.maxHeight, 2);
-
-  // Smoothly animate to the needed zoom level
-  Renderer.setViewTransitionDuration(DEFAULT_CANNON_VIEW_SECONDS);
-  var neededPPM = computeNeededZoom(maxRangeMetres, maxHeightMetres, DEFAULT_CANNON_ZOOM_MARGIN);
-  Renderer.setTargetZoom(neededPPM);
-
-  // Compute launch velocity and create projectile
-  var speed = Physics.computeLaunchVelocity(vals.force, vals.mass, vals.barrelLength);
-  activeBall = Physics.createProjectile(tip.x, tip.y, speed, vals.angle, vals.mass, currentPlanetRadius);
-
-  // Launch TME
-  var e = Physics.computeEnergy(activeBall, currentGravity);
-  launchTME = e.tme;
-
-  // Reset trail
-  trajectoryDots = [];
-  dotTimer = 0;
-
-  // Cannon animations
-  recoilPhase = 1;
-  recoilTimer = 0;
-  flashProgress = 0;
-  flashTimer = 0;
-
-  playCannonBoom();
-  createSmokeParticles(tip.x, tip.y, vals.angle);
-  UI.setFlightActive(true);
-
-  startleCharacter();
+  barrelDisplayedLen = barrelTargetLen = vals.barrelLength;
+  barrelDisplayedAngle = vals.angle;
+  const tip = Renderer.getCannonTipPhys(vals.angle);
+  const speed = Physics.computeLaunchVelocity(vals.force, vals.mass, vals.barrelLength);
+  const initial = Physics.createProjectile(tip.x, tip.y, speed, vals.angle, vals.mass, config.planetRadius);
+  await beginFlight('cannon', config, initial);
 }
 
 // ── Landing ────────────────────────────────────────────────────────────────
@@ -897,6 +869,14 @@ function getTotalShotCount() {
 
 // ── Clear range ────────────────────────────────────────────────────────────
 function clearRange() {
+  flightBuild?.abort(); flightBuild = null;
+  viewActive = false; endDelivered = false;
+  if (deck) deck.reset();
+  pendingFire = false; barrelAnimState = 'idle'; barrelAnimTimer = 0;
+  const vals = UI.getValues();
+  barrelDisplayedLen = barrelTargetLen = vals.barrelLength;
+  barrelDisplayedAngle = vals.angle; Renderer.setBarrelLength(vals.barrelLength);
+  recoilPhase = 0; recoilOffset = 0; flashProgress = -1;
   shots = [];
   trajectoryDots = [];
   particles = [];
@@ -944,6 +924,8 @@ function clearRange() {
 
 // ── Gravity / planet change handler (from UI) ──────────────────────────────
 function onGravityChange(g) {
+  if (!restoring && deck && (viewActive || shots.length)) clearRange();
+  currentGravity = g; currentPlanetRadius = resolveEnvironment(g).radius;
   Renderer.setTargetGravity(g);
   UI.highlightNearestPlanet(g);
   syncCharacterToPlanet();
@@ -952,89 +934,19 @@ function onGravityChange(g) {
 }
 
 // ── Rocket launch ──────────────────────────────────────────────────────────
-function rocketLaunch() {
-  if (currentMode !== 'rocket') return;
-
-  var vals = UI.getRocketValues();
-  currentGravity = UI.getValues().gravity;
-  currentPlanetRadius = Renderer.getPlanetRadius(currentGravity);
-  var towerX = Renderer.TOWER_BASE_X_M || 1.5;
-
-  // Hide previous fizzle message & post-flight summary
-  UI.hideFizzleMessage();
-  UI.hidePostFlightSummary();
-
-  // Build guidance object from user selection
-  rocketGuidance = buildGuidance(vals);
-
-  // Create rocket state (pass planetRadius for radial gravity)
-  (vals as any).planetRadius = currentPlanetRadius;
-  activeRocket = RocketPhysics.createRocketState(vals);
-  rocketMaxThrust = activeRocket.thrustMagnitude;
-  rocketLanded = false;
-  rocketDotTimer = 0;
-  rocketFizzleTimer = 0;
-
-  // Position on the pad (tower base)
-  activeRocket.x = towerX;
-  activeRocket.y = 0;
-  // Update world-space coords if using radial gravity
-  if (currentPlanetRadius > 0) {
-    var theta0 = towerX / currentPlanetRadius;
-    activeRocket.wx = currentPlanetRadius * Math.sin(theta0);
-    activeRocket.wy = currentPlanetRadius * Math.cos(theta0);
-  }
-  rocketMaxHeight = 0;
-  rocketBurnoutSpeed = 0;
-  rocketBurnTime = 0;
-  rocketDvTsiolkovsky = 0;
-
-  // Pre-launch T/W check — do first step to detect fizzle
-  var firstStep = RocketPhysics.stepRocket(activeRocket, 1/120, currentGravity, rocketGuidance);
-  if (firstStep.fizzled) {
-    // ── Fizzle path ──
-    activeRocket = firstStep;
-    activeRocket.phase = 'fizzle';
-    // Store the initial T/W for the fizzle message
-    var pre = RocketPhysics.computePreLaunch(vals, currentGravity);
-    rocketFizzleTW = pre.tw;
-    // Compute fizzle burn duration
-    rocketFizzleDuration = RocketPhysics.computeBurnTime(
-      vals.propMass, activeRocket.mdot > 0 ? activeRocket.mdot : 1
-    );
-    rocketFizzleDuration = Math.min(rocketFizzleDuration, 30); // cap
-    playIgnitionRumble(0.6); // quieter for fizzle
-    UI.setFlightActive(true);
-    startleCharacter(true);
-    // Reset trajectory
-    trajectoryDots = [];
-    return;
-  }
-
-  // ── Successful ignition ──
-  activeRocket = firstStep;
-  activeRocket.phase = 'flight';
-  activeRocket.maxThrust = rocketMaxThrust;
-
-  // Store Tsiolkovsky delta-v for post-flight comparison
-  var pre = RocketPhysics.computePreLaunch(vals, currentGravity);
-  rocketDvTsiolkovsky = pre.deltaV || 0;
-
-  // Centre the camera on the tower at default zoom — camera will follow the rocket each frame
-  Renderer.resetZoom();
-  var visibleWidth = Renderer.getWidth() / Renderer.DEFAULT_PPM;
-  Renderer.setCameraImmediate(towerX - visibleWidth / 2);
-  Renderer.setCameraImmediateY(0);
-
-  // Reset trajectory
-  trajectoryDots = [];
-
-  // Audio + effects
-  playIgnitionRumble(1.0);
-  startEngineLoop();
-  createExhaustParticles(activeRocket.x, activeRocket.y, vals.launchAngle);
-  UI.setFlightActive(true);
-  startleCharacter(true);
+async function rocketLaunch() {
+  if (currentMode !== 'rocket' || deck.busy || viewActive && !deck.clock.paused) return;
+  const gravity = UI.getValues().gravity;
+  const environment = resolveEnvironment(gravity);
+  const vals = { ...UI.getRocketValues(), gravity, environment, planetRadius: environment.radius };
+  const initial = RocketPhysics.createRocketState(vals);
+  const pad = Renderer.getRocketPadPosition(vals.launchAngle, vals.epsilon);
+  initial.x = pad.x; initial.y = pad.y;
+  const theta = initial.x / vals.planetRadius;
+  initial.wx = (vals.planetRadius + initial.y) * Math.sin(theta);
+  initial.wy = (vals.planetRadius + initial.y) * Math.cos(theta);
+  UI.hideFizzleMessage(); UI.hidePostFlightSummary();
+  await beginFlight('rocket', vals, initial);
 }
 
 function buildGuidance(vals) {
@@ -1055,70 +967,16 @@ function buildGuidance(vals) {
 
 // ── Rocket landing ────────────────────────────────────────────────────────
 function handleRocketLanding(state) {
-  var landX = state.x;
-  var isGas = Renderer.isCurrentGas();
-
-  if (shots.length >= maxShots) shots.shift();
-  shots.push({
-    x: landX,
-    number: getTotalShotCount(),
-    flagSpring: 0,
-    isGas: isGas
-  });
-
-  createImpactParticles(landX, isGas);
-  impactShockwaveProgress = 0;
-  impactShockwaveX = landX;
-  squashTimer = 0;
-
-  // Freeze flight readouts at final values
+  const run = deck.run!;
+  createImpactParticles(state.x, Renderer.isCurrentGas());
+  impactShockwaveProgress = 0; impactShockwaveX = state.x;
   UI.updateRocketReadouts(state);
-
-  // Post-flight summary
-  var launchX = Renderer.TOWER_BASE_X_M || 1.5;
-  var actualSpeed = Math.sqrt(state.vx * state.vx + state.vy * state.vy);
-  // If burnout never happened (engine still running at impact), capture now
-  if (rocketBurnoutSpeed === 0 && rocketBurnTime === 0 && state.time > 0) {
-    rocketBurnoutSpeed = actualSpeed;
-    rocketBurnTime = state.time;
-  }
-  UI.showPostFlightSummary({
-    range: Math.max(0, state.x - launchX),
-    maxHeight: rocketMaxHeight,
-    flightTime: state.time,
-    burnTime: rocketBurnTime,
-    dvTsiolkovsky: rocketDvTsiolkovsky,
-    dvActual: rocketBurnoutSpeed
-  });
-
+  UI.showPostFlightSummary({ range: state.x - run.launchX, maxHeight: run.maxHeight,
+    flightTime: run.duration, burnTime: state.burnoutTime ?? state.time,
+    dvTsiolkovsky: state.idealDeltaV, dvActual: state.burnoutSpeed, burnoutSpeed: state.burnoutSpeed });
   rocketLanded = true;
-  // Start the landing animation
-  landedRocket = {
-    x: landX,
-    epsilon: (activeRocket && activeRocket.epsilon) || 20,
-    timer: 0,
-    phase: 'flipping',  // flipping -> door -> waving
-    flipProgress: 0,
-    doorProgress: 0,
-    waveTimer: 0
-  };
-  activeRocket = null;
-  rocketGuidance = null;
-  stopEngineLoop();
-  UI.setFlightActive(false);
-
-  // Bring camera back to ground level
-  Renderer.setCameraTargetY(0);
-
-  // Character squash check
-  if (activeCharacter && activeCharacter.visible &&
-      activeCharacter.state !== 'squashed' &&
-      activeCharacter.state !== 'off_screen') {
-    var charHalfW = 1.0;
-    if (Math.abs(landX - activeCharacter.x) < charHalfW) {
-      squashCharacter();
-    }
-  }
+  landedRocket = { x: state.x, epsilon: state.epsilon, timer: 0, phase: 'impact', impactSpeed: state.impactSpeed };
+  activeRocket = null; stopEngineLoop(); UI.setFlightActive(false);
 }
 
 // ── Rocket exhaust particles ──────────────────────────────────────────────
@@ -1147,6 +1005,7 @@ function createExhaustParticles(px, py, angleDeg) {
 
 // ── Audio: Rocket ignition rumble ──────────────────────────────────────────
 function playIgnitionRumble(volume) {
+  if (!deck?.sound) return;
   try {
     if (!audioCtx) {
       audioCtx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
@@ -1186,6 +1045,7 @@ function playIgnitionRumble(volume) {
 
 // ── Audio: Engine running loop ─────────────────────────────────────────────
 function startEngineLoop() {
+  if (!deck?.sound) return;
   try {
     if (!audioCtx) {
       audioCtx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
@@ -1238,6 +1098,7 @@ function stopEngineLoop() {
 }
 
 function playBurnoutSound() {
+  if (!deck?.sound) return;
   try {
     if (!audioCtx) return;
     var duration = 0.4;
@@ -1262,6 +1123,7 @@ function playBurnoutSound() {
 
 // ── Audio: Sad trombone for fizzle end ─────────────────────────────────────
 function playSadTrombone() {
+  if (!deck?.sound) return;
   try {
     if (!audioCtx) {
       audioCtx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
@@ -1313,200 +1175,231 @@ function createFizzleSmoke(px, py) {
 }
 
 // ── Animation loop ─────────────────────────────────────────────────────────
+async function beginFlight(mode: 'cannon' | 'rocket', config: any, initial: any) {
+  flightBuild?.abort();
+  const controller = new AbortController(); flightBuild = controller;
+  viewActive = false; activeBall = null; activeRocket = null; stopEngineLoop();
+  deck.prepare(); UI.setFlightActive(true);
+  try {
+    const run = await recordFlight(mode, config, initial, controller.signal);
+    if (controller.signal.aborted) return;
+    flightBuild = null; deck.load(run);
+    currentGravity = config.gravity; currentPlanetRadius = config.planetRadius;
+    launchTME = Physics.computeEnergy(initial, config.gravity).tme;
+    rocketMaxThrust = initial.thrustMagnitude || 0;
+    viewActive = true; endDelivered = false; lastFlightTime = 0;
+    shots = []; particles = []; trajectoryDots = []; landedRocket = null; rocketLanded = false;
+    fitRun(run);
+    if (run.outcome === 'no-liftoff') {
+      deck.clock.time = run.duration; deck.clock.paused = true;
+      createFizzleSmoke(initial.x, .2); crewReaction('fizzle');
+    } else if (mode === 'cannon') {
+      recoilPhase = 1; recoilTimer = 0; flashProgress = 0; flashTimer = 0;
+      playCannonBoom(); createSmokeParticles(initial.x, initial.y, config.angle); startleCharacter();
+    } else { playIgnitionRumble(1); startleCharacter(true); }
+    updateRecordedFlight(0); syncEngineAudio();
+  } catch (error) {
+    if (controller.signal.aborted) return;
+    flightBuild = null; deck.busy = false;
+    deck.message('This configuration could not be simulated. Reset or adjust the launch settings.');
+    deck.update(); UI.setFlightActive(false); console.error(error);
+  }
+}
+
+function fitRun(run: FlightRecord) {
+  const baseline = compatibleRuns(run, deck.baseline) ? deck.baseline : null;
+  maxRangeMetres = Math.max(1, run.maxX, baseline?.maxX || 0) - Math.min(0, run.minX, baseline?.minX || 0);
+  maxHeightMetres = Math.max(2, run.maxHeight, baseline?.maxHeight || 0);
+  Renderer.resetCamera();
+  const margin = run.mode === 'rocket' ? (UI.getRocketZoomSettings().marginPercent / 100) : DEFAULT_CANNON_ZOOM_MARGIN;
+  const duration = run.mode === 'rocket' ? UI.getRocketZoomSettings().durationSeconds : DEFAULT_CANNON_VIEW_SECONDS;
+  Renderer.setViewTransitionDuration(reducedMotion() ? .01 : duration);
+  // Cannon's compact arc is framed as a single experiment. Rockets start close
+  // and the camera gradually reveals altitude while keeping the launch visible.
+  Renderer.setTargetZoom(run.mode === 'cannon' ? computeNeededZoom(maxRangeMetres, maxHeightMetres, margin) : Renderer.DEFAULT_PPM);
+  if (run.mode === 'cannon' && run.minX < 0) Renderer.setCameraTarget(run.minX - 1);
+}
+
+function restoreRun() {
+  const run = deck.run; if (!run) return;
+  flightBuild?.abort(); flightBuild = null; stopEngineLoop();
+  restoring = true;
+  UI.setFlightActive(false); UI.restoreFlightConfig(run.mode, run.config);
+  restoring = false; currentMode = run.mode;
+  currentGravity = run.config.gravity; currentPlanetRadius = run.config.planetRadius;
+  Renderer.setTargetGravity(currentGravity); Renderer.setBarrelLength(run.config.barrelLength || 2);
+  pendingFire = false; barrelAnimState = 'idle';
+  launchTME = Physics.computeEnergy(run.samples[0], currentGravity).tme;
+  rocketMaxThrust = run.samples[0].thrustMagnitude || 0;
+  viewActive = true; endDelivered = false; lastFlightTime = deck.clock.time;
+  shots = []; particles = []; landedRocket = null; rocketLanded = false;
+  fitRun(run); updateRecordedFlight(0);
+}
+
+function syncEngineAudio() {
+  const shouldPlay = deck?.sound && viewActive && !deck.clock.paused && activeRocket?.engineOn;
+  if (shouldPlay && !rocketEngineAudio) startEngineLoop();
+  else if (!shouldPlay) stopEngineLoop();
+}
+
+function crewReaction(kind: string) {
+  if (!activeCharacter) return;
+  activeCharacter.reaction = kind;
+  if (kind !== 'coast') crewReactionUntil = performance.now() / 1000 + 4;
+  const now = performance.now() / 1000;
+  const count = remarkCounts.get(kind) || 0;
+  const lines = { coast: 'I brought a folding chair.', apex: 'The view was worth it.',
+    impact: 'We need a longer measuring tape.', escape: 'About that return ticket…',
+    orbit: 'We may be here a while.', fizzle: 'We have made a heater.' };
+  if (deck.banter && now - lastCrewRemark > 8 && count < 2 && lines[kind]) {
+    activeCharacter.bubbleText = lines[kind]; activeCharacter.bubbleTimer = 4;
+    activeCharacter.thoughtCooldown = 20; lastCrewRemark = now; remarkCounts.set(kind, count + 1);
+  }
+}
+
+function updateRecordedFlight(dt: number) {
+  const run = deck?.run;
+  if (!run || !viewActive) { deck?.update(); return; }
+  deck.clock.advance(dt, run);
+  const time = deck.clock.time;
+  const state = sampleFlight(run, time);
+  const stride = Math.max(1, Math.ceil(run.samples.length / 2500));
+  trajectoryDots = run.samples.filter((s, i) => s.time <= time && i % stride === 0);
+  if (currentMode === 'cannon') {
+    activeBall = state; activeRocket = null;
+    UI.updateReadouts(state, Physics.computeEnergy(state, currentGravity), launchTME);
+  } else {
+    activeBall = null;
+    activeRocket = { ...state, phase: run.outcome === 'no-liftoff' ? 'fizzle_done' : 'flight', maxThrust: rocketMaxThrust };
+    UI.updateRocketReadouts(state);
+    const settings = UI.getRocketZoomSettings();
+    const ppm = computeNeededZoom(Math.max(1, Math.abs(state.x)), Math.max(2, state.y), settings.marginPercent / 100);
+    Renderer.setViewTransitionDuration(reducedMotion() ? .01 : settings.durationSeconds);
+    if (ppm < Renderer.getCurrentPPM()) Renderer.setTargetZoom(Math.max(ppm, Renderer.getWholePlanetPPM() * .65));
+    const blend = 1 - Renderer.getPlanetViewFrac();
+    const visibleWidth = Renderer.getWidth() / Renderer.getCurrentPPM();
+    Renderer.setCameraTarget((state.x - visibleWidth / 2) * blend);
+    const cameraY = state.y + (Renderer.getHeight() / 2 - Renderer.getBaseGroundY()) / Renderer.getCurrentPPM();
+    Renderer.setCameraTargetY(Math.max(0, cameraY * blend));
+  }
+  if (time > lastFlightTime) {
+    for (const event of run.events) {
+      if (event.time > lastFlightTime && event.time <= time && event.kind !== 'end') {
+        deck.message(event.label);
+        crewReaction(event.kind);
+        if (event.kind === 'burnout') { stopEngineLoop(); playBurnoutSound(); }
+      }
+    }
+    if (deck.clock.rate > 4 && performance.now() / 1000 > crewReactionUntil && activeCharacter?.reaction !== 'coast') crewReaction('coast');
+  }
+  lastFlightTime = time;
+  if (time >= run.duration) {
+    if (!endDelivered) {
+      endDelivered = true;
+      if (run.outcome === 'impact') {
+        if (currentMode === 'cannon') handleLanding(state); else handleRocketLanding(state);
+        crewReaction('impact');
+      } else if (run.outcome === 'no-liftoff') { crewReaction('fizzle'); }
+      stopEngineLoop();
+      UI.setFlightActive(false); deck.showResult();
+    }
+    if (run.outcome === 'impact') { activeBall = null; activeRocket = null; }
+  } else { endDelivered = false; UI.setFlightActive(true); }
+  syncEngineAudio(); deck.update();
+}
+
+function drawVectors(state: any) {
+  const ctx = canvas.getContext('2d');
+  const origin = Renderer.toCanvas(state.x, state.y);
+  const surfaceAngle = state.planetRadius > 0 ? state.x / state.planetRadius : 0;
+  const arrows = [{ label: 'gravity', angle: -Math.PI / 2, color: '#f0d385' }];
+  if (Math.hypot(state.vx, state.vy) > .01) arrows.unshift({ label: 'velocity', angle: Math.atan2(state.vy, state.vx), color: '#94d9ed' });
+  if (state.engineOn) arrows.push({ label: 'thrust', angle: state.theta * Math.PI / 180, color: '#eeae8c' });
+  ctx.save(); ctx.font = '13px system-ui'; ctx.lineWidth = 2;
+  ctx.fillStyle = '#193330'; ctx.fillRect(12, 12, 180, 27);
+  ctx.fillStyle = '#fff7e6'; ctx.fillText('Directions · not to scale', 20, 30);
+  arrows.forEach((arrow, index) => {
+    const angle = arrow.angle - surfaceAngle;
+    const dx = Math.cos(angle) * (58 + index * 10), dy = -Math.sin(angle) * (58 + index * 10);
+    const x = origin.x + dx, y = origin.y + dy;
+    ctx.strokeStyle = arrow.color; ctx.fillStyle = arrow.color;
+    ctx.beginPath(); ctx.moveTo(origin.x, origin.y); ctx.lineTo(x, y);
+    const a = Math.atan2(dy, dx);
+    ctx.lineTo(x - 8 * Math.cos(a - .45), y - 8 * Math.sin(a - .45));
+    ctx.moveTo(x, y); ctx.lineTo(x - 8 * Math.cos(a + .45), y - 8 * Math.sin(a + .45)); ctx.stroke();
+    ctx.strokeStyle = '#193330'; ctx.lineWidth = 3; ctx.strokeText(arrow.label, x + 5, y - 4);
+    ctx.fillText(arrow.label, x + 5, y - 4); ctx.lineWidth = 2;
+  });
+  ctx.restore();
+}
+
+function installSceneControls() {
+  const controls = document.querySelector('.flight-controls')!;
+  const launch = document.createElement('button'); launch.id = 'scene-launch'; launch.textContent = 'Launch';
+  launch.onclick = () => { if (currentMode === 'cannon') fire(); else rocketLaunch(); };
+  const reset = document.createElement('button'); reset.textContent = 'Reset'; reset.onclick = clearRange;
+  controls.prepend(launch, reset);
+  let dragging = false;
+  canvas.setAttribute('aria-label', 'Physics experiment scene. Drag the target flag or use the target number field.');
+  canvas.addEventListener('pointerdown', event => {
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left, y = event.clientY - rect.top;
+    const target = Renderer.toCanvas(currentMode === 'cannon' ? deck.target : 0, currentMode === 'rocket' ? deck.target : 0);
+    const near = currentMode === 'cannon' ? Math.abs(x - target.x) < 26 && Math.abs(y - target.y) < 65 : Math.abs((Renderer.screenToSurface(x, y).y - deck.target) * Renderer.getCurrentPPM()) < 22;
+    if (near) { dragging = true; canvas.setPointerCapture(event.pointerId); event.preventDefault(); }
+  });
+  canvas.addEventListener('pointermove', event => {
+    if (!dragging) return;
+    const rect = canvas.getBoundingClientRect();
+    const position = Renderer.screenToSurface(event.clientX - rect.left, event.clientY - rect.top);
+    deck.setTarget(currentMode === 'cannon' ? position.x : position.y, currentMode);
+    if (deck.run && deck.clock.time >= deck.run.duration) deck.showResult();
+  });
+  canvas.addEventListener('pointerup', () => dragging = false);
+  canvas.addEventListener('pointercancel', () => dragging = false);
+}
+
 function loop(timestamp) {
   if (!lastTime) lastTime = timestamp;
-  var dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+  const elapsed = Math.max(0, (timestamp - lastTime) / 1000);
+  var dt = Math.min(elapsed, 0.05);
   lastTime = timestamp;
+  if (document.hidden) { requestAnimationFrame(loop); return; }
+  const sceneLaunch = document.getElementById('scene-launch') as HTMLButtonElement;
+  if (sceneLaunch) sceneLaunch.disabled = deck.busy || viewActive && !deck.clock.paused;
 
   // Update renderer world (environment blend + zoom animation)
   Renderer.updateWorld(dt);
 
-  // ─── Physics (mode-gated) ───
-  if (currentMode === 'cannon' && activeBall) {
-    activeBall = Physics.stepProjectile(activeBall, dt, currentGravity);
-
-    dotTimer += dt;
-    if (dotTimer > 0.05) {
-      trajectoryDots.push({ x: activeBall.x, y: activeBall.y });
-      dotTimer = 0;
-    }
-
-    // In-flight zoom adjustment: if ball exceeds our predicted bounds, smoothly zoom out more
-    var ballRange = activeBall.x;
-    var ballHeight = activeBall.y;
-    if (ballRange > maxRangeMetres * 0.85 || ballHeight > maxHeightMetres * 0.85) {
-      maxRangeMetres = Math.max(maxRangeMetres, ballRange * 1.2);
-      maxHeightMetres = Math.max(maxHeightMetres, ballHeight * 1.2);
-      var neededPPM = computeNeededZoom(maxRangeMetres, maxHeightMetres, DEFAULT_CANNON_ZOOM_MARGIN);
-      Renderer.setTargetZoom(neededPPM);
-    }
-
-    if (activeBall.y <= 0) {
-      handleLanding(activeBall);
-    } else {
-      var energy = Physics.computeEnergy(activeBall, currentGravity);
-      UI.updateReadouts(activeBall, energy, launchTME);
-    }
-
-    // Off-screen check (with zoomed-out canvas width)
-    // Skip when in whole-planet view — projectile orbits are visible on the disc
-    if (activeBall && Renderer.getPlanetViewFrac() < 0.1 &&
-        toPhysX(Renderer.getWidth() + 200) < activeBall.x) {
-      handleLanding(activeBall);
-    }
-  }
-  // ─── Rocket physics ───
-  if (currentMode === 'rocket' && activeRocket) {
-    if (activeRocket.phase === 'flight') {
-      var prevEngineOn = activeRocket.engineOn;
-      activeRocket = RocketPhysics.stepRocket(activeRocket, dt, currentGravity, rocketGuidance);
-      activeRocket.phase = 'flight';
-      activeRocket.maxThrust = rocketMaxThrust;
-
-      // Detect engine burnout
-      if (prevEngineOn && !activeRocket.engineOn) {
-        stopEngineLoop();
-        playBurnoutSound();
-        // Capture burnout telemetry
-        rocketBurnoutSpeed = Math.sqrt(
-          activeRocket.vx * activeRocket.vx + activeRocket.vy * activeRocket.vy
-        );
-        rocketBurnTime = activeRocket.time;
-      }
-
-      // Track max altitude
-      if (activeRocket.y > rocketMaxHeight) {
-        rocketMaxHeight = activeRocket.y;
-      }
-
-      // ── Dynamic zoom for high-altitude rockets (Phase 4) ──
-      // As altitude grows, zoom out so the rocket remains visible.
-      // At very high altitudes, zoom approaches the whole-planet PPM.
-      var rocketRange = Math.max(1, Math.abs(activeRocket.x));
-      var rocketHeight = Math.max(1, activeRocket.y);
-      var neededRocketPPM = computeNeededZoom(rocketRange, rocketHeight, DEFAULT_ROCKET_ZOOM_MARGIN);
-      var wpPPM = Renderer.getWholePlanetPPM();
-      if (wpPPM > 0) {
-        // Don't zoom in tighter than default, but allow zooming out to whole-planet
-        neededRocketPPM = Math.max(neededRocketPPM, wpPPM * 0.8);
-      }
-      if (neededRocketPPM < Renderer.getCurrentPPM()) {
-        Renderer.setViewTransitionDuration(1.5);
-        Renderer.setTargetZoom(neededRocketPPM);
-      }
-
-      // Trajectory dots
-      rocketDotTimer += dt;
-      if (rocketDotTimer > 0.05) {
-        trajectoryDots.push({ x: activeRocket.x, y: activeRocket.y });
-        rocketDotTimer = 0;
-      }
-
-      // ── Camera follow ──
-      // At far zoom (planet view), smoothly stop following the rocket so
-      // the renderer's planet-centred view takes over.
-      var pvf = Renderer.getPlanetViewFrac();
-      var followWeight = 1 - pvf;  // 1 = full follow, 0 = planet-centred
-
-      // Horizontal: keep rocket centred (blended)
-      var visW = Renderer.getWidth() / Renderer.getCurrentPPM();
-      var followCamX = activeRocket.x - visW / 2;
-      Renderer.setCameraImmediate(followCamX * followWeight);
-
-      // Vertical: centre rocket on screen, clamp so ground stays at bottom (blended)
-      var ppm = Renderer.getCurrentPPM();
-      var wantedCamY = activeRocket.y + (Renderer.getHeight() / 2 - Renderer.getBaseGroundY()) / ppm;
-      Renderer.setCameraImmediateY(Math.max(0, wantedCamY * followWeight));
-
-      // Exhaust particles while engine is on
-      if (activeRocket.engineOn && activeRocket.thrustMagnitude > 0) {
-        var heading = Math.atan2(activeRocket.vy, activeRocket.vx || 0.001);
-        var headingDeg = heading * 180 / Math.PI;
-        if (Math.random() < 0.3) { // throttle particle rate
-          createExhaustParticles(activeRocket.x, activeRocket.y, headingDeg);
-        }
-      }
-
-      // Live telemetry
-      UI.updateRocketReadouts(activeRocket);
-
-      // Ground impact
-      if (activeRocket.y <= 0 && activeRocket.vy <= 0 && activeRocket.time > 0.2) {
-        handleRocketLanding(activeRocket);
-      }
-
-      // Off-screen check — skip in whole-planet view (orbiting rockets stay visible)
-      if (activeRocket && Renderer.getPlanetViewFrac() < 0.1 &&
-          toPhysX(Renderer.getWidth() + 200) < activeRocket.x) {
-        handleRocketLanding(activeRocket);
-      }
-    } else if (activeRocket.phase === 'fizzle') {
-      // ── Fizzle: burn propellant on the pad ──
-      rocketFizzleTimer += dt;
-
-      // Deplete propellant at computed rate
-      if (activeRocket.mProp > 0 && activeRocket.mdot > 0) {
-        activeRocket.mProp -= activeRocket.mdot * dt;
-        if (activeRocket.mProp <= 0) {
-          activeRocket.mProp = 0;
-          activeRocket.engineOn = false;
-        }
-        activeRocket.mass = activeRocket.mDry + activeRocket.mProp;
-        activeRocket.time += dt;
-        activeRocket.totalImpulse += activeRocket.thrustMagnitude * dt;
-
-        // Fizzle sparks
-        if (Math.random() < 0.2) {
-          createExhaustParticles(
-            Renderer.TOWER_BASE_X_M || 1.5, 0.1,
-            90 + (Math.random() - 0.5) * 40
-          );
-        }
-      }
-
-      // Fizzle progress for visual effect
-      activeRocket.fizzleProgress = rocketFizzleDuration > 0
-        ? Math.min(1, rocketFizzleTimer / rocketFizzleDuration)
-        : 1;
-
-      // Live telemetry during fizzle
-      UI.updateRocketReadouts(activeRocket);
-
-      // End fizzle when propellant runs out
-      if (activeRocket.mProp <= 0) {
-        activeRocket.phase = 'fizzle_done';
-        stopEngineLoop();
-        playSadTrombone();
-
-        // Smoke burst at fizzle end
-        createFizzleSmoke(Renderer.TOWER_BASE_X_M || 1.5, 0.2);
-
-        // Show fizzle message
-        UI.showFizzleMessage(rocketFizzleTW);
-
-        // Character mocks the failed launch
-        fizzleReactCharacter();
-
-        rocketLanded = true;
-        UI.setFlightActive(false);
-      }
-    }
-  }
+  updateRecordedFlight(elapsed);
 
   // ─── Animations ───
   if (currentMode === 'cannon') {
-    updateCannonAnimation(dt);
+    updateCannonAnimation(reducedMotion() ? 0 : dt);
     updateBarrelAnimation(dt);
   }
   updateParticles(dt);
+  if (reducedMotion()) particles = [];
   updateImpactAnimations(dt);
-  updateCharacter(dt);
+  if (activeCharacter) activeCharacter.banter = deck.banter;
+  updateCharacter(reducedMotion() ? 0 : dt);
   syncCharacterToPlanet();
 
   // ─── Draw ───
   Renderer.clear();
   Renderer.drawWorld();
 
+  if (deck.run && viewActive) {
+    if (deck.ghost && compatibleRuns(deck.run, deck.baseline) && deck.baseline!.id !== deck.run.id) {
+      Renderer.drawGhost(deck.baseline!.samples, { label: deck.pinned ? 'Pinned flight' : 'Previous flight' });
+      const ghost = sampleFlight(deck.baseline!, Math.min(deck.clock.time, deck.baseline!.duration));
+      const point = Renderer.toCanvas(ghost.x, ghost.y), ctx = canvas.getContext('2d');
+      ctx.save(); ctx.strokeStyle = '#ffffffaa'; ctx.lineWidth = 2; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.arc(point.x, point.y, 7, 0, Math.PI*2); ctx.stroke(); ctx.restore();
+    }
+    if (deck.prediction) Renderer.drawGhost(deck.run.samples, { color: '#e5cf83', label: 'Recorded full path' });
+  }
+  Renderer.drawTarget(deck.target, currentMode);
   // Trajectory dots
   for (var d = 0; d < trajectoryDots.length; d++) {
     Renderer.drawTrajectoryDot(trajectoryDots[d].x, trajectoryDots[d].y);
@@ -1534,7 +1427,7 @@ function loop(timestamp) {
   }
 
   // Comic character (behind shockwave and cannon)
-  if (drawSurfaceDetail && activeCharacter) {
+  if (activeCharacter) {
     Renderer.drawCharacter(activeCharacter);
   }
 
@@ -1584,13 +1477,11 @@ function loop(timestamp) {
 
     // Rocket sprite — on pad, in flight, or absent after landing
     if (activeRocket && activeRocket.phase === 'flight') {
-      Renderer.drawRocket(activeRocket, rAngle, rEps);
-      // Exhaust plume while engine is running
-      if (activeRocket.thrustMagnitude > 0) {
-        var heading = Math.atan2(activeRocket.vy, activeRocket.vx || 0.001);
-        var thrustFrac = activeRocket.thrustMagnitude / (activeRocket.maxThrust || activeRocket.thrustMagnitude || 1);
-        Renderer.drawExhaust(activeRocket.x, activeRocket.y, heading, thrustFrac);
+      if (activeRocket.engineOn && activeRocket.thrustMagnitude > 0) {
+        const thrustFrac = activeRocket.thrustMagnitude / (activeRocket.maxThrust || activeRocket.thrustMagnitude);
+        Renderer.drawExhaust(activeRocket.x, activeRocket.y, activeRocket.theta * Math.PI / 180, thrustFrac, rEps);
       }
+      Renderer.drawRocket(activeRocket, rAngle, rEps);
     } else if (activeRocket && (activeRocket.phase === 'fizzle' || activeRocket.phase === 'fizzle_done')) {
       // Fizzle: rocket on pad, sputtering
       Renderer.drawRocket({ phase: 'pad' }, rAngle, rEps);
@@ -1607,6 +1498,9 @@ function loop(timestamp) {
           activeRocket.fizzleProgress || 0
         );
       }
+    } else if (landedRocket && drawSurfaceDetail) {
+      Renderer.drawCrater(landedRocket.x);
+      Renderer.drawRocket({ phase: 'flight', x: landedRocket.x, y: 0.6, theta: 8 }, 8, landedRocket.epsilon);
     } else if (!rocketLanded) {
       // Pre-launch: rocket sitting on the pad
       Renderer.drawRocket({ phase: 'pad' }, rAngle, rEps);
@@ -1614,14 +1508,14 @@ function loop(timestamp) {
   }
 
   // ── Nozzle cutaway inset (rocket mode only) ──
-  if (currentMode === 'rocket' && typeof NozzleRender !== 'undefined') {
+  if (currentMode === 'rocket' && typeof NozzleRender !== 'undefined' && Renderer.getWidth() > 680) {
     var nzVals = UI.getRocketValues();
     var nzGravity = currentGravity;
     var nzPre = RocketPhysics.computePreLaunch(nzVals, nzGravity);
     var nzProp = RocketPropellants.getById(nzVals.propellantId);
     var nzPh = nzProp ? nzProp.placeholder : { gamma: 1.2, Tc_K: 3000 };
     var nzCtx = canvas.getContext('2d');
-    NozzleRender.draw(nzCtx, canvas.width, canvas.height, {
+    NozzleRender.draw(nzCtx, Renderer.getWidth(), Renderer.getHeight(), {
       throatDia_mm: nzVals.throatDia_mm,
       epsilon:      nzVals.epsilon,
       Pc_bar:       nzVals.Pc_bar,
@@ -1636,9 +1530,11 @@ function loop(timestamp) {
       Tc_K:         nzPh.Tc_K,
       Pa_Pa:        nzVals.Pa_Pa,
       Pc_Pa:        nzPre.Pc_Pa,
-      worldTime:    timestamp / 1000
+      worldTime:    reducedMotion() ? 0 : timestamp / 1000
     });
   }
+
+  if (deck.vectors && (activeBall || activeRocket)) drawVectors(activeBall || activeRocket);
 
   // Particles (shared across both modes)
   Renderer.drawParticles(particles);
@@ -1693,6 +1589,8 @@ function boot() {
     onGravityChange: onGravityChange,
     onBarrelChange: onBarrelChange,
     onModeChange: function (mode) {
+      if (!restoring && deck) clearRange();
+      if (deck && !restoring) deck.setTarget(mode === 'rocket' ? 1000 : 45, mode);
       // Save current mode's zoom state
       var savePPM = Renderer.getCurrentPPM();
       if (currentMode === 'cannon') {
@@ -1722,10 +1620,31 @@ function boot() {
       }
     },
     onRocketLaunch: rocketLaunch,
-    onRocketClear: clearRange
+    onRocketClear: clearRange,
+    onExperiment: function (experiment) {
+      clearRange(); deck.setTarget(experiment.target || (currentMode === 'rocket' ? 1000 : 45), currentMode);
+      deck.message(experiment.question);
+    }
   });
 
-  window.addEventListener('resize', function () { Renderer.resize(); });
+  deck = new FlightDeck(document.querySelector('.canvas-area')!);
+  deck.onSeek = () => {
+    if (!deck.run) return;
+    if (!viewActive) restoreRun();
+    endDelivered = false; lastFlightTime = deck.clock.time;
+    stopEngineLoop(); updateRecordedFlight(0); syncEngineAudio();
+  };
+  deck.onReplay = () => { restoreRun(); syncEngineAudio(); };
+  deck.onSound = syncEngineAudio;
+  installSceneControls();
+  Renderer.resize();
+  window.addEventListener('resize', function () {
+    Renderer.resize();
+    if (viewActive && deck.run) fitRun(deck.run);
+  });
+  new ResizeObserver(() => {
+    if (viewActive && deck.run?.mode === 'cannon') fitRun(deck.run);
+  }).observe(canvas);
 
   // Sync initial barrel length from slider default
   var initBarrelLen = UI.getValues().barrelLength;

@@ -28,8 +28,8 @@ import { RocketPropellants } from './rocket_propellants.ts';
 // ── Layout Constants ─────────────────────────────────────────────────────
 var INSET_MARGIN_X = 20;
 var INSET_MARGIN_Y = 20;
-var INSET_MAX_W    = 300;
-var INSET_MAX_H    = 200;
+var INSET_MAX_W    = 320;
+var INSET_MAX_H    = 184;
 var INSET_W_FRAC   = 0.28;
 var INSET_H_FRAC   = 0.22;
 var CORNER_R       = 8;
@@ -444,7 +444,7 @@ function drawPlume(ctx, L, cy, d) {
     } else {
       label = 'over-exp'; colour = '#ff6644';
     }
-    ctx.font = '8px sans-serif';
+    ctx.font = '10px system-ui, sans-serif';
     ctx.fillStyle = colour;
     ctx.globalAlpha = 0.7;
     ctx.textAlign = 'center';
@@ -553,69 +553,17 @@ function drawStreamlines(ctx, L, cy, worldTime) {
 // ── 5. Annotations & Labels ──────────────────────────────────────────────
 
 function drawLabels(ctx, L, cy, d, iw) {
-  var labelY = cy - Math.max(L.chamberHalfH, L.exitHalfH) - 8;
-
-  ctx.font = '9px sans-serif';
-  ctx.fillStyle = 'rgba(255,255,255,0.35)';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'bottom';
-
-  // Chamber label
-  var chamMidX = (L.xChamber + L.xConvStart) / 2;
-  ctx.fillText('Chamber', chamMidX, labelY);
-
-  // Throat label
-  var throatMidX = (L.xThroat + L.xThroatEnd) / 2;
-  ctx.fillText('Throat', throatMidX, labelY);
-
-  // Bell label
-  var bellMidX = (L.xThroatEnd + L.xExit) / 2;
-  ctx.fillText('Bell', bellMidX, labelY);
-
-  // ── Dimension callouts ──
-  if (iw > 200) {
-    ctx.font = '8px sans-serif';
-    ctx.fillStyle = 'rgba(200,200,255,0.5)';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-
-    var throatDia = d.throatDia_mm || 50;
-
-    // Throat diameter
-    var tx = L.xThroat - 1;
-    var ty1 = cy - L.throatHalfH;
-    var ty2 = cy + L.throatHalfH;
-    ctx.strokeStyle = 'rgba(200,200,255,0.35)';
-    ctx.lineWidth = 0.7;
-    ctx.beginPath();
-    ctx.moveTo(tx, ty1);
-    ctx.lineTo(tx, ty2);
-    ctx.stroke();
-    // Small ticks
-    ctx.beginPath();
-    ctx.moveTo(tx - 2, ty1); ctx.lineTo(tx + 2, ty1);
-    ctx.moveTo(tx - 2, ty2); ctx.lineTo(tx + 2, ty2);
-    ctx.stroke();
-    ctx.textAlign = 'right';
-    ctx.fillText('d\u209C=' + Math.round(throatDia) + 'mm', tx - 4, cy);
-
-    // Exit diameter
-    var exitDia = throatDia * Math.sqrt(d.epsilon || 20);
-    var ex = L.xExit + 3;
-    var ey1 = cy - L.exitHalfH;
-    var ey2 = cy + L.exitHalfH;
-    ctx.strokeStyle = 'rgba(200,200,255,0.35)';
-    ctx.beginPath();
-    ctx.moveTo(ex, ey1);
-    ctx.lineTo(ex, ey2);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(ex - 2, ey1); ctx.lineTo(ex + 2, ey1);
-    ctx.moveTo(ex - 2, ey2); ctx.lineTo(ex + 2, ey2);
-    ctx.stroke();
-    ctx.textAlign = 'left';
-    ctx.fillText('d\u2091=' + Math.round(exitDia) + 'mm', ex + 4, cy);
-  }
+  var labelY=cy-Math.max(L.chamberHalfH,L.exitHalfH)-9;
+  ctx.font='500 11px system-ui, sans-serif';
+  ctx.fillStyle='#dbe1d7';ctx.textAlign='center';ctx.textBaseline='bottom';
+  ctx.fillText('Chamber',(L.xChamber+L.xConvStart)/2,labelY);
+  ctx.fillText('Throat',(L.xThroat+L.xThroatEnd)/2,labelY);
+  ctx.fillText('Bell',(L.xThroatEnd+L.xExit)/2,labelY);
+  var throat=d.throatDia_mm||50;
+  var exit=throat*Math.sqrt(d.epsilon||20);
+  ctx.textAlign='left';ctx.textBaseline='top';ctx.fillStyle='#b9c9c7';
+  ctx.font='10px system-ui, sans-serif';
+  ctx.fillText('Throat '+Math.round(throat)+' mm  ·  Exit '+Math.round(exit)+' mm',L.xFeed,cy+Math.max(L.chamberHalfH,L.exitHalfH)+24);
 }
 
 // ── Main draw function ───────────────────────────────────────────────────
@@ -624,10 +572,10 @@ function draw(ctx, canvasW, canvasH, d) {
   if (!d) return;
 
   // ── Compute inset size & position ──
-  var iw = Math.min(INSET_MAX_W, canvasW * INSET_W_FRAC);
-  var ih = Math.min(INSET_MAX_H, canvasH * INSET_H_FRAC);
+  var iw = Math.min(INSET_MAX_W, Math.max(260, canvasW * INSET_W_FRAC));
+  var ih = INSET_MAX_H;
   // Don't draw if canvas is too small
-  if (iw < 120 || ih < 80) return;
+  if (canvasW < 580 || canvasH < 330) return;
 
   var ix = canvasW - iw - INSET_MARGIN_X;
   var iy = INSET_MARGIN_Y;
@@ -636,7 +584,7 @@ function draw(ctx, canvasW, canvasH, d) {
 
   // ── Backdrop ──
   roundRectPath(ctx, ix, iy, iw, ih, CORNER_R);
-  ctx.fillStyle = 'rgba(15,15,25,0.72)';
+  ctx.fillStyle = 'rgba(34,53,62,0.94)';
   ctx.fill();
   ctx.strokeStyle = 'rgba(255,255,255,0.15)';
   ctx.lineWidth = 1;
@@ -647,18 +595,18 @@ function draw(ctx, canvasW, canvasH, d) {
   ctx.clip();
 
   // ── Title ──
-  ctx.font = '10px sans-serif';
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = '600 12px system-ui, sans-serif';
+  ctx.fillStyle = '#f4deb0';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
-  ctx.fillText('Engine Cutaway', ix + PADDING, iy + 5);
+  ctx.fillText('Nozzle design · illustrative flow', ix + PADDING, iy + 10);
 
   // ── Internal coordinate system ──
   // Drawing area within padding
   var drawX = ix + PADDING;
-  var drawY = iy + PADDING + 14;  // below title
+  var drawY = iy + PADDING + 26;  // below title
   var drawW = iw - PADDING * 2;
-  var drawH = ih - PADDING * 2 - 14;
+  var drawH = ih - PADDING * 2 - 49;
   var cy = drawY + drawH / 2;  // centre-line y
 
   // Compute nozzle layout

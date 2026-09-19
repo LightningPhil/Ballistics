@@ -1,3 +1,5 @@
+import { classifyTrajectory } from './environment.ts';
+
 /**
  * ============================================================================
  * physics.js — Pure Physics Engine for Matilda's Cannon Lab
@@ -35,13 +37,13 @@ function degToRad(deg) {
  */
 function computeLaunchVelocity(force, mass, barrelLength) {
   var d = (typeof barrelLength === 'number') ? barrelLength : BARREL_LENGTH;
-  if (mass <= 0) return 0;
+  if (!Number.isFinite(mass) || mass <= 0) return 0;
 
   // Clamp invalid/negative inputs so we never take sqrt of a negative value.
   var F = isFinite(force) ? Math.max(0, force) : 0;
   d = isFinite(d) ? Math.max(0, d) : 0;
   var workPerMass = (2 * F * d) / mass;
-  if (workPerMass <= 0) return 0;
+  if (workPerMass <= 0 || !Number.isFinite(workPerMass)) return 0;
 
   return Math.sqrt(workPerMass);
 }
@@ -61,8 +63,18 @@ function computeLaunchVelocity(force, mass, barrelLength) {
  * @returns {object} Projectile state
  */
 function createProjectile(x0, y0, speed, angleDeg, mass, planetRadius?) {
+  if (![x0, y0, speed, angleDeg, mass].every(Number.isFinite) || mass <= 0 || speed < 0 || y0 < 0) {
+    throw new RangeError('Projectile position, speed, angle and mass must be finite; mass must be positive.');
+  }
   var R = (typeof planetRadius === 'number' && planetRadius > 0) ? planetRadius : 0;
   var rad = degToRad(angleDeg);
+  const events = {
+    outcome: 'flight' as 'flight' | 'impact',
+    apexTime: speed * Math.sin(rad) <= 0 ? 0 : null as number | null,
+    apexHeight: speed * Math.sin(rad) <= 0 ? y0 : null as number | null,
+    impactTime: null as number | null, impactSpeed: null as number | null,
+    impactVx: null as number | null, impactVy: null as number | null,
+  };
 
   if (R > 0) {
     // Convert surface coords to world-space (planet centre at origin).
@@ -82,6 +94,7 @@ function createProjectile(x0, y0, speed, angleDeg, mass, planetRadius?) {
     var wvy = -localVx * Math.sin(theta) + localVy * Math.cos(theta);
 
     return {
+      ...events,
       x: x0, y: y0,
       vx: localVx, vy: localVy,   // surface-frame velocities (for readouts)
       wx: wx, wy: wy,               // world-space position
@@ -93,6 +106,7 @@ function createProjectile(x0, y0, speed, angleDeg, mass, planetRadius?) {
 
   // Flat-earth fallback (no planetRadius)
   return {
+    ...events,
     x: x0, y: y0,
     vx: speed * Math.cos(rad),
     vy: speed * Math.sin(rad),
@@ -112,7 +126,7 @@ function createProjectile(x0, y0, speed, angleDeg, mass, planetRadius?) {
  * @param {number} gravity Surface gravity magnitude m/s² (positive number)
  * @returns {object} New state
  */
-function stepProjectile(state, dt, gravity) {
+function advanceProjectile(state, dt, gravity) {
   var R = state.planetRadius;
 
   if (R > 0) {
@@ -157,7 +171,8 @@ function stepProjectile(state, dt, gravity) {
     // Convert back to surface coordinates
     var altitude = nr - R;
     var angle = Math.atan2(nwx, nwy);  // angle from "north pole"
-    var surfX = angle * R;
+    var oldAngle = state.x / R;
+    var surfX = state.x + Math.atan2(Math.sin(angle - oldAngle), Math.cos(angle - oldAngle)) * R;
     var surfY = altitude;
 
     // Surface-frame velocity (for readouts: tangential and radial components)
@@ -198,6 +213,42 @@ function stepProjectile(state, dt, gravity) {
   };
 }
 
+/** Canonical contact and apex events, refined inside the same integration step.
+ * Readouts retain incoming velocity separately from the stopped contact state.
+ */
+function stepProjectile(state, dt, gravity) {
+  if (!Number.isFinite(dt) || dt <= 0 || state.outcome === 'impact') return { ...state };
+  const g = Number.isFinite(gravity) ? Math.max(0, gravity) : 0;
+  let next = { ...state, ...advanceProjectile(state, dt, g) };
+  if (state.vy > 0 && next.vy <= 0) {
+    let lo = 0, hi = dt;
+    for (let i = 0; i < 35; i++) {
+      const mid = (lo + hi) / 2;
+      if (advanceProjectile(state, mid, g).vy > 0) lo = mid; else hi = mid;
+    }
+    const apex = advanceProjectile(state, (lo + hi) / 2, g);
+    next.apexTime = apex.time;
+    next.apexHeight = apex.y;
+  }
+  if (next.y <= 0 && next.vy < 0) {
+    let lo = 0, hi = dt;
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo + hi) / 2;
+      if (advanceProjectile(state, mid, g).y > 0) lo = mid; else hi = mid;
+    }
+    const contact = advanceProjectile(state, (lo + hi) / 2, g);
+    next = { ...next, ...contact, outcome: 'impact', y: 0,
+      impactTime: contact.time, impactSpeed: Math.hypot(contact.vx, contact.vy),
+      impactVx: contact.vx, impactVy: contact.vy, vx: 0, vy: 0, wvx: 0, wvy: 0 };
+    if (state.planetRadius > 0) {
+      const angle = contact.x / state.planetRadius;
+      next.wx = state.planetRadius * Math.sin(angle);
+      next.wy = state.planetRadius * Math.cos(angle);
+    }
+  }
+  return next;
+}
+
 /**
  * Compute kinetic, potential, and total mechanical energy.
  * When planetRadius is available, uses proper gravitational PE.
@@ -205,8 +256,12 @@ function stepProjectile(state, dt, gravity) {
 function computeEnergy(state, gravity) {
   var speedSq = state.vx * state.vx + state.vy * state.vy;
   var ke = 0.5 * state.mass * speedSq;
-  // Use surface-relative PE: m*g*h is a good approximation near the surface
-  var pe = state.mass * gravity * Math.max(state.y, 0);
+  // Surface-relative inverse-square potential: mu*m*(1/R - 1/(R+h)).
+  // The algebraically equivalent form below avoids subtracting close values.
+  const height = Math.max(state.y, 0);
+  var pe = state.planetRadius > 0
+    ? state.mass * gravity * state.planetRadius * height / (state.planetRadius + height)
+    : state.mass * gravity * height;
   return { ke: ke, pe: pe, tme: ke + pe };
 }
 
@@ -239,23 +294,30 @@ function predictTrajectory(force, mass, angleDeg, gravity, startX, startY, barre
   if (R > 0) {
     // Numeric integration with spherical gravity
     var st = createProjectile(startX, startY, spd, angleDeg, mass, R);
-    var dt = 0.05;             // 50 ms steps
+    var dt = 1 / 120;
     var maxTime = 3600;        // 1 hour max
     var maxHeight = startY;
     var t = 0;
 
     while (t < maxTime) {
       st = stepProjectile(st, dt, gravity);
-      if (st.y > maxHeight) maxHeight = st.y;
-      if (st.y <= 0 && t > 0) break;
+      maxHeight = Math.max(maxHeight, st.y, st.apexHeight ?? 0);
+      if (st.outcome === 'impact') break;
+      const classification = classifyTrajectory(st, gravity);
+      if (classification.kind === 'orbit' || classification.kind === 'escape') break;
       t += dt;
     }
 
+    const status = st.outcome === 'impact' ? 'impact' : classifyTrajectory(st, gravity).kind;
     return {
       range: Math.abs(st.x),
       maxHeight: maxHeight,
       flightTime: st.time,
-      launchSpeed: spd
+      launchSpeed: spd,
+      complete: status === 'impact' || status === 'orbit' || status === 'escape',
+      status: status === 'returning' ? 'limit' : status,
+      apexTime: st.apexTime,
+      apexHeight: st.apexHeight
     };
   }
 
@@ -263,6 +325,11 @@ function predictTrajectory(force, mass, angleDeg, gravity, startX, startY, barre
   var rad = degToRad(angleDeg);
   var vx = spd * Math.cos(rad);
   var vy = spd * Math.sin(rad);
+
+  if (!(gravity > 0)) {
+    return { range: startX, maxHeight: startY, flightTime: 0, launchSpeed: spd,
+      complete: false, status: 'unbounded', apexTime: null, apexHeight: null };
+  }
 
   var disc = vy * vy + 2 * gravity * startY;
   var flightTime = (vy + Math.sqrt(Math.max(0, disc))) / gravity;
@@ -274,7 +341,11 @@ function predictTrajectory(force, mass, angleDeg, gravity, startX, startY, barre
     range: range,
     maxHeight: maxHeight,
     flightTime: flightTime,
-    launchSpeed: spd
+    launchSpeed: spd,
+    complete: true,
+    status: 'impact',
+    apexTime: Math.max(0, vy / gravity),
+    apexHeight: maxHeight
   };
 }
 
@@ -286,6 +357,7 @@ export const Physics = {
   stepProjectile: stepProjectile,
   computeEnergy: computeEnergy,
   predictTrajectory: predictTrajectory,
+  classifyTrajectory: classifyTrajectory,
   speed: speed,
   degToRad: degToRad
 };
