@@ -3,6 +3,7 @@ import { RocketPropellants } from './rocket_propellants.ts';
 import { RocketPhysics } from './rocket_physics.ts';
 import { resolveEnvironment } from './environment.ts';
 import { getPlanetFact } from './planet-facts.ts';
+import { getWorldArt } from './world-art.ts';
 
 /**
  * ============================================================================
@@ -30,7 +31,7 @@ var readVelocity, readHeight, readDistance;
 var readKE, readPE, readTME;
 var energyBarKE, energyBarPE;
 var tooltipEl;
-var planetFactButton, planetFactButtonLabel, planetFactDialog, planetFactCard;
+var planetFactButton, planetFactButtonLabel, planetFactDialog, planetFactCard, planetFactArtwork;
 
 // Mode state
 var currentMode = 'cannon'; // 'cannon' | 'rocket'
@@ -118,6 +119,7 @@ function init(callbacks) {
 
   // Planet buttons
   planetButtons = document.querySelectorAll('.planet-btn');
+  initWorldArtwork();
   initPlanetFacts();
 
   // Telemetry
@@ -318,12 +320,15 @@ function initPlanetFacts() {
   planetFactButtonLabel = document.getElementById('planet-fact-button-label');
   planetFactDialog = document.getElementById('planet-fact-dialog');
   planetFactCard = document.getElementById('planet-fact-card');
+  planetFactArtwork = document.getElementById('planet-fact-artwork');
   planetFactButton.addEventListener('click', function () {
     const fact = getPlanetFact(planetFactButton.dataset.planet);
     if (!fact) return;
+    const art = getWorldArt(fact.id);
     hideTooltip();
     planetFactCard.dataset.world = fact.id;
     planetFactCard.style.setProperty('--fact-accent', fact.accent);
+    if (art && planetFactArtwork) planetFactArtwork.src = art.full;
     const fields = {
       'planet-fact-kind': fact.kind,
       'planet-fact-title': fact.name,
@@ -353,12 +358,33 @@ function initPlanetFacts() {
   });
 }
 
+function initWorldArtwork() {
+  for (const button of planetButtons) {
+    const id = button.getAttribute('data-planet');
+    const art = getWorldArt(id);
+    const icon = button.querySelector('.planet-icon');
+    if (!art || !icon) continue;
+    const image = document.createElement('img');
+    image.src = art.mini;
+    image.alt = '';
+    image.width = 64;
+    image.height = 64;
+    image.decoding = 'async';
+    icon.replaceChildren(image);
+  }
+}
+
 function updatePlanetFactButton(name) {
   const fact = getPlanetFact(name);
+  const art = fact ? getWorldArt(fact.id) : undefined;
   if (!planetFactButton || !planetFactButtonLabel) return;
   planetFactButton.disabled = !fact;
   planetFactButton.dataset.planet = fact?.id || '';
   planetFactButtonLabel.textContent = fact ? fact.name + ' fact' : 'World fact';
+  if (planetFactArtwork) {
+    planetFactArtwork.src = art?.full || '';
+    planetFactArtwork.alt = '';
+  }
 }
 
 // ── Tooltips ───────────────────────────────────────────────────────────────

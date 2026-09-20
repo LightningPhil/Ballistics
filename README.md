@@ -21,7 +21,7 @@ Start with **Let it fly** or the ready-to-fly rocket. Four optional experiment c
 - The previous flight is kept as a ghost. Pin a baseline while trying alternatives. Comparable flights use the same clock and camera; trajectories from different worlds are not overlaid.
 - Drag the reference flag or height line, or enter its value. Results show how far from the target the flight finished. The target is a measuring aid, not a collision object.
 - Full-path reveal and direction arrows are optional. Arrows distinguish velocity, thrust and gravity; their lengths are not a force/speed scale.
-- Twelve selectable worlds are arranged outwards from the Sun, with Earth’s Moon and Jupiter’s Ganymede immediately after their planets. A fixed-size fact card compares mass, diameter, solar distance, gravity, day, year/orbit, axial tilt, temperatures, atmosphere and exploration using rounded NASA/JPL values.
+- Twelve selectable worlds are arranged outwards from the Sun, with Earth’s Moon and Jupiter’s Ganymede immediately after their planets. Supplied transparent cartoon artwork appears as lightweight picker icons and larger fact-card illustrations. The fixed-size card compares mass, diameter, solar distance, gravity, day, year/orbit, axial tilt, temperatures, atmosphere and exploration using rounded NASA/JPL values.
 - The character close-up stays at the top right, with 50 bespoke quips for each of the nine established speaking worlds, a 50-line general deck for Ganymede and custom gravity, and varied reactions to flight events. Ganymede has a giant squid from beneath its grooved ice; Pluto’s quiet, crystalline ice bear alternates between two-legged and four-legged walks; nothing lives on the Sun. Each speaking world remembers its shuffled round when you leave and return.
 - Saturn's submarine and Jupiter's whale cruise partly veiled in soft clouds, occasionally surfacing for a clear look. Their relaxed swimming follows real viewing time, independent of flight speed; launch reactions ease them back into the clouds. Their close-ups always stay clear.
 - Sound and character remarks have separate switches; silencing remarks leaves the close-up visible. Reduced-motion preferences suppress decorative movement. Hiding the page pauses the flight.
@@ -59,7 +59,7 @@ The build creates the web bundle in `dist/` and a portable, self-contained `dist
 - `src/main.ts`: experiment lifecycle (record → replay → inspect), presentation effects, character state machine and synthesised sound.
 - `src/renderer.ts`, `src/crew.ts`, `src/aquatic-characters.ts`, `src/planet-guests.ts`, `src/cloud-guests.ts`, `src/nozzle_render.ts`: scene and camera, illustrated characters, cloud-guest motion and the engine cutaway.
 - `src/character-remarks.ts`, `src/remarks/`: the quip pools and shuffled-round selection for every world and flight event.
-- `src/ui.ts`, `index.html`, stylesheets: accessible experiment controls and responsive layout.
+- `src/ui.ts`, `src/world-art.ts`, `index.html`, stylesheets: accessible experiment controls, optimised world artwork and responsive layout.
 
 Conventions: `strict` is off in `tsconfig.json` because the older presentation modules are loosely typed, but `noUnusedLocals` is on so dead code fails the build. Modules that touch the DOM or canvas export a single namespace object (`Renderer`, `UI`, `NozzleRender`); the model modules export plain functions.
 

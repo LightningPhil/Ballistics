@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { ENVIRONMENTS, resolveEnvironment } from '../src/environment.ts';
 import { PLANET_FACTS } from '../src/planet-facts.ts';
 import { WORLD_CHARACTERS, characterForWorld, nextIceBearGait } from '../src/world-characters.ts';
+import { WORLD_ART } from '../src/world-art.ts';
 
 test('every selectable world has a complete compact fact card', () => {
   const worlds = ENVIRONMENTS.map(environment => environment.name).sort();
@@ -18,6 +20,18 @@ test('every selectable world has a complete compact fact card', () => {
     }
     assert.ok(fact.atmosphere.length <= 210, `${fact.id} atmosphere copy fits the fixed card`);
     assert.ok(fact.exploration.length <= 240, `${fact.id} exploration copy fits the fixed card`);
+  }
+});
+
+test('every world has lightweight transparent artwork for the picker and fact card', async () => {
+  const worlds = ENVIRONMENTS.map(environment => environment.name).sort();
+  assert.deepEqual(Object.keys(WORLD_ART).sort(), worlds);
+  for (const [world, art] of Object.entries(WORLD_ART)) {
+    assert.notEqual(art.mini, art.full);
+    const mini = await stat(fileURLToPath(art.mini));
+    const full = await stat(fileURLToPath(art.full));
+    assert.ok(mini.size > 500 && mini.size < 30_000, `${world} picker art is lightweight`);
+    assert.ok(full.size > mini.size && full.size < 200_000, `${world} fact art is detailed but efficient`);
   }
 });
 
@@ -63,6 +77,7 @@ test('world picker replaces the old note with the fact dialog controls', async (
   assert.doesNotMatch(html, /id="environment-note"/);
   assert.match(html, /id="planet-fact-button"/);
   assert.match(html, /id="planet-fact-dialog"/);
+  assert.match(html, /id="planet-fact-artwork"/);
   assert.match(html, /data-planet="sun" data-gravity="274"/);
   assert.match(html, /data-planet="ganymede" data-gravity="1\.428"/);
   assert.match(html, /data-planet="pluto" data-gravity="0\.62"/);
