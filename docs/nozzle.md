@@ -1,5 +1,11 @@
 # Nozzle Cutaway Graphic — Implementation Plan
 
+> **Status:** Implemented in `src/nozzle_render.ts` (ES module, not the
+> `window.NozzleRender` IIFE described below). Historical plan; the inset now
+> sits beneath the character close-up rather than at the very top-right, and
+> the flow-regime labels (separated / unchoked) come from
+> `RocketPropellants.lookupPerformance`.
+>
 > **Goal:** A live, parametric, cross-section diagram of the engine drawn on
 > the main canvas in the **top-right corner** of the simulation pane (right
 > pane). Every slider change instantly reshapes the geometry, teaching the

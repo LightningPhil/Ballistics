@@ -2,26 +2,24 @@ import { RocketPropellants } from './rocket_propellants.ts';
 
 /**
  * ============================================================================
- * nozzle_render.js — Parametric Nozzle Cutaway Graphic
+ * nozzle_render.ts — Parametric Nozzle Cutaway Graphic
  * ============================================================================
  *
  * ROLE:  Draws a live, parametric cross-section of the rocket engine nozzle
- *        as an overlay inset on the main canvas (top-right corner).
- *        Every slider change reshapes the geometry, teaching how propellant
- *        choice, chamber pressure, throat area, expansion ratio, and mixture
- *        ratio determine nozzle geometry and flow behaviour.
+ *        as an overlay inset on the main canvas (upper right, beneath the
+ *        character close-up). Every slider change reshapes the geometry,
+ *        teaching how propellant choice, chamber pressure, throat area,
+ *        expansion ratio and mixture ratio determine nozzle geometry and
+ *        flow behaviour. Only drawn in rocket mode on wide viewports.
  *
- *        Based on: nozzle_parametric_geometry_spec.md
- *        Implementation plan: nozzle.md
+ *        Based on: docs/nozzle_parametric_geometry_spec.md
+ *        Implementation plan: docs/nozzle.md
  *
- * DEPENDS ON: rocket_propellants.js (for _exitMachFromEpsilon,
- *             _exitPressureRatio — used for expansion state indicator)
+ * DEPENDS ON: rocket_propellants.ts (isentropic helpers used for the
+ *             expansion-state indicator). Pure drawing — no DOM access.
  *
- * EXPORTS (via window.NozzleRender namespace):
+ * EXPORTS (via the `NozzleRender` object at the bottom):
  *   draw(ctx, canvasW, canvasH, nozzleData)  → void
- *
- * LOADED BY: <script src="nozzle_render.js"> in index.html
- *            (after rocket_propellants.js, before renderer.js)
  * ============================================================================
  */
 
@@ -31,7 +29,6 @@ var INSET_MARGIN_Y = 150; // Leave room for the target readout and character asi
 var INSET_MAX_W    = 320;
 var INSET_MAX_H    = 184;
 var INSET_W_FRAC   = 0.28;
-var INSET_H_FRAC   = 0.22;
 var CORNER_R       = 8;
 var PADDING        = 10;  // internal padding within the inset
 
@@ -185,7 +182,6 @@ function computeLayout(d, iw, ih) {
     // Pipes
     oxH: oxH,
     fuH: fuH,
-    basePipeH: basePipeH,
     // Chamber colour
     chamCol: chamCol,
     // Params
@@ -513,7 +509,7 @@ function drawStreamlines(ctx, L, cy, worldTime) {
   var DOTS_PER_LINE = 3;
 
   for (var i = 0; i < numLines; i++) {
-    // Normalised vertical position: -0.85 to +0.85 of available height
+    // Normalised vertical position: -0.75 to +0.75 of available height
     var vFrac = numLines === 1 ? 0 : (2 * i / (numLines - 1) - 1) * 0.75;
 
     // Draw the streamline as a series of short segments with colour changes
@@ -569,7 +565,7 @@ function drawStreamlines(ctx, L, cy, worldTime) {
 
 // ── 5. Annotations & Labels ──────────────────────────────────────────────
 
-function drawLabels(ctx, L, cy, d, iw) {
+function drawLabels(ctx, L, cy, d) {
   var labelY=cy-Math.max(L.chamberHalfH,L.exitHalfH)-9;
   ctx.font='500 11px system-ui, sans-serif';
   ctx.fillStyle='#dbe1d7';ctx.textAlign='center';ctx.textBaseline='bottom';
@@ -650,7 +646,7 @@ function draw(ctx, canvasW, canvasH, d) {
   drawStreamlines(ctx, L, cy, worldTime);
 
   // ── Labels & dimensions ──
-  drawLabels(ctx, L, cy, d, drawW);
+  drawLabels(ctx, L, cy, d);
 
   // ── Centre-line (axis of symmetry) ──
   ctx.strokeStyle = 'rgba(255,255,255,0.1)';

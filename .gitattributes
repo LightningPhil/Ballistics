@@ -1,2 +1,12 @@
-# Keep the generated portable build reviewable across platforms.
-dist-single/index.html text eol=lf
+# Normalise line endings on every platform. Source files use LF in the
+# working tree too, so the generated portable build (dist-single/index.html,
+# which inlines index.html) is byte-identical whether built on Windows,
+# macOS, Linux or CI, and never shows a spurious diff.
+* text=auto eol=lf
+
+# Binary assets, should any be added.
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary

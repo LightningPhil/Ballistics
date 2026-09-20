@@ -1,5 +1,9 @@
 # Character Art Upgrade — Analysis & Plan
 
+> **Status:** Implemented. Historical audit and plan; the "What's Wrong Now"
+> section describes the pre-upgrade artwork, not the shipped rigs. Current
+> artwork: `src/crew.ts`, `src/planet-guests.ts`, `src/aquatic-characters.ts`.
+>
 > **Goal:** Replace all 9 characters' primitive-shape drawing code with polished, cartoon-quality canvas art that looks release-ready.
 
 ---

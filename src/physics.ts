@@ -2,19 +2,22 @@ import { classifyTrajectory } from './environment.ts';
 
 /**
  * ============================================================================
- * physics.js — Pure Physics Engine for Matilda's Cannon Lab
+ * physics.ts — Pure Cannon Ballistics for Launch Lab
  * ============================================================================
  *
- * ROLE:  All physics calculations live here. Every function is PURE — it takes
+ * ROLE:  All cannon physics lives here. Every function is PURE — it takes
  *        inputs and returns outputs with zero side-effects, zero DOM access.
+ *        Gravity is spherical and inverse-square on a non-rotating world when
+ *        a planet radius is supplied; a flat-world fallback is kept for tests.
+ *        No drag or wind is modelled.
  *
- * EXPORTS (via window.Physics namespace):
+ * EXPORTS (via the `Physics` object at the bottom):
  *   computeLaunchVelocity(force, mass, barrelLength) → speed (m/s)
- *   createProjectile(x, y, speed, angleDeg, mass)    → state object
- *   stepProjectile(state, dt, gravity)                → new state object
+ *   createProjectile(x, y, speed, angleDeg, mass, R) → state object
+ *   stepProjectile(state, dt, gravity)                → new state, with refined
+ *                                                       apex / contact events
  *   computeEnergy(state, gravity)                     → { ke, pe, tme }
- *
- * LOADED BY: <script src="physics.js"> in index.html (before renderer/ui/main)
+ *   predictTrajectory(...)                            → range / height summary
  * ============================================================================
  */
 

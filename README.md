@@ -51,12 +51,24 @@ The build creates the web bundle in `dist/` and a portable, self-contained `dist
 
 ## Source map
 
-- `src/physics.ts`, `src/rocket_physics.ts`, `src/environment.ts`: pure scientific model.
+- `src/physics.ts`, `src/rocket_physics.ts`, `src/rocket_propellants.ts`, `src/environment.ts`: pure scientific model — cannon ballistics, variable-mass rocket solver, illustrative propellant/nozzle performance, planet data and orbit classification. No DOM access; fully covered by the Node tests.
 - `src/flight.ts`: immutable settings, canonical recording, event snapshots and replay sampling.
 - `src/playback.ts`, `src/flight-deck.ts`: smooth viewing clock, inspection and comparison controls.
-- `src/main.ts`: experiment lifecycle and presentation effects.
-- `src/renderer.ts`, `src/crew.ts`, `src/aquatic-characters.ts`, `src/planet-guests.ts`, `src/nozzle_render.ts`: scene, illustrated characters and engine cutaway.
+- `src/camera.ts`: pure framing maths for the cannon setup zoom and the rocket follow camera.
+- `src/main.ts`: experiment lifecycle (record → replay → inspect), presentation effects, character state machine and synthesised sound.
+- `src/renderer.ts`, `src/crew.ts`, `src/aquatic-characters.ts`, `src/planet-guests.ts`, `src/cloud-guests.ts`, `src/nozzle_render.ts`: scene and camera, illustrated characters, cloud-guest motion and the engine cutaway.
+- `src/character-remarks.ts`, `src/remarks/`: the quip pools and shuffled-round selection for every world and flight event.
 - `src/ui.ts`, `index.html`, stylesheets: accessible experiment controls and responsive layout.
+
+Conventions: `strict` is off in `tsconfig.json` because the older presentation modules are loosely typed, but `noUnusedLocals` is on so dead code fails the build. Modules that touch the DOM or canvas export a single namespace object (`Renderer`, `UI`, `NozzleRender`); the model modules export plain functions.
+
+## Documents
+
+`docs/` keeps the design history. Only the first is a current specification; the rest are implemented plans kept for their rationale and each carries a status note at the top.
+
+- `docs/rocket_lab_single_source_of_truth.md` — rocket mechanics reference and the planned CEA propellant-grid schema.
+- `docs/nozzle_parametric_geometry_spec.md`, `docs/nozzle.md` — nozzle cutaway design and plan.
+- `docs/roundplanets.md`, `docs/rocket_plan.md`, `docs/planet_characters_plan.md`, `docs/characters.md` — historical plans for spherical planets, rocket mode and the characters.
 
 ## License
 

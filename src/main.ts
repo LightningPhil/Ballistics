@@ -14,20 +14,19 @@ import { UI } from './ui.ts';
 
 /**
  * ============================================================================
- * main.js — Entry Point & Animation Loop for Launch Lab
+ * main.ts — Entry Point & Animation Loop for Launch Lab
  * ============================================================================
  *
- * ROLE:  Wires Physics, Renderer, and UI together. Owns the animation loop,
- *        game state (active ball / active rocket, shot history, particles),
- *        cannon firing sequence (recoil, flash, sound), rocket flight loop,
- *        impact handling, dynamic zoom system, and gas-giant ball-vanish logic.
+ * ROLE:  Wires the physics solvers, FlightDeck, Renderer and UI together.
+ *        Owns the animation loop, experiment lifecycle (record → replay →
+ *        inspect), presentation state (landed shots, particles, recoil,
+ *        barrel-crew animation, character reactions), camera framing and
+ *        the synthesised sound effects.
  *
- * Both cannon and rocket modes share: planet/gravity, characters, particles,
- * zoom, shots/trajectory-dot history, and the world renderer.
- *
- * DEPENDS ON: physics.js, rocket_propellants.js, rocket_physics.js,
- *             renderer.js, ui.js (all loaded before this)
- * LOADED BY:  <script src="main.js"> in index.html (last script)
+ * Every flight is recorded once by `recordFlight()` in flight.ts and then
+ * played back through `FlightDeck`'s clock; nothing here integrates physics
+ * at render rate. Both cannon and rocket modes share the planet/gravity
+ * scenery, characters, particles, camera and world renderer.
  * ============================================================================
  */
 
@@ -41,7 +40,8 @@ let lastCrewRemark = -30;
 let crewReactionUntil = 0;
 const remarkCounts = new Map<string, number>();
 const characterRemarks = new CharacterRemarks();
-const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const reducedMotionQuery = matchMedia('(prefers-reduced-motion: reduce)');
+const reducedMotion = () => reducedMotionQuery.matches;
 
 // ── State ──────────────────────────────────────────────────────────────────
 var canvas;
@@ -52,22 +52,14 @@ var trajectoryDots = [];
 var particles = [];
 var maxShots = 8;
 
-// Rocket state (Stage 4+)
-var activeRocket = null;     // null | RocketPhysics state object
+// Rocket presentation state
+var activeRocket = null;     // null | recorded rocket state plus presentation fields
 var rocketLanded = false;    // True after rocket has impacted
-var landedRocket = null;     // { x, epsilon, timer, phase: 'flipping'|'door'|'waving' }
-var rocketGuidance = null;   // Guidance object (fixed/pitch/prograde)
-var rocketDotTimer = 0;      // Trajectory dot timing for rocket
+var landedRocket = null;     // { x, epsilon, timer, phase, impactSpeed }
 var rocketMaxThrust = 0;     // Initial thrust for exhaust scaling
 var rocketFizzleTimer = 0;   // Fizzle animation progress timer
 var rocketFizzleDuration = 0; // How long the fizzle burn lasts
-var rocketFizzleTW = 0;       // T/W at fizzle for message display
 var rocketEngineAudio = null; // Running engine audio nodes
-// Flight telemetry tracking (Stage 7)
-var rocketMaxHeight = 0;       // Peak altitude during flight
-var rocketBurnoutSpeed = 0;    // Speed at engine burnout
-var rocketBurnTime = 0;        // Actual burn duration
-var rocketDvTsiolkovsky = 0;   // Theoretical delta-v (pre-launch)
 
 // Cannon animation
 var recoilOffset = 0;
@@ -86,7 +78,6 @@ var audioCtx = null;
 
 // Timing
 var lastTime = 0;
-var dotTimer = 0;
 
 // Physics state
 var currentGravity = 9.81;
@@ -572,8 +563,8 @@ function getBarrelCrew() {
 
 /**
  * Generic particle emitter — shared by both cannon and rocket modes.
- * Cannon smoke/impact use the dedicated wrappers below; rocket exhaust
- * (Stage 6) will call this directly.
+ * Cannon smoke/impact use the dedicated wrappers below; the rocket fizzle
+ * smoke calls this directly. The live exhaust plume is drawn by the renderer.
  *
  * @param {number} x      Physics x-coordinate of emitter origin
  * @param {number} y      Physics y-coordinate of emitter origin
@@ -681,10 +672,6 @@ function updateParticles(dt) {
   }
 }
 
-function clamp(v, lo, hi) {
-  return Math.max(lo, Math.min(hi, v));
-}
-
 function recordingInProgress() {
   return viewActive && !!deck?.run && deck.clock.time < deck.run.duration;
 }
@@ -747,20 +734,6 @@ function computeNeededZoom(rangeMetres, maxHeightMetres, marginFraction?) {
   var needed = Math.min(horizPPM, vertPPM);
   // Don't zoom IN beyond default, but allow unlimited zoom OUT
   return Math.min(Renderer.DEFAULT_PPM, Math.max(1e-9, needed));
-}
-
-function computeRocketZoomPlan(prediction, marginFraction) {
-  if (!prediction) return null;
-  var width = Math.max(1, prediction.maxX - prediction.minX);
-  var height = Math.max(2, prediction.maxHeight);
-  var ppm = computeNeededZoom(width, height, marginFraction);
-  var visibleWidth = Renderer.getWidth() / ppm;
-  var pad = Math.max(0, (visibleWidth - width) * 0.5);
-  var cameraX = prediction.minX - pad;
-  return {
-    ppm: ppm,
-    cameraX: cameraX
-  };
 }
 
 // ── Firing sequence ────────────────────────────────────────────────────────
@@ -844,14 +817,8 @@ function clearRange() {
   activeRocket = null;
   rocketLanded = false;
   landedRocket = null;
-  rocketGuidance = null;
   rocketFizzleTimer = 0;
   rocketFizzleDuration = 0;
-  rocketDotTimer = 0;
-  rocketMaxHeight = 0;
-  rocketBurnoutSpeed = 0;
-  rocketBurnTime = 0;
-  rocketDvTsiolkovsky = 0;
   totalShotCount = 0;
   maxRangeMetres = 0;
   maxHeightMetres = 2;
@@ -910,22 +877,6 @@ async function rocketLaunch() {
   await beginFlight('rocket', vals, initial);
 }
 
-function buildGuidance(vals) {
-  if (RocketPhysics.buildGuidance) {
-    return RocketPhysics.buildGuidance(vals);
-  }
-  switch (vals.guidanceMode) {
-    case 'pitch_program':
-      return RocketPhysics.guidancePitchProgram(
-        vals.launchAngle, vals.pitchEnd, vals.pitchT1, vals.pitchT2
-      );
-    case 'prograde_lock':
-      return RocketPhysics.guidanceProgradeLock(vals.progradeVmin, vals.launchAngle);
-    default: // 'fixed' → gravity turn: thrust follows velocity after rail clearance
-      return RocketPhysics.guidanceProgradeLock(5, vals.launchAngle);
-  }
-}
-
 // ── Rocket landing ────────────────────────────────────────────────────────
 function handleRocketLanding(state) {
   const run = deck.run!;
@@ -938,30 +889,6 @@ function handleRocketLanding(state) {
   rocketLanded = true;
   landedRocket = { x: state.x, epsilon: run.config.epsilon, timer: 0, phase: 'impact', impactSpeed: state.impactSpeed };
   activeRocket = null; stopEngineLoop(); UI.setFlightActive(false);
-}
-
-// ── Rocket exhaust particles ──────────────────────────────────────────────
-function createExhaustParticles(px, py, angleDeg) {
-  var rad = (angleDeg + 180) * Math.PI / 180; // opposite to heading
-  createParticlesAt(px, py, {
-    count: 6,
-    baseAngle: rad,
-    spread: 0.8,
-    minSpeed: 2,
-    maxSpeed: 5,
-    vyBoost: -0.5,
-    minLife: 0.3,
-    maxLife: 0.8,
-    minRadius: 2,
-    maxRadius: 5,
-    colour: function () {
-      var r = 200 + Math.floor(Math.random() * 55);
-      var g = 100 + Math.floor(Math.random() * 80);
-      var b = Math.floor(Math.random() * 40);
-      return 'rgb(' + r + ',' + g + ',' + b + ')';
-    },
-    gravity: 3
-  });
 }
 
 // ── Audio: Rocket ignition rumble ──────────────────────────────────────────
@@ -1150,7 +1077,7 @@ async function beginFlight(mode: 'cannon' | 'rocket', config: any, initial: any)
     launchTME = Physics.computeEnergy(initial, config.gravity).tme;
     rocketMaxThrust = initial.thrustMagnitude || 0;
     viewActive = true; endDelivered = false; lastFlightTime = -1;
-    shots = []; particles = []; trajectoryDots = []; landedRocket = null; rocketLanded = false;
+    clearLandingPresentation(); trajectoryDots = [];
     fitRun(run);
     if (run.outcome === 'no-liftoff') {
       deck.clock.time = run.duration; deck.clock.paused = true;
@@ -1199,7 +1126,9 @@ function restoreRun() {
   launchTME = Physics.computeEnergy(run.samples[0], currentGravity).tme;
   rocketMaxThrust = run.samples[0].thrustMagnitude || 0;
   viewActive = true; endDelivered = false; lastFlightTime = deck.clock.time > 0 ? deck.clock.time : -1;
-  shots = []; particles = []; landedRocket = null; rocketLanded = false;
+  // Replay starts from ignition, so the previous landing (crater, summary,
+  // shockwave) must go the same way a backwards seek clears it.
+  clearLandingPresentation();
   if (run.outcome === 'no-liftoff') {
     const pre = RocketPhysics.computePreLaunch(run.config, run.config.gravity);
     UI.showFizzleMessage(pre.verticalTw ?? pre.tw);
@@ -1411,13 +1340,13 @@ function loop(timestamp) {
 
   if (deck.run && viewActive) {
     if (deck.ghost && compatibleRuns(deck.run, deck.baseline) && deck.baseline!.id !== deck.run.id) {
-      Renderer.drawGhost(deck.baseline!.samples, { label: deck.pinned ? 'Pinned flight' : 'Previous flight' });
+      Renderer.drawGhost(deck.baseline!.samples);
       const ghost = sampleFlight(deck.baseline!, Math.min(deck.clock.time, deck.baseline!.duration));
       const point = Renderer.toCanvas(ghost.x, ghost.y), ctx = canvas.getContext('2d');
       ctx.save(); ctx.strokeStyle = '#ffffffaa'; ctx.lineWidth = 2; ctx.setLineDash([3,3]);
       ctx.beginPath(); ctx.arc(point.x, point.y, 7, 0, Math.PI*2); ctx.stroke(); ctx.restore();
     }
-    if (deck.prediction) Renderer.drawGhost(deck.run.samples, { color: '#e5cf83', label: 'Recorded full path' });
+    if (deck.prediction) Renderer.drawGhost(deck.run.samples, { color: '#e5cf83' });
   }
   Renderer.drawTarget(deck.target, currentMode);
   // Trajectory dots
@@ -1485,7 +1414,7 @@ function loop(timestamp) {
   }
 
   } else if (currentMode === 'rocket') {
-    // ── Rocket mode drawing (Stage 4) ──
+    // ── Rocket mode drawing ──
     var rVals = UI.getRocketValues();
     var rAngle = rVals.launchAngle;
     var rEps = rVals.epsilon;

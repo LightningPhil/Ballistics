@@ -15,15 +15,15 @@
     "type": "git",
     "url": "git+https://github.com/LightningPhil/Ballistics.git"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["physics", "education", "simulation", "ballistics", "rocket", "canvas"],
+  "author": "Philip Leichauer",
   "license": "UNLICENSED",
   "private": true,
   "bugs": {
     "url": "https://github.com/LightningPhil/Ballistics/issues"
   },
   "homepage": "https://github.com/LightningPhil/Ballistics#readme",
-  "description": "",
+  "description": "Launch Lab: a playful cannon and rocket physics sandbox with recorded, inspectable flights on nine worlds.",
   "devDependencies": {
     "typescript": "^5.9.3",
     "vite": "^7.3.1",

@@ -1,27 +1,27 @@
 /**
  * ============================================================================
- * rocket_propellants.js — Propellant Registry & Performance Tables
+ * rocket_propellants.ts — Propellant Registry & Performance Model
  * ============================================================================
  *
  * ROLE:  Contains the complete propellant library (metadata + slider bounds)
  *        and an approximate isentropic performance model.
- *        No DOM access — pure data.
+ *        No DOM access — pure data and pure functions.
  *
- * EXPORTS (via window.RocketPropellants namespace):
+ * EXPORTS (via the `RocketPropellants` object at the bottom):
  *   REGISTRY         — Array of propellant definition objects
  *   getById(id)      — Look up a propellant by ID string
  *   lookupPerformance(id, MR, Pc_Pa, epsilon, Pa_Pa)
- *                    — Returns { cStar, Cf } (m/s, dimensionless)
+ *                    — Returns { cStar, Cf, effectiveEpsilon, exitPressure,
+ *                                flowRegime, choked }
  *
- * Placeholder grids use analytical isentropic approximations that give
- * reasonable "shape" for teaching. Strong over-expansion uses the conservative
- * Summerfield separation criterion (wall pressure ≈ 0.4 ambient pressure).
- * When real CEA JSON files are loaded later, lookupPerformance can be replaced
- * with interpolated data.
- * Mixture ratio is metadata only in this version; no chemistry is simulated.
- *
- * LOADED BY: <script src="rocket_propellants.js"> in index.html
- *            (before rocket_physics.js)
+ * The model uses analytical isentropic approximations that give a reasonable
+ * "shape" for teaching, calibrated to a single textbook vacuum-Isp anchor per
+ * pair. Strong over-expansion uses the conservative Summerfield separation
+ * criterion (wall pressure ≈ 0.4 ambient pressure). An unchoked throat is
+ * reported as engine-off. Mixture ratio is metadata only; no chemistry is
+ * simulated. `docs/rocket_lab_single_source_of_truth.md` §8–11 describes the
+ * intended future replacement with interpolated CEA grids, which would slot
+ * in behind `lookupPerformance` without touching the solver.
  * ============================================================================
  */
 

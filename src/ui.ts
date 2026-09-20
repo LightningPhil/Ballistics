@@ -5,31 +5,18 @@ import { resolveEnvironment } from './environment.ts';
 
 /**
  * ============================================================================
- * ui.js — Control Panel Logic for Launch Lab
+ * ui.ts — Control Panel Logic for Launch Lab
  * ============================================================================
  *
  * ROLE:  Manages all DOM controls: mode toggle, cannon sliders, rocket panel,
- *        planet buttons, fire/launch buttons, tooltips, live telemetry
- *        readouts, pre-launch rocket readouts, and the energy bar.
- *        Reads from DOM, writes to DOM — but never touches canvas or physics.
+ *        planet buttons, fire/launch buttons, tooltips, experiment cards,
+ *        live telemetry readouts, pre-launch rocket readouts and the energy
+ *        bar. Reads from DOM, writes to DOM — never touches the canvas.
+ *        It calls the pure physics modules only to compute pre-launch
+ *        readouts; recorded flights are owned by main.ts / flight.ts.
  *
- * EXPORTS (via window.UI namespace):
- *   init(callbacks)              — Wire up all event listeners
- *   getValues()                  — Cannon slider values { angle, mass, force, gravity }
- *   getMode()                    — 'cannon' | 'rocket'
- *   getRocketValues()            — Rocket slider values (full config object)
- *   updateReadouts(state, energy)— Push cannon telemetry to DOM
- *   updateRocketReadouts(state, launchX) — Push rocket flight telemetry to DOM
- *   updatePreLaunchReadouts(pre) — Push pre-launch computed values to DOM
- *   resetRocketReadouts()        — Zero-out rocket displays
- *   setFlightActive(bool)        — Enable/disable fire/launch & mode toggle
- *   highlightPlanet(name)        — Set active planet button
- *   resetReadouts()              — Zero-out cannon displays
- *
- * DEPENDS ON: DOM elements defined in index.html,
- *             window.RocketPropellants (for registry data),
- *             window.RocketPhysics (for live pre-launch computation)
- * LOADED BY:  <script src="ui.js"> in index.html (after renderer.js)
+ * The `UI` object exported at the bottom is the public surface used by
+ * main.ts; everything else in this file is private.
  * ============================================================================
  */
 
@@ -40,8 +27,7 @@ var btnFire, btnClear;
 var planetButtons;
 var readVelocity, readHeight, readDistance;
 var readKE, readPE, readTME;
-var energyBarKE, energyBarPE, energyBarContainer;
-var flightDataSection;
+var energyBarKE, energyBarPE;
 var tooltipEl;
 
 // Mode state
@@ -142,10 +128,6 @@ function init(callbacks) {
   // Energy bar
   energyBarKE = document.getElementById('energy-bar-ke');
   energyBarPE = document.getElementById('energy-bar-pe');
-  energyBarContainer = document.getElementById('energy-bar');
-
-  // Flight data section
-  flightDataSection = document.getElementById('flight-data');
 
   // Tooltip element
   tooltipEl = document.getElementById('tooltip');
@@ -226,6 +208,9 @@ function wireModeToggle() {
 
 function setMode(newMode) {
   if (isFlightActive || (newMode !== 'cannon' && newMode !== 'rocket')) return;
+  // Restoring a recorded flight or applying an experiment card in the current
+  // mode must not re-run the mode-switch side effects (range clear, camera).
+  if (newMode === currentMode) return;
   currentMode = newMode;
   // Update toggle button highlights
   for (var i = 0; i < modeButtons.length; i++) {
@@ -239,20 +224,11 @@ function setMode(newMode) {
   }
   document.getElementById('cannon-actions').hidden = currentMode !== 'cannon';
   document.getElementById('rocket-actions').hidden = currentMode !== 'rocket';
-  // Show/hide panels
-  if (currentMode === 'cannon') {
-    cannonPanel.style.display = '';
-    rocketPanel.style.display = 'none';
-  } else {
-    cannonPanel.style.display = 'none';
-    rocketPanel.style.display = 'flex';
-  }
-  // Notify main.js
+  // Show/hide panels (the [hidden] rule in style.css does the display work)
+  cannonPanel.hidden = currentMode !== 'cannon';
+  rocketPanel.hidden = currentMode !== 'rocket';
+  // Notify main.ts
   if (onModeChange) onModeChange(currentMode);
-}
-
-function getMode() {
-  return currentMode;
 }
 
 // ── Slider helpers ─────────────────────────────────────────────────────────
@@ -263,7 +239,7 @@ function wireSlider(slider, display, unit) {
     // If gravity slider changes, check planet match
     if (slider === sliderGravity) {
       var g = parseFloat(slider.value);
-      matchPlanet(g);
+      highlightNearestPlanet(g);
       if (onGravityChange) onGravityChange(g);
       refreshPreLaunch();
     }
@@ -299,10 +275,6 @@ var PLANET_GRAVITY_MAP = [
   { name: 'neptune', g: 11.27 },
   { name: 'jupiter', g: 25.92 }
 ];
-
-function matchPlanet(g) {
-  highlightPlanet(findClosestPlanetName(g));
-}
 
 function findClosestPlanetName(g) {
   var best = PLANET_GRAVITY_MAP[0], bd = Math.abs(g - best.g);
@@ -350,20 +322,29 @@ function wireTooltips() {
       trigger.dataset.tipWired = 'true';
       trigger.setAttribute('aria-describedby', 'tooltip');
       trigger.setAttribute('aria-expanded', 'false');
-      trigger.addEventListener('mouseenter', function (e) {
-        var html = trigger.getAttribute('data-tip');
-        showTooltip(trigger, html);
+      // Hover shows a transient tooltip that ignores the pointer, so moving
+      // the mouse off the trigger closes it cleanly. Focus or click "pins" it
+      // instead: a pinned tooltip accepts pointer events so long content can
+      // be scrolled, and only closes on blur, Escape or an outside click.
+      trigger.addEventListener('mouseenter', function () {
+        if (activeTooltipAnchor === trigger && tooltipEl.classList.contains('pinned')) return;
+        showTooltip(trigger, trigger.getAttribute('data-tip'), false);
       });
       trigger.addEventListener('mouseleave', function () {
-        if (document.activeElement !== trigger) hideTooltip();
+        if (!tooltipEl.classList.contains('pinned')) hideTooltip();
       });
       trigger.addEventListener('focus', function () {
-        showTooltip(trigger, trigger.getAttribute('data-tip'));
+        showTooltip(trigger, trigger.getAttribute('data-tip'), true);
       });
-      trigger.addEventListener('blur', hideTooltip);
+      trigger.addEventListener('blur', function (event: FocusEvent) {
+        // Clicking inside a pinned tooltip (e.g. its scrollbar) moves focus
+        // onto the tooltip itself; that is not a dismissal.
+        if (event.relatedTarget === tooltipEl) return;
+        hideTooltip();
+      });
       trigger.addEventListener('click', function (event) {
         event.stopPropagation();
-        showTooltip(trigger, trigger.getAttribute('data-tip'));
+        showTooltip(trigger, trigger.getAttribute('data-tip'), true);
       });
       trigger.addEventListener('keydown', function (event) {
         if (event.key === 'Escape') hideTooltip();
@@ -372,17 +353,31 @@ function wireTooltips() {
   }
   if (!tooltipEl.dataset.wired) {
     tooltipEl.dataset.wired = 'true';
-    document.addEventListener('click', hideTooltip);
-    document.addEventListener('scroll', hideTooltip, true);
+    // Focusable (but not tabbable) so a pinned tooltip can take focus when
+    // clicked without the trigger's blur handler dismissing it.
+    tooltipEl.tabIndex = -1;
+    tooltipEl.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') hideTooltip();
+    });
+    document.addEventListener('click', function (event) {
+      if (tooltipEl.contains(event.target as Node)) return;
+      hideTooltip();
+    });
+    document.addEventListener('scroll', function (event) {
+      // Scrolling the tooltip's own overflow must not dismiss it.
+      if (event.target === tooltipEl) return;
+      hideTooltip();
+    }, true);
     window.addEventListener('resize', hideTooltip);
   }
 }
 
-function showTooltip(anchor, html) {
+function showTooltip(anchor, html, pinned) {
   if (activeTooltipAnchor && activeTooltipAnchor !== anchor) activeTooltipAnchor.setAttribute('aria-expanded', 'false');
   activeTooltipAnchor = anchor;
   anchor.setAttribute('aria-expanded', 'true');
   tooltipEl.innerHTML = html;
+  tooltipEl.classList.toggle('pinned', !!pinned);
   tooltipEl.style.display = 'block';
 
   // Position near anchor
@@ -407,6 +402,7 @@ function showTooltip(anchor, html) {
 function hideTooltip() {
   if (activeTooltipAnchor) activeTooltipAnchor.setAttribute('aria-expanded', 'false');
   activeTooltipAnchor = null;
+  tooltipEl.classList.remove('pinned');
   tooltipEl.style.display = 'none';
 }
 
@@ -706,7 +702,6 @@ function getRocketZoomSettings() {
 // ── Live pre-launch readout refresh ────────────────────────────────────────
 
 function refreshPreLaunch() {
-  if (typeof RocketPhysics === 'undefined') return;
   var vals = getRocketValues();
   var gravity = parseFloat(sliderGravity.value);
   var pre: any = RocketPhysics.computePreLaunch(vals, gravity);
@@ -768,9 +763,6 @@ function updateRocketReadouts(state, launchX?) {
   readRocketHeight.textContent = Math.max(0, state.y).toFixed(1) + ' m';
   var origin = Number.isFinite(launchX) ? launchX : 0;
   readRocketRange.textContent = (state.x - origin).toFixed(1) + ' m';
-  var propPct = state.mPropInitial > 0
-    ? ((state.mProp / state.mPropInitial) * 100).toFixed(0)
-    : '0';
   readRocketProp.textContent = state.mProp.toFixed(1) + ' / ' + state.mPropInitial.toFixed(1) + ' kg';
   readRocketImpulse.textContent = formatSI(state.totalImpulse) + 'N\u00B7s';
 
@@ -848,12 +840,6 @@ function showFizzleMessage(tw) {
   fizzleMessage.classList.remove('fizzle-message-hidden');
 }
 
-function showFlightMessage(message: string) {
-  if (!fizzleMessage) return;
-  fizzleMessage.textContent = message;
-  fizzleMessage.classList.remove('fizzle-message-hidden');
-}
-
 function hideFizzleMessage() {
   if (!fizzleMessage) return;
   fizzleMessage.classList.add('fizzle-message-hidden');
@@ -863,7 +849,9 @@ function hideFizzleMessage() {
 
 /**
  * Show the post-flight summary panel with computed results.
- * @param {Object} data { range, maxHeight, flightTime, burnTime, dvTsiolkovsky, dvActual }
+ * @param {Object} data { range, maxHeight, flightTime, burnTime, dvTsiolkovsky, dvActual, burnoutSpeed? }
+ *   burnoutSpeed is the speed at motor cut-off; omit it when the rocket never
+ *   burnt out (dvActual is then used as the fallback).
  */
 function showPostFlightSummary(data) {
   if (!postFlightSummary) return;
@@ -946,10 +934,6 @@ function updateReadouts(state, energy, maxTME?) {
   }
 }
 
-function freezeReadouts() {
-  // Just stop updating — values remain as they are
-}
-
 function resetReadouts() {
   updateReadouts(null, null);
 }
@@ -959,23 +943,12 @@ function resetReadouts() {
 function setFlightActive(active) {
   if (isFlightActive === active) return;
   isFlightActive = active;
+  // The :disabled pseudo-class carries the styling; no extra class is needed.
   btnFire.disabled = active;
   if (btnLaunch) btnLaunch.disabled = active;
-  if (active) {
-    btnFire.classList.add('disabled');
-    if (btnLaunch) btnLaunch.classList.add('disabled');
-  } else {
-    btnFire.classList.remove('disabled');
-    if (btnLaunch) btnLaunch.classList.remove('disabled');
-  }
   // Disable/enable mode toggle during flight
   for (var i = 0; i < modeButtons.length; i++) {
     modeButtons[i].disabled = active;
-    if (active) {
-      modeButtons[i].classList.add('disabled');
-    } else {
-      modeButtons[i].classList.remove('disabled');
-    }
   }
   // A recorded flight has one immutable setup. Changing gravity or engine
   // controls beneath it would make the labels disagree with the animation.
@@ -1078,25 +1051,18 @@ function applyExperiment(id) {
 export const UI = {
   init: init,
   getValues: getValues,
-  getMode: getMode,
-  setMode: setMode,
-  applyExperiment: applyExperiment,
   restoreFlightConfig: restoreFlightConfig,
   getRocketValues: getRocketValues,
   getRocketZoomSettings: getRocketZoomSettings,
   updateReadouts: updateReadouts,
   updateRocketReadouts: updateRocketReadouts,
-  updatePreLaunchReadouts: updatePreLaunchReadouts,
   resetRocketReadouts: resetRocketReadouts,
   showPostFlightSummary: showPostFlightSummary,
   hidePostFlightSummary: hidePostFlightSummary,
   showFizzleMessage: showFizzleMessage,
-  showFlightMessage: showFlightMessage,
   hideFizzleMessage: hideFizzleMessage,
   refreshPreLaunch: refreshPreLaunch,
-  freezeReadouts: freezeReadouts,
   resetReadouts: resetReadouts,
   setFlightActive: setFlightActive,
-  highlightPlanet: highlightPlanet,
   highlightNearestPlanet: highlightNearestPlanet
 };

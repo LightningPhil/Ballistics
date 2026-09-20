@@ -5,26 +5,24 @@ import { rocketCameraFraming, type RocketCameraRequest } from './camera.ts';
 
 /**
  * ============================================================================
- * renderer.js — Canvas Drawing for Matilda's Cannon Lab
+ * renderer.ts — Canvas Drawing for Launch Lab
  * ============================================================================
  *
- * ROLE:  Everything drawn on <canvas>. Planet environments (sky, ground,
- *        features), castle-rampart cannon, cannonballs, flags, craters/gas
- *        holes, particles, muzzle flash, shockwave. Dynamic zoom camera.
+ * ROLE:  Everything drawn on <canvas>. Planet environments (sky, curved
+ *        ground, features), the side-elevation cannon, launch tower and
+ *        rocket, cannonballs, flags, craters/gas holes, particles, muzzle
+ *        flash, shockwave, ghost trails, the target marker and the character
+ *        close-up. Owns the camera: dynamic zoom, panning, the planet-view
+ *        blend from flat horizon to whole-planet circle, and the rocket
+ *        follow camera (framing maths in camera.ts).
  *        Smooth planet-environment crossfade driven by gravity value.
  *
- * EXPORTS (via window.Renderer namespace):
- *   init(canvas), resize(), updateWorld(dt)
- *   setTargetGravity(g), setTargetZoom(ppm), resetZoom()
- *   setViewTransitionDuration(seconds)
- *   clear(), drawWorld(), drawCannon(), drawBall(), drawLandedBall()
- *   drawTrajectoryDot(), drawFlag(), drawCrater(), drawGasHole()
- *   drawParticles(), drawMuzzleFlash(), drawShockwave()
- *   drawLaunchTower(), drawRocket(), drawExhaust(), drawFizzle()
- *   toCanvasX(), toCanvasY(), getCannonTipPhys()
- *   isCurrentGas(), getNearestPlanetName(), getPlanets()
+ * Character artwork is split out: crew.ts (barrel crew and the golfer,
+ * alien, spaceman and robots), planet-guests.ts (newt, snowman) and
+ * aquatic-characters.ts (whale, submarine). Nozzle cutaway: nozzle_render.ts.
  *
- * LOADED BY: <script src="renderer.js"> in index.html (after physics.js)
+ * The `Renderer` object exported at the bottom is the public surface used by
+ * main.ts and the tests; everything else in this file is private.
  * ============================================================================
  */
 
@@ -370,15 +368,7 @@ function setZoomImmediate(ppm) {
 function resetZoom() { targetPPM = DEFAULT_PPM; }
 
 function setCameraTarget(x) { targetCameraX = x; }
-function setCameraTargetY(y) { targetCameraY = Math.max(0, y); }
 function setCameraImmediate(x) { cameraX = x; targetCameraX = x; }
-function setCameraImmediateY(y) {
-  y = Math.max(0, y);
-  cameraY = y;
-  targetCameraY = y;
-  // Recompute groundY so toCanvasY is correct this frame
-  groundY = baseGroundY + cameraY * currentPPM;
-}
 function resetCamera() { rocketCamera = null; targetCameraX = 0; cameraX = 0; targetCameraY = 0; cameraY = 0; }
 function setRocketCamera(request: RocketCameraRequest) {
   rocketCamera = request;
@@ -471,8 +461,8 @@ function updateWorld(dt) {
       // Use log-space for perceptually uniform ramp
       var logStart = Math.log(rampStart);
       var logEnd   = Math.log(rampEnd);
-      var logCur   = Math.log(Math.max(currentPPM, rampEnd * 0.5));
-      planetViewFrac = clamp((logStart - logCur) / (logStart - logEnd), 0, 1);
+      var logNow   = Math.log(Math.max(currentPPM, rampEnd * 0.5));
+      planetViewFrac = clamp((logStart - logNow) / (logStart - logEnd), 0, 1);
     } else {
       planetViewFrac = 0;
     }
@@ -601,10 +591,6 @@ function toCanvasX(px) {
   if (curveActive) return worldToScreen(px, 0).sx;
   return (px - cameraX) * currentPPM;
 }
-function toCanvasY(py) {
-  if (curveActive) return worldToScreen(cameraX, py).sy;
-  return groundY - py * currentPPM;
-}
 /** Full curved-aware transform for both coordinates at once. */
 function toCanvas(px, py) {
   if (curveActive) {
@@ -627,11 +613,12 @@ function screenToSurface(screenX, screenY) {
   return { x: angle * curveRadius, y: Math.hypot(dx, dy) / currentPPM - curveRadius };
 }
 
-/** A previous run is a single screen-space dashed path, with no new physics. */
-function drawGhost(points, options = {}) {
+/** A previous run is a single screen-space dashed path, with no new physics.
+ * The flight deck's comparison note identifies it; no label is drawn here. */
+function drawGhost(points, options: { color?: string } = {}) {
   if (!points || points.length < 2) return;
   ctx.save();
-  ctx.strokeStyle = options['color'] || (env.skyMid[0] > 100 ? '#566c7b' : '#aec4da');
+  ctx.strokeStyle = options.color || (env.skyMid[0] > 100 ? '#566c7b' : '#aec4da');
   ctx.globalAlpha = 0.65;
   ctx.lineWidth = 2;
   ctx.lineCap = 'round';
@@ -721,10 +708,6 @@ function getCannonTipPhys(angleDeg) {
     y: CANNON_BASE_Y_M + BARREL_LENGTH_M * Math.sin(rad)
   };
 }
-function getCannonPivotCanvas() {
-  return toCanvas(CANNON_BASE_X_M, CANNON_BASE_Y_M);
-}
-
 // ── Sky ────────────────────────────────────────────────────────────────────
 function drawSky() {
   var skyBottom = Math.min(groundY, H);
@@ -1015,22 +998,16 @@ function drawCelestialBodies(planetName) {
     if (cx < -displayR * 2 || cx > W + displayR * 2 ||
         cy < -displayR * 2 || cy > H + displayR * 2) continue;
 
-    // Temporarily override radius for scaled drawing
-    var origR = body.radius;
-    body.radius = displayR;
-
     if (body.texture === 'lumpy') {
-      drawLumpyMoon(cx, cy, body);
+      drawLumpyMoon(cx, cy, body, displayR);
     } else if (body.texture === 'moon') {
-      drawEarthMoon(cx, cy, body);
+      drawEarthMoon(cx, cy, body, displayR);
     }
-
-    body.radius = origR;
   }
 }
 
-function drawLumpyMoon(cx, cy, body) {
-  var r = body.radius;
+/** `r` is the on-screen radius; `body.radius` is the unscaled design size. */
+function drawLumpyMoon(cx, cy, body, r) {
   var verts = body.shapeVerts;
   if (!verts || verts.length < 3) return;
 
@@ -1099,9 +1076,7 @@ function drawLumpyMoon(cx, cy, body) {
   ctx.restore();
 }
 
-function drawEarthMoon(cx, cy, body) {
-  var r = body.radius;
-
+function drawEarthMoon(cx, cy, body, r) {
   ctx.save();
   ctx.translate(cx, cy);
 
@@ -1514,7 +1489,6 @@ function drawMound() {
   if (planetViewFrac > 0.5) return;
   var px = toCanvasX(CANNON_BASE_X_M);
   var py = groundYAtPhysX(CANNON_BASE_X_M);
-  var zr = Math.min(1, currentPPM / DEFAULT_PPM);
   var mw = Math.max(25, 0.9*currentPPM);
   var mh = Math.max(6, mw*0.28);
   var tilt = surfaceNormalAngle(CANNON_BASE_X_M);
@@ -1768,7 +1742,7 @@ function drawMuzzleFlash(angleDeg, progress) {
 
 // ── Barrel Crew Stickmen ───────────────────────────────────────────────────
 // Tiny construction-worker stickmen that appear during barrel-length changes.
-// Each stickman is ~0.6 m tall in physics units. Poses are parametric on timer.
+// Each stickman is ~0.76 m tall in physics units. Poses are parametric on timer.
 
 function drawStickman(physX, physY, poseData) {
   if(currentPPM<16)return;
@@ -1797,7 +1771,7 @@ function drawStickman(physX, physY, poseData) {
 
 // ── Comic Characters ────────────────────────────────────────────────────────
 // Characters walk on solid ground or drift above a cloud deck in physics space.
-// State machine is managed by main.js; renderer just draws based on the state object.
+// State machine is managed by main.ts; renderer just draws based on the state object.
 
 function drawCharacter(char) {
   if (!char || !char.visible) return;
@@ -1813,7 +1787,7 @@ function drawCharacter(char) {
 function drawCharacterSprite(cx, cy, s, char) {
 
   // Normalize rocket_startled to startled for drawing purposes
-  // (visually identical, only duration differs — handled in main.js)
+  // (visually identical, only duration differs — handled in main.ts)
   var drawChar = char;
   if (char.state === 'rocket_startled') {
     drawChar = {};
@@ -2023,7 +1997,6 @@ function drawLaunchTower(angleDeg) {
     var y0 = -towerH * frac0;
     var y1 = -towerH * frac1;
     var lw0 = railW + (railTop - railW) * frac0;
-    var rw0 = railW + (railTop - railW) * frac0;
     var lw1 = railW + (railTop - railW) * frac1;
     // Alternating X pattern
     if (i % 2 === 0) {
@@ -2033,7 +2006,7 @@ function drawLaunchTower(angleDeg) {
       ctx.stroke();
     } else {
       ctx.beginPath();
-      ctx.moveTo(rw0 + towerOff, y0);
+      ctx.moveTo(lw0 + towerOff, y0);
       ctx.lineTo(-lw1 + towerOff, y1);
       ctx.stroke();
     }
@@ -2370,8 +2343,6 @@ function clear() {
 
 // ── Public Getters ─────────────────────────────────────────────────────────
 function isCurrentGas()         { return env.isGas; }
-function getNearestPlanetName() { return env.nearestPlanet.name; }
-function getPlanets()           { return PLANETS; }
 
 // Return the planet radius for a given surface gravity (interpolated between
 // bracket planets, snapped to nearest when close).
@@ -2382,15 +2353,14 @@ function getPlanetRadius(g) {
   return b.lo.radius + (b.hi.radius - b.lo.radius) * b.t;
 }
 function getGroundY()           { return groundY; }
-function getBaseGroundY()       { return baseGroundY; }
 function getWidth()             { return W; }
 function getHeight()            { return H; }
 function getCurrentPPM()        { return currentPPM; }
 
 /**
  * Compute the PPM at which the whole planet fits in the viewport.
- * Uses PPM = canvasWidth / (2.5 × R) so the disc fills ~80% of the width.
- * Returns 0 if there's no planet radius (flat mode).
+ * Uses PPM = min(W, H) / (2.5 × R) so the disc fills ~80% of the shorter
+ * viewport dimension. Returns 0 if there's no planet radius (flat mode).
  */
 function getWholePlanetPPM() {
   var r = getPlanetRadius(displayedGravity);
@@ -2406,12 +2376,8 @@ export const Renderer = {
   DEFAULT_PPM:      DEFAULT_PPM,
   CANNON_BASE_X_M:  CANNON_BASE_X_M,
   CANNON_BASE_Y_M:  CANNON_BASE_Y_M,
-  BARREL_LENGTH_M:  BARREL_LENGTH_M,
-  BALL_RADIUS_M:    BALL_RADIUS_M,
   TOWER_BASE_X_M:   TOWER_BASE_X_M,
   TOWER_HEIGHT_M:   TOWER_HEIGHT_M,
-  ROCKET_LENGTH_M:  ROCKET_LENGTH_M,
-  ROCKET_WIDTH_M:   ROCKET_WIDTH_M,
   init: init,
   resize: resize,
   updateWorld: updateWorld,
@@ -2421,9 +2387,7 @@ export const Renderer = {
   resetZoom: resetZoom,
   setViewTransitionDuration: setViewTransitionDuration,
   setCameraTarget: setCameraTarget,
-  setCameraTargetY: setCameraTargetY,
   setCameraImmediate: setCameraImmediate,
-  setCameraImmediateY: setCameraImmediateY,
   resetCamera: resetCamera,
   setRocketCamera: setRocketCamera,
   setBarrelLength: setBarrelLength,
@@ -2449,18 +2413,12 @@ export const Renderer = {
   drawExhaust: drawExhaust,
   drawFizzle: drawFizzle,
   toCanvasX: toCanvasX,
-  toCanvasY: toCanvasY,
   toCanvas: toCanvas,
   screenToSurface: screenToSurface,
   getCannonTipPhys: getCannonTipPhys,
   getRocketPadPosition: getRocketPadPosition,
-  getCannonPivotCanvas: getCannonPivotCanvas,
   isCurrentGas: isCurrentGas,
-  getNearestPlanetName: getNearestPlanetName,
-  getPlanets: getPlanets,
-  getPlanetRadius: getPlanetRadius,
   getGroundY: getGroundY,
-  getBaseGroundY: getBaseGroundY,
   getWidth: getWidth,
   getHeight: getHeight,
   getCurrentPPM: getCurrentPPM,

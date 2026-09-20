@@ -1,5 +1,12 @@
-# Matilda's Cannon Lab — New Planet Characters Plan
+# Launch Lab — New Planet Characters Plan
 
+> **Status:** Implemented. Historical design plan, kept for the character
+> concepts and state-machine rationale. All nine characters exist; the
+> shipped rigs live in `src/crew.ts`, `src/planet-guests.ts` and
+> `src/aquatic-characters.ts`, cloud-guest motion in `src/cloud-guests.ts`,
+> and the state machine in `src/main.ts`. File names below (`main.js`,
+> `renderer.js`) predate the TypeScript move.
+>
 > **Goal:** Add a unique comic character to every planet that currently lacks one.
 > Characters follow the same state-machine and drawing patterns as the existing golfer (Earth), alien (Mars), and spaceman (Moon).
 > All previous features (zoom fix, celestial bodies, comic characters, barrel stickmen) are ✅ DONE.

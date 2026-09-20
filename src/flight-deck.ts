@@ -2,6 +2,9 @@ import './flight-deck.css';
 import { compatibleRuns, describeChanges, type FlightRecord } from './flight.ts';
 import { PlaybackClock } from './playback.ts';
 
+const reducedMotionQuery = typeof matchMedia === 'function'
+  ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+
 export function formatTime(seconds: number) {
   const whole = Math.floor(Math.max(0, seconds));
   return `${Math.floor(whole / 60).toString().padStart(2, '0')}:${(whole % 60).toString().padStart(2, '0')}`;
@@ -143,7 +146,7 @@ export class FlightDeck {
     const time = this.clock.time, run = this.run;
     this.get('flight-time').textContent = `${formatTime(time)}.${Math.floor(time * 10) % 10}`;
     this.get('flight-rate').textContent = this.clock.paused && run ? 'Paused' : `${this.clock.mode === 'auto' ? 'Auto · ' : ''}${this.clock.rate.toFixed(1)}×`;
-    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduced = !!reducedMotionQuery?.matches;
     const handTime = reduced ? Math.floor(time) : time;
     this.get('clock-hand').setAttribute('transform', `rotate(${handTime * 6} 50 50)`);
     this.get('clock-minute').setAttribute('transform', `rotate(${handTime / 5} 50 64)`);
