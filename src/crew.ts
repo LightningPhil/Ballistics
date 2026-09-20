@@ -30,6 +30,8 @@ export function drawCrew(ctx: CanvasRenderingContext2D, x: number, footY: number
   const alien = pose.type === 'alien';
   const robot = pose.type === 'robot' || pose.type === 'icerobot';
   const worker = pose.type === 'worker';
+  const seated = reaction === 'coast' && !walking && !startled;
+  let propHand = { x: 27, y: -36 };
   ctx.save();
   ctx.translate(x, footY);
   ctx.scale(height / 100, height / 100);
@@ -84,21 +86,25 @@ export function drawCrew(ctx: CanvasRenderingContext2D, x: number, footY: number
   }
 
   // A stool only arrives during an uneventful coast; it never holds up a launch.
-  if (reaction === 'coast') {
+  if (seated) {
     line(-19, -23, 15, -2, 2.3, '#b88858');
     line(18, -23, -14, -2, 2.3, '#b88858');
     box(-22, -29, 43, 8, 3, '#d8a956');
   }
   ctx.translate(0, -jump);
-  if (reaction === 'coast') ctx.translate(0, 6);
+  // The pear-shaped alien has no long legs: lift its body onto the same seat.
+  // Humanoid hips already meet the stool at -25; lowering them cut through it.
+  if (seated && alien) ctx.translate(0, -22);
 
   if (alien) {
     // A pear silhouette, single large eye and small boots remain readable at 60px.
     oval(-12 - stride * 0.45, -4 - Math.max(0, stride * 0.2), 10, 5, '#879d43');
     oval(13 + stride * 0.45, -4 - Math.max(0, -stride * 0.2), 10, 5, '#a6b954');
-    line(-13, -78, -18 + Math.sin(t * 2) * 1.5, -95, 3, '#a6b954');
-    line(13, -78, 19 + Math.sin(t * 2 + 1) * 1.5, -95, 3, '#a6b954');
-    oval(-18, -95, 4.8, 5, '#c2ce70'); oval(19, -95, 4.8, 5, '#c2ce70');
+    const leftAntenna = -18 + Math.sin(t * 2) * 1.5;
+    const rightAntenna = 19 + Math.sin(t * 2 + 1) * 1.5;
+    line(-13, -78, leftAntenna, -95, 3, '#a6b954');
+    line(13, -78, rightAntenna, -95, 3, '#a6b954');
+    oval(leftAntenna, -95, 4.8, 5, '#c2ce70'); oval(rightAntenna, -95, 4.8, 5, '#c2ce70');
     ctx.beginPath(); ctx.moveTo(0, -88);
     ctx.bezierCurveTo(-37, -88, -40, -49, -32, -24);
     ctx.bezierCurveTo(-26, -4, 24, -2, 33, -26);
@@ -111,30 +117,45 @@ export function drawCrew(ctx: CanvasRenderingContext2D, x: number, footY: number
     oval(13 + dir * 2, -65 + (reaction === 'apex' ? -4 : 0), 9, 13, '#243943', false);
     oval(15 + dir * 2, -71, 3, 4, '#fffdf1', false);
     smile(3, -35);
-    const handY = startled ? -67 : reaction === 'apex' ? -54 : -36;
+    const handY = startled ? -67 : reaction === 'apex' ? -64 : reaction === 'escape' ? -57 : -36;
     line(-26,-45,-34,handY,7,'#a5b954'); line(26,-45,34,handY,7,'#a5b954');
     oval(-34,handY,6,6,'#a5b954'); oval(34,handY,6,6,'#a5b954');
+    propHand = { x: 34, y: handY };
   } else if (robot) {
     const metal = pose.type === 'icerobot' ? '#adc8cc' : '#acb8ab';
-    line(-10,-27,-13-stride,-8,8,metal); line(10,-27,13+stride,-8,8,metal);
-    box(-24-stride,-10,20,10,4,INK); box(5+stride,-10,20,10,4,INK);
+    const footL = seated ? -23 : -13-stride, footR = seated ? 23 : 13+stride;
+    if (seated) {
+      line(-10,-27,-23,-22,8,metal); line(-23,-22,footL,-8,8,metal);
+      line(10,-27,23,-22,8,metal); line(23,-22,footR,-8,8,metal);
+    } else {
+      line(-10,-27,footL,-8,8,metal); line(10,-27,footR,-8,8,metal);
+    }
+    box(footL-11,-10,20,10,4,INK); box(footR-8,-10,20,10,4,INK);
     box(-20,-56,40,33,8,metal);
     box(-24,-87,48,34,10,metal);
     box(-18,-81,36,19,5,'#263e46');
     oval(-8,-71,4,4,'#f0c76c',false); oval(9,-71,4,4,'#f0c76c',false);
     line(0,-89,0,-97,2,GOLD); oval(0,-99,3,3,GOLD);
     box(-10,-49,20,12,3,PAPER); line(-5,-43,5,-43,2,'#d77947');
-    line(-20,-48,-29,startled?-74:-31,7,metal);
-    line(20,-48,29,startled?-74:-31,7,metal);
+    const handY = startled ? -74 : reaction === 'apex' ? -70 : reaction === 'escape' ? -58 : -31;
+    line(-20,-48,-29,handY,7,metal);
+    line(20,-48,29,handY,7,metal);
+    propHand = { x: 29, y: handY };
   } else {
     const skin = astronaut ? '#b77c54' : '#edb982';
     const sleeve = astronaut ? PAPER : '#e8e7cb';
     const trousers = astronaut ? '#e9dfc9' : '#b99b6a';
-    const feetY = reaction === 'coast' ? -6 : -5;
-    line(-10,-30,-12-stride,feetY,11,trousers);
-    line(10,-30,13+stride,feetY,11,trousers);
-    oval(-15-stride,feetY,11,5,astronaut?INK:PAPER);
-    oval(16+stride,feetY,11,5,astronaut?INK:PAPER);
+    const feetY = -5;
+    const footL = seated ? -23 : -12-stride, footR = seated ? 23 : 13+stride;
+    if (seated) {
+      line(-10,-30,-23,-24,11,trousers); line(-23,-24,footL,feetY,11,trousers);
+      line(10,-30,23,-24,11,trousers); line(23,-24,footR,feetY,11,trousers);
+    } else {
+      line(-10,-30,footL,feetY,11,trousers);
+      line(10,-30,footR,feetY,11,trousers);
+    }
+    oval(footL-3,feetY,11,5,astronaut?INK:PAPER);
+    oval(footR+3,feetY,11,5,astronaut?INK:PAPER);
     if (astronaut) box(-25,-64,48,31,8,'#b7ab91'); // backpack
     box(-19,-60,39,35,11,astronaut?PAPER:GREEN);
     if (astronaut) {
@@ -155,6 +176,7 @@ export function drawCrew(ctx: CanvasRenderingContext2D, x: number, footY: number
     } else {
       oval(-26,handY,5,6,skin); oval(27,handY,5,6,PAPER);
     }
+    propHand = { x: 27, y: handY };
     if (astronaut) {
       box(-27,-96,55,42,15,PAPER);
       box(-21,-91,43,31,12,'#3b5366');
@@ -191,22 +213,22 @@ export function drawCrew(ctx: CanvasRenderingContext2D, x: number, footY: number
 
   // A small physical prop makes each reaction legible without another speech bubble.
   if (reaction === 'apex') {
-    box(14,-72,23,11,4,'#496574');
-    oval(35,-67,5,7,'#7fabb5');oval(17,-67,4,6,INK);
+    box(propHand.x-13,propHand.y-6,23,11,4,'#496574');
+    oval(propHand.x+8,propHand.y-1,5,7,'#7fabb5');oval(propHand.x-10,propHand.y-1,4,6,INK);
   } else if (reaction === 'escape') {
-    ctx.save(); ctx.translate(27,-57);ctx.rotate(-.2);
+    ctx.save(); ctx.translate(propHand.x,propHand.y+9);ctx.rotate(-.2);
     box(-7,-12,17,23,2,PAPER);
     ctx.strokeStyle='#be7245';path([[-3,-4],[6,-4]]);path([[-3,1],[5,1]]);ctx.restore();
   } else if (reaction === 'impact') {
-    box(23,-24,13,12,4,GOLD);
-    ctx.strokeStyle='#ddae56';ctx.lineWidth=3;path([[31,-20],[52,-20],[52,-2]]);
+    box(propHand.x-4,propHand.y-2,13,12,4,GOLD);
+    ctx.strokeStyle='#ddae56';ctx.lineWidth=3;path([[propHand.x+4,propHand.y+3],[propHand.x+25,propHand.y+3],[propHand.x+25,-2]]);
     ctx.lineWidth=1;ctx.strokeStyle=INK;
-    for(let i=0;i<4;i++)path([[34+i*4,-21],[34+i*4,-17]]);
+    for(let i=0;i<4;i++)path([[propHand.x+7+i*4,propHand.y+2],[propHand.x+7+i*4,propHand.y+6]]);
   } else if (reaction === 'fizzle') {
-    box(24,-36,13,14,3,PAPER);
-    ctx.beginPath();ctx.arc(39,-30,5,-Math.PI/2,Math.PI/2);ctx.stroke();
+    box(propHand.x-3,propHand.y,13,14,3,PAPER);
+    ctx.beginPath();ctx.arc(propHand.x+12,propHand.y+6,5,-Math.PI/2,Math.PI/2);ctx.stroke();
     ctx.strokeStyle='#87928a';ctx.lineWidth=1.5;
-    ctx.beginPath();ctx.moveTo(29,-42);ctx.quadraticCurveTo(26,-46,30,-49);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(propHand.x+2,propHand.y-6);ctx.quadraticCurveTo(propHand.x-1,propHand.y-10,propHand.x+3,propHand.y-13);ctx.stroke();
   } else if (pose.type === 'golfer' && !startled) {
     line(28,-34,44,-2,2,'#83949a');oval(46,-2,8,4,'#a5aaa2');
   }

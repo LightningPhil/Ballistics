@@ -69,6 +69,19 @@ test('target dragging inverts flat and spherical projection, including planet vi
   assert.ok(wholePlanet * 6371000 * 2 < Renderer.getHeight(), 'Planet fits the shorter viewport dimension');
 });
 
+test('cannon muzzle follows the full barrel-length range used by launch physics', () => {
+  harness();
+  for (const length of [.5, 2, 4, 5]) {
+    Renderer.setBarrelLength(length);
+    for (const angle of [5, 45, 85]) {
+      const tip = Renderer.getCannonTipPhys(angle);
+      const actualLength = Math.hypot(tip.x - Renderer.CANNON_BASE_X_M, tip.y - Renderer.CANNON_BASE_Y_M);
+      assert.ok(Math.abs(actualLength - length) < 1e-10, `${length} m barrel at ${angle} degrees`);
+    }
+  }
+  Renderer.setBarrelLength(2);
+});
+
 test('rocket points along commanded thrust and plume begins behind its nozzle', () => {
   const h = harness();
   const state = { phase: 'flight', x: 2, y: 3, theta: 90, vx: 30, vy: -2 };

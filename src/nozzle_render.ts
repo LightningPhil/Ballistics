@@ -404,15 +404,16 @@ function drawPlume(ctx, L, cy, d) {
   var gamma = d.gamma || 1.2;
   var eps = L.eps;
   var Pc_Pa = d.Pc_Pa || (d.Pc_bar || 100) * 1e5;
-  var Pa_Pa = d.Pa_Pa || 101325;
+  // Zero pressure is a real vacuum (Moon/Mercury), not a missing value.
+  var Pa_Pa = Math.max(0, d.Pa_Pa ?? 101325);
   var Pe = 0;
   if (RocketPropellants._exitMachFromEpsilon) {
     var Me = RocketPropellants._exitMachFromEpsilon(gamma, Math.max(1.5, eps));
     var pe_pc = RocketPropellants._exitPressureRatio(gamma, Me);
     Pe = pe_pc * Pc_Pa;
   }
-  if (Pe > 0 && Pa_Pa > 0) {
-    var ratio = Pe / Pa_Pa;
+  if (Pe > 0) {
+    var ratio = Pa_Pa > 0 ? Pe / Pa_Pa : Infinity;
     if (ratio < 0.95) {
       plumeHalfW *= 0.6;   // over-expanded — shock pinch
     } else if (ratio > 1.05) {
@@ -434,10 +435,12 @@ function drawPlume(ctx, L, cy, d) {
   ctx.fill();
 
   // Expansion state label
-  if (Pe > 0 && Pa_Pa > 0) {
-    var r = Pe / Pa_Pa;
+  if (Pe > 0) {
+    var r = Pa_Pa > 0 ? Pe / Pa_Pa : Infinity;
     var label, colour;
-    if (Math.abs(r - 1) < 0.05) {
+    if (Pa_Pa === 0) {
+      label = 'vacuum'; colour = '#ffaa44';
+    } else if (Math.abs(r - 1) < 0.05) {
       label = 'optimal'; colour = '#66dd66';
     } else if (r > 1) {
       label = 'under-exp'; colour = '#ffaa44';

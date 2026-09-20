@@ -100,7 +100,7 @@ var PARALLAX_TREES      = 0.5;    // Treeline (mid-ground)
 var PARALLAX_GROUND     = 1.0;    // Ground surface features (crater fields etc.)
 
 function setBarrelLength(m) {
-  BARREL_LENGTH_M = Math.max(0.4, Math.min(4.0, m));
+  BARREL_LENGTH_M = Math.max(0.4, Math.min(5.0, m));
 }
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -631,8 +631,10 @@ function drawTarget(value, mode = 'cannon') {
       ctx.beginPath();ctx.moveTo(0,point.y);ctx.lineTo(W,point.y);ctx.stroke();
     }
     ctx.setLineDash([]);
-    var markerY = clamp(point.y, 30, H - 35);
-    ctx.fillStyle = '#f3cf76';ctx.beginPath();ctx.arc(clamp(point.x,12,W-12),markerY,5,0,Math.PI*2);ctx.fill();
+    // Only show the handle at the real goal, where dragging can hit it.
+    if (point.x >= 0 && point.x <= W && point.y >= 0 && point.y <= H) {
+      ctx.fillStyle = '#f3cf76';ctx.beginPath();ctx.arc(point.x,point.y,5,0,Math.PI*2);ctx.fill();
+    }
   } else {
     if (point.x >= -60 && point.x <= W + 60 && point.y >= -70 && point.y <= H + 70) {
       ctx.translate(point.x,point.y);
@@ -783,30 +785,40 @@ function drawClouds() {
     var cr = c.r * zr;
     var baseX = wrapX(cx * W - offset, cr * c.puffs);
     var baseY = c.y * baseGroundY + offsetY;
+    // Fill the whole silhouette once, without translucent overlap rings.
+    ctx.beginPath();
     for (var p = 0; p < c.puffs; p++) {
-      ctx.beginPath();
-      ctx.arc(baseX + p*cr*0.8, baseY + (p%2)*cr*0.3,
-              cr, 0, Math.PI*2);
-      ctx.fill();
+      var puffX = baseX + p*cr*.8;
+      var puffY = baseY + (p%2)*cr*.22;
+      var puffR = cr * (p%2 ? .82 : 1);
+      ctx.moveTo(puffX+puffR,puffY);
+      ctx.arc(puffX,puffY,puffR,0,Math.PI*2);
     }
+    ctx.fill();
   }
 }
 
 function drawTreeline() {
   var zr = Math.min(1, currentPPM / DEFAULT_PPM);
   var offset = parallaxOffset(PARALLAX_TREES);
-  ctx.fillStyle = '#2d5a3a';
   for (var i = 0; i < treeData.length; i++) {
     var t = treeData[i];
     var th = t.h * zr;
     var tw = t.w * zr;
     var tx = wrapX(t.x * W - offset, tw);
-    ctx.beginPath();
-    ctx.moveTo(tx - tw/2, groundY);
-    ctx.lineTo(tx, groundY - th);
-    ctx.lineTo(tx + tw/2, groundY);
-    ctx.closePath();
-    ctx.fill();
+    // Branch tiers and quiet colour variation soften the old row of triangles.
+    ctx.fillStyle = ['#3d654a','#527459','#345b44'][i%3];
+    ctx.beginPath();ctx.moveTo(tx-tw*.45,groundY);
+    ctx.lineTo(tx-tw*.23,groundY-th*.32);
+    ctx.lineTo(tx-tw*.36,groundY-th*.29);
+    ctx.lineTo(tx-tw*.14,groundY-th*.62);
+    ctx.lineTo(tx-tw*.25,groundY-th*.58);
+    ctx.lineTo(tx,groundY-th);
+    ctx.lineTo(tx+tw*.25,groundY-th*.58);
+    ctx.lineTo(tx+tw*.14,groundY-th*.62);
+    ctx.lineTo(tx+tw*.36,groundY-th*.29);
+    ctx.lineTo(tx+tw*.23,groundY-th*.32);
+    ctx.lineTo(tx+tw*.45,groundY);ctx.closePath();ctx.fill();
   }
 }
 
@@ -1477,7 +1489,7 @@ function drawMound() {
   ctx.fill();
 }
 
-// ── Cannon (Castle Rampart Fixed Mount) ────────────────────────────────────
+// ── Cannon (side elevation) ───────────────────────────────────────────────
 function drawCannon(angleDeg, recoilOffset) {
   var pivot = toCanvas(CANNON_BASE_X_M,CANNON_BASE_Y_M);
   var base = toCanvas(CANNON_BASE_X_M,0);
@@ -1492,42 +1504,64 @@ function drawCannon(angleDeg, recoilOffset) {
   // A sturdy field carriage: warm timber, a cream mounting plate and brass hubs.
   ctx.beginPath();ctx.moveTo(-s*.33,-s*.08);ctx.lineTo(s*.24,-s*.08);
   ctx.lineTo(s*.75,s*.70);ctx.lineTo(-s*.65,s*.70);ctx.closePath();
-  ctx.fillStyle='#99764e';ctx.fill();ctx.stroke();
-  ctx.strokeStyle='#cfaf79';ctx.lineWidth=Math.max(1,s*.016);
-  ctx.beginPath();ctx.moveTo(-s*.15,s*.14);ctx.lineTo(s*.31,s*.59);ctx.stroke();
+  var timber=ctx.createLinearGradient(0,-s*.08,0,s*.7);
+  timber.addColorStop(0,'#c3a374');timber.addColorStop(1,'#8c6947');
+  ctx.fillStyle=timber;ctx.fill();ctx.stroke();
+  ctx.beginPath();ctx.moveTo(-s*.23,s*.12);ctx.lineTo(-s*.4,s*.52);
+  ctx.lineTo(s*.47,s*.52);ctx.lineTo(s*.2,s*.12);ctx.closePath();
+  ctx.fillStyle='#765c42';ctx.fill();
+  ctx.strokeStyle='#d1b180';ctx.lineWidth=Math.max(1,s*.022);
+  ctx.beginPath();ctx.moveTo(-s*.1,s*.06);ctx.lineTo(s*.4,s*.61);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(s*.11,s*.05);ctx.lineTo(-s*.4,s*.61);ctx.stroke();
   ctx.strokeStyle='#2d4249';ctx.lineWidth=Math.max(1.5,s*.024);
   [-.37,.44].forEach(wx=>{
     var y=s*.63,r=s*.35;
-    ctx.beginPath();ctx.arc(wx*s,y,r,0,Math.PI*2);ctx.fillStyle='#4b5754';ctx.fill();ctx.stroke();
-    ctx.beginPath();ctx.arc(wx*s,y,r*.77,0,Math.PI*2);ctx.fillStyle='#bb945a';ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.arc(wx*s,y,r,0,Math.PI*2);ctx.fillStyle='#445450';ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.arc(wx*s,y,r*.78,0,Math.PI*2);ctx.fillStyle='#617066';ctx.fill();
+    ctx.strokeStyle='#d0ac70';ctx.lineWidth=Math.max(1.5,s*.05);ctx.stroke();
     for(var i=0;i<8;i++){
       var t=i*Math.PI/4;
+      ctx.strokeStyle='#283e43';ctx.lineWidth=Math.max(1.5,s*.065);
       ctx.beginPath();ctx.moveTo(wx*s,y);ctx.lineTo(wx*s+Math.cos(t)*r*.72,y+Math.sin(t)*r*.72);ctx.stroke();
+      ctx.strokeStyle='#d0ac70';ctx.lineWidth=Math.max(1,s*.034);ctx.stroke();
     }
+    ctx.strokeStyle='#2d4249';ctx.lineWidth=Math.max(1.5,s*.024);
     ctx.beginPath();ctx.arc(wx*s,y,r*.23,0,Math.PI*2);ctx.fillStyle='#edc775';ctx.fill();ctx.stroke();
+    ctx.fillStyle='#52605a';ctx.beginPath();ctx.arc(wx*s,y,r*.07,0,Math.PI*2);ctx.fill();
   });
   ctx.save();ctx.rotate(-angleDeg*Math.PI/180);
   var length=BARREL_LENGTH_M*s;
   var shift=-(recoilOffset||0);
   var start=-s*.25+shift,end=length+shift;
-  var width=s*.37;
-  ctx.beginPath();ctx.moveTo(start,-width*.52);
-  ctx.quadraticCurveTo(start-s*.16,0,start,width*.52);
-  ctx.lineTo(end,width*.38);ctx.lineTo(end,-width*.38);ctx.closePath();
-  ctx.fillStyle='#304e64';ctx.fill();ctx.stroke();
-  ctx.strokeStyle='#78909a';ctx.lineWidth=Math.max(1,s*.028);
-  ctx.beginPath();ctx.moveTo(start+s*.06,-width*.29);ctx.lineTo(end-s*.09,-width*.23);ctx.stroke();
-  ctx.strokeStyle='#263c48';ctx.lineWidth=Math.max(1,s*.019);
-  [start+s*.16,end-s*.09].forEach(rx=>{
-    ctx.beginPath();ctx.roundRect(rx-s*.038,-width*.55,s*.076,width*1.1,s*.022);
-    ctx.fillStyle='#e7bc6b';ctx.fill();ctx.stroke();
+  var rearHalf=s*.195,frontHalf=s*.15;
+  var steel=ctx.createLinearGradient(0,-rearHalf,0,rearHalf);
+  steel.addColorStop(0,'#64818b');steel.addColorStop(.24,'#3d5d70');
+  steel.addColorStop(.7,'#2d485c');steel.addColorStop(1,'#203a4c');
+  ctx.beginPath();ctx.moveTo(start,-rearHalf);
+  ctx.bezierCurveTo(start-s*.2,-rearHalf,start-s*.2,rearHalf,start,rearHalf);
+  ctx.lineTo(end,frontHalf);ctx.lineTo(end,-frontHalf);ctx.closePath();
+  ctx.fillStyle=steel;ctx.fill();ctx.stroke();
+  ctx.strokeStyle='#9bb0af';ctx.lineWidth=Math.max(.7,s*.012);
+  ctx.beginPath();ctx.moveTo(start+s*.09,-rearHalf*.65);
+  ctx.lineTo(end-s*.17,-frontHalf*.67);ctx.stroke();
+
+  // Reinforcing bands project as straight strips in a true side view.
+  var brass=ctx.createLinearGradient(0,-rearHalf,0,rearHalf);
+  brass.addColorStop(0,'#f1d28e');brass.addColorStop(.55,'#d7ac60');brass.addColorStop(1,'#af8146');
+  ctx.strokeStyle='#2d4249';ctx.lineWidth=Math.max(1,s*.018);
+  [[start+s*.1,s*.09,rearHalf+s*.018],[end-s*.13,s*.13,frontHalf+s*.035]].forEach(band=>{
+    ctx.beginPath();ctx.rect(band[0],-band[2],band[1],band[2]*2);
+    ctx.fillStyle=brass;ctx.fill();ctx.stroke();
   });
-  ctx.beginPath();ctx.ellipse(end,0,s*.05,width*.38,0,0,Math.PI*2);
-  ctx.fillStyle='#172e39';ctx.fill();ctx.strokeStyle='#edc778';ctx.lineWidth=Math.max(2,s*.042);ctx.stroke();
+  // The muzzle is edge-on: no ellipse, bore opening or visible end face.
+  ctx.lineCap='butt';ctx.strokeStyle='#203744';ctx.lineWidth=Math.max(1,s*.025);
+  ctx.beginPath();ctx.moveTo(end,-frontHalf-s*.035);ctx.lineTo(end,frontHalf+s*.035);ctx.stroke();
   ctx.restore();
   ctx.beginPath();ctx.arc(0,0,s*.16,0,Math.PI*2);ctx.fillStyle='#f0c878';ctx.fill();
   ctx.strokeStyle='#304b53';ctx.lineWidth=Math.max(1.5,s*.025);ctx.stroke();
-  ctx.beginPath();ctx.arc(0,0,s*.048,0,Math.PI*2);ctx.fillStyle='#304e64';ctx.fill();
+  ctx.beginPath();ctx.arc(0,0,s*.052,0,Math.PI*2);ctx.fillStyle='#304e64';ctx.fill();
+  if(s>32){ctx.strokeStyle='#9bb0af';ctx.lineWidth=s*.015;
+    ctx.beginPath();ctx.moveTo(-s*.028,-s*.018);ctx.lineTo(s*.028,s*.018);ctx.stroke();}
   ctx.restore();
 }
 
@@ -2373,6 +2407,9 @@ function drawWhale(cx, cy, s, char) {
   if (surf > 0.5) {
     var eyeX = bodyW * 0.55, eyeY = peakY + bodyH * 0.15;
     cartoonEye(eyeX, eyeY, bodyH * 0.1, '#334466', {x: 1, y: 0}, 'normal');
+    ctx.strokeStyle='#263d53';ctx.lineWidth=ol;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(bodyW*.42,peakY+bodyH*.55);
+    ctx.quadraticCurveTo(bodyW*.6,peakY+bodyH*.82,bodyW*.77,peakY+bodyH*.48);ctx.stroke();
   }
 
   ctx.restore(); // undo clip
@@ -2435,18 +2472,24 @@ function drawCharacterAside(char) {
   var by = 56;
   ctx.fillStyle='rgba(255,249,233,.97)';
   ctx.strokeStyle='rgba(39,61,61,.55)';ctx.lineWidth=1.5;
-  ctx.beginPath();ctx.roundRect(bx,by,bubbleW,bubbleH,12);ctx.fill();ctx.stroke();
-  ctx.beginPath();ctx.moveTo(bx+bubbleW-1,by+15);
-  ctx.lineTo(bx+bubbleW+9,by+22);ctx.lineTo(bx+bubbleW-1,by+28);
-  ctx.fill();ctx.stroke();
+  // One outline keeps the speech pointer joined cleanly to the bubble.
+  ctx.beginPath();ctx.moveTo(bx+12,by);ctx.lineTo(bx+bubbleW-12,by);
+  ctx.quadraticCurveTo(bx+bubbleW,by,bx+bubbleW,by+12);
+  ctx.lineTo(bx+bubbleW,by+13);ctx.lineTo(bx+bubbleW+9,by+19);
+  ctx.lineTo(bx+bubbleW,by+23);ctx.lineTo(bx+bubbleW,by+bubbleH-12);
+  ctx.quadraticCurveTo(bx+bubbleW,by+bubbleH,bx+bubbleW-12,by+bubbleH);
+  ctx.lineTo(bx+12,by+bubbleH);ctx.quadraticCurveTo(bx,by+bubbleH,bx,by+bubbleH-12);
+  ctx.lineTo(bx,by+12);ctx.quadraticCurveTo(bx,by,bx+12,by);ctx.closePath();ctx.fill();ctx.stroke();
   ctx.fillStyle='#2d4145';ctx.textAlign='left';ctx.textBaseline='top';
   lines.forEach((line,i)=>ctx.fillText(line,bx+12,by+9+i*18));
 
   // A duplicate only while speaking; the character keeps moving in the field.
   ctx.beginPath();ctx.arc(W-52,90,36,0,Math.PI*2);ctx.clip();
   ctx.fillStyle='rgba(255,249,233,.78)';ctx.fill();
-  var scale = char.type === 'newt' ? 100 : char.type === 'submarine' ? 74 : char.type === 'whale' ? 36 : 43;
-  drawCharacterSprite(W-52,120,scale,char);
+  var scale = char.type === 'newt' ? 100 : char.type === 'submarine' ? 74 : char.type === 'whale' ? 60 : 43;
+  var footY = char.type === 'newt' ? 105 : char.type === 'whale' ? 108 : char.type === 'submarine' ? 110 : 120;
+  var portrait = char.type === 'whale' ? { ...char, state: 'spouting', surfaceAmount: 1 } : char;
+  drawCharacterSprite(W-(char.type === 'whale' ? 60 : 52),footY,scale,portrait);
   ctx.restore();
 }
 

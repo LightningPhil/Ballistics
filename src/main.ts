@@ -217,19 +217,20 @@ function squashCharacter() {
   activeCharacter.bubbleText = null;
 }
 
-function updateCharacter(dt) {
+function updateCharacter(dt, captionDt = dt) {
   if (!activeCharacter) return;
   var ch = activeCharacter;
   ch.stateTimer += dt;
 
-  // Thought-bubble cooldown
+  // Captions use elapsed presentation time even when reduced motion freezes
+  // the character's pose and movement. They must never become permanent UI.
   if (ch.bubbleText) {
-    ch.bubbleTimer -= dt;
+    ch.bubbleTimer -= captionDt;
     if (ch.bubbleTimer <= 0) ch.bubbleText = null;
   }
   var canThink = deck?.banter && !viewActive && (ch.state === 'idle' || ch.state === 'walking' || ch.state === 'spouting');
   if (!ch.bubbleText && canThink) {
-    ch.thoughtCooldown -= dt * 0.3;
+    ch.thoughtCooldown -= captionDt * 0.3;
     if (ch.thoughtCooldown <= 0) {
       var pool = CHAR_THOUGHTS[ch.type] || CHAR_THOUGHTS.golfer;
       ch.bubbleText = pool[Math.floor(Math.random() * pool.length)];
@@ -870,6 +871,7 @@ function getTotalShotCount() {
 // ── Clear range ────────────────────────────────────────────────────────────
 function clearRange() {
   flightBuild?.abort(); flightBuild = null;
+  resetCrewReaction();
   viewActive = false; endDelivered = false;
   if (deck) deck.reset();
   pendingFire = false; barrelAnimState = 'idle'; barrelAnimTimer = 0;
@@ -1177,6 +1179,7 @@ function createFizzleSmoke(px, py) {
 // ── Animation loop ─────────────────────────────────────────────────────────
 async function beginFlight(mode: 'cannon' | 'rocket', config: any, initial: any) {
   flightBuild?.abort();
+  resetCrewReaction();
   const controller = new AbortController(); flightBuild = controller;
   viewActive = false; activeBall = null; activeRocket = null; stopEngineLoop();
   deck.prepare(); UI.setFlightActive(true);
@@ -1222,6 +1225,7 @@ function fitRun(run: FlightRecord) {
 
 function restoreRun() {
   const run = deck.run; if (!run) return;
+  resetCrewReaction();
   flightBuild?.abort(); flightBuild = null; stopEngineLoop();
   restoring = true;
   UI.setFlightActive(false); UI.restoreFlightConfig(run.mode, run.config);
@@ -1240,6 +1244,15 @@ function syncEngineAudio() {
   const shouldPlay = deck?.sound && viewActive && !deck.clock.paused && activeRocket?.engineOn;
   if (shouldPlay && !rocketEngineAudio) startEngineLoop();
   else if (!shouldPlay) stopEngineLoop();
+}
+
+function resetCrewReaction() {
+  crewReactionUntil = 0;
+  if (!activeCharacter) return;
+  activeCharacter.reaction = null;
+  activeCharacter.bubbleText = null;
+  activeCharacter.bubbleTimer = 0;
+  activeCharacter.thoughtCooldown = Math.max(4, activeCharacter.thoughtCooldown || 0);
 }
 
 function crewReaction(kind: string) {
@@ -1382,7 +1395,7 @@ function loop(timestamp) {
   if (reducedMotion()) particles = [];
   updateImpactAnimations(dt);
   if (activeCharacter) activeCharacter.banter = deck.banter;
-  updateCharacter(reducedMotion() ? 0 : dt);
+  updateCharacter(reducedMotion() ? 0 : dt, elapsed);
   syncCharacterToPlanet();
 
   // ─── Draw ───
