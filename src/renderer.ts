@@ -1,4 +1,7 @@
 import { drawCrew } from './crew.ts';
+import { drawWhale, drawSubmarine } from './aquatic-characters.ts';
+import { drawNewt, drawSnowman } from './planet-guests.ts';
+import { rocketCameraFraming, type RocketCameraRequest } from './camera.ts';
 
 /**
  * ============================================================================
@@ -113,6 +116,7 @@ var targetCameraX = 0;
 var cameraY       = 0;     // world-space Y offset for vertical panning (metres)
 var targetCameraY = 0;
 var viewTransitionDuration = 1.2; // ~95% settle in ~1.2s by default
+var rocketCamera: RocketCameraRequest | null = null;
 var displayedGravity = 9.81;
 var targetGravity    = 9.81;
 var worldTime = 0;
@@ -375,7 +379,39 @@ function setCameraImmediateY(y) {
   // Recompute groundY so toCanvasY is correct this frame
   groundY = baseGroundY + cameraY * currentPPM;
 }
-function resetCamera() { targetCameraX = 0; cameraX = 0; targetCameraY = 0; cameraY = 0; }
+function resetCamera() { rocketCamera = null; targetCameraX = 0; cameraX = 0; targetCameraY = 0; cameraY = 0; }
+function setRocketCamera(request: RocketCameraRequest) {
+  rocketCamera = request;
+  setTargetZoom(rocketCameraFraming(request, W, H, currentPPM, curveActive).targetPPM);
+}
+
+/** Zoom anticipates the recorded path, while position follows its current
+ * projection. Easing world-space offsets cannot keep up with accelerated time
+ * or a seek, and stops working when a whole-planet view centres the planet.
+ * Frame the actual vehicle after zoom/curvature update instead. The bounds
+ * guard is usually idle; it covers seeks, resizing and rapid attitude changes. */
+function applyRocketCamera() {
+  if (!rocketCamera) return;
+  var framing = rocketCameraFraming(rocketCamera, W, H, currentPPM, curveActive);
+  if (currentPPM > framing.maxPPM) {
+    currentPPM = framing.maxPPM;
+    baseGroundY = H - Math.max(12, GROUND_OFFSET * Math.min(1, currentPPM / DEFAULT_PPM));
+    updateCurvature();
+    framing = rocketCameraFraming(rocketCamera, W, H, currentPPM, curveActive);
+  }
+  var point = rocketCamera.state, anchor = framing.anchor;
+  cameraX = point.x - anchor.x / currentPPM;
+  cameraY = point.y + (anchor.y - baseGroundY) / currentPPM;
+  targetCameraX = cameraX; targetCameraY = cameraY;
+  groundY = baseGroundY + cameraY * currentPPM;
+  if (curveActive) {
+    var angle = point.x / curveRadius;
+    var radialPixels = (curveRadius + point.y) * currentPPM;
+    curveCentreX = anchor.x - radialPixels * Math.sin(angle);
+    curveCentreY = anchor.y + radialPixels * Math.cos(angle);
+    curveCamTheta = cameraX / curveRadius;
+  }
+}
 function setViewTransitionDuration(seconds) {
   if (!isFinite(seconds)) return;
   viewTransitionDuration = Math.max(0.15, seconds);
@@ -446,6 +482,7 @@ function updateWorld(dt) {
 
   // ── Curvature computation (Phase 2) ──
   updateCurvature();
+  applyRocketCamera();
 
   computeEnvironment();
 }
@@ -1757,129 +1794,6 @@ function drawStickman(physX, physY, poseData) {
   ctx.restore();
 }
 
-// ── Character Drawing Helpers ────────────────────────────────────────────────
-// Shared utility functions that enforce a consistent cartoon style across all
-// characters: dark outlines, gradient fills, expressive eyes, volumetric limbs.
-
-var OL = '#222';  // default outline colour
-var OW = 1.8;     // default outline width (scales with s)
-
-function outlinedCircle(x, y, r, fill, outline, lw) {
-  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.fillStyle = fill; ctx.fill();
-  ctx.strokeStyle = outline || OL; ctx.lineWidth = lw || OW;
-  ctx.stroke();
-}
-
-function outlinedEllipse(x, y, rx, ry, fill, outline?, lw?) {
-  ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
-  ctx.fillStyle = fill; ctx.fill();
-  ctx.strokeStyle = outline || OL; ctx.lineWidth = lw || OW;
-  ctx.stroke();
-}
-
-function outlinedPath(pathFn, fill, outline, lw) {
-  ctx.beginPath(); pathFn();
-  ctx.fillStyle = fill; ctx.fill();
-  ctx.strokeStyle = outline || OL; ctx.lineWidth = lw || OW;
-  ctx.stroke();
-}
-
-function gradientCircle(x, y, r, cLight, cDark, outline, lw) {
-  var g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.05, x, y, r);
-  g.addColorStop(0, cLight); g.addColorStop(1, cDark);
-  outlinedCircle(x, y, r, g, outline, lw);
-}
-
-function gradientEllipse(x, y, rx, ry, cLight, cDark, outline, lw) {
-  var g = ctx.createRadialGradient(x - rx * 0.25, y - ry * 0.25, Math.min(rx, ry) * 0.05, x, y, Math.max(rx, ry));
-  g.addColorStop(0, cLight); g.addColorStop(1, cDark);
-  outlinedEllipse(x, y, rx, ry, g, outline, lw);
-}
-
-/** Cartoon eye with sclera, iris, pupil and catch-light.
- *  irisColor: e.g. '#44aa44'. pupilDir: {x,y} -1..1. state: 'normal'|'startled'|'happy'|'dead' */
-function cartoonEye(x, y, size, irisColor, pupilDir, state) {
-  var pd = pupilDir || {x:0, y:0};
-  var sc = (state === 'startled') ? 1.4 : (state === 'happy') ? 0.75 : 1;
-  var r = size * sc;
-  // Sclera with soft outline
-  ctx.fillStyle = '#fff';
-  if (state === 'happy') {
-    // Happy squint — draw as an arc
-    ctx.beginPath();
-    ctx.ellipse(x, y, r, r * 0.5, 0, Math.PI * 0.1, Math.PI * 0.9);
-    ctx.fill();
-    ctx.strokeStyle = OL; ctx.lineWidth = Math.max(0.8, r * 0.12);
-    ctx.stroke();
-    return;
-  }
-  if (state === 'dead') {
-    // X eyes
-    ctx.strokeStyle = OL; ctx.lineWidth = Math.max(1, r * 0.2);
-    ctx.beginPath(); ctx.moveTo(x - r * 0.6, y - r * 0.6); ctx.lineTo(x + r * 0.6, y + r * 0.6); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(x + r * 0.6, y - r * 0.6); ctx.lineTo(x - r * 0.6, y + r * 0.6); ctx.stroke();
-    return;
-  }
-  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = OL; ctx.lineWidth = Math.max(0.8, r * 0.1);
-  ctx.stroke();
-  // Iris
-  var ir = r * 0.55;
-  var ix = x + pd.x * r * 0.25, iy = y + pd.y * r * 0.2;
-  ctx.fillStyle = irisColor || '#44aa44';
-  ctx.beginPath(); ctx.arc(ix, iy, ir, 0, Math.PI * 2); ctx.fill();
-  // Pupil
-  var pr = ir * 0.55;
-  ctx.fillStyle = '#111';
-  ctx.beginPath(); ctx.arc(ix, iy, pr, 0, Math.PI * 2); ctx.fill();
-  // Catch-light
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
-  ctx.beginPath(); ctx.arc(x - r * 0.2, y - r * 0.25, r * 0.2, 0, Math.PI * 2); ctx.fill();
-}
-
-/** Draws a filled tapered limb (not a stroke line) between two points. */
-function cartoonLimb(x1, y1, x2, y2, w1, w2, fill, outline, lw) {
-  var dx = x2 - x1, dy = y2 - y1;
-  var len = Math.sqrt(dx * dx + dy * dy) || 1;
-  var nx = -dy / len, ny = dx / len; // perpendicular
-  ctx.beginPath();
-  ctx.moveTo(x1 + nx * w1 * 0.5, y1 + ny * w1 * 0.5);
-  ctx.lineTo(x2 + nx * w2 * 0.5, y2 + ny * w2 * 0.5);
-  ctx.lineTo(x2 - nx * w2 * 0.5, y2 - ny * w2 * 0.5);
-  ctx.lineTo(x1 - nx * w1 * 0.5, y1 - ny * w1 * 0.5);
-  ctx.closePath();
-  ctx.fillStyle = fill; ctx.fill();
-  if (outline !== false) {
-    ctx.strokeStyle = outline || OL; ctx.lineWidth = lw || OW;
-    ctx.stroke();
-  }
-}
-
-/** Soft elliptical shadow beneath character feet. */
-function dropShadow(x, y, w, h, opacity?, tint?) {
-  ctx.fillStyle = tint
-    ? ('rgba(' + tint + ',' + (opacity || 0.18) + ')')
-    : ('rgba(0,0,0,' + (opacity || 0.18) + ')');
-  ctx.beginPath();
-  ctx.ellipse(x, y, w, h || w * 0.18, 0, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-/** Rounded rectangle path helper. */
-function roundRect(x, y, w, h, r) {
-  r = Math.min(r, w / 2, h / 2);
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.arcTo(x + w, y, x + w, y + r, r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-  ctx.lineTo(x + r, y + h);
-  ctx.arcTo(x, y + h, x, y + h - r, r);
-  ctx.lineTo(x, y + r);
-  ctx.arcTo(x, y, x + r, y, r);
-  ctx.closePath();
-}
 
 // ── Comic Characters ────────────────────────────────────────────────────────
 // Characters walk on the ground and react to cannon fire. Drawn in physics space.
@@ -1913,543 +1827,16 @@ function drawCharacterSprite(cx, cy, s, char) {
   if (isCrew) {
     drawCrew(ctx,cx,cy,s*1.32,drawChar);
   } else {
-    // Scale strokes and animation offsets too, so guests shrink with the world.
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.scale(s / 80, s / 80);
+    // Guest rigs share the same foot anchor and shrink naturally with the world.
     switch (drawChar.type) {
-      case 'newt':      drawNewt(0, 0, 80, drawChar); break;
-      case 'whale':     drawWhale(0, 0, 80, drawChar); break;
-      case 'snowman':   drawSnowman(0, 0, 80, drawChar); break;
-      case 'submarine': drawSubmarine(0, 0, 80, drawChar); break;
+      case 'newt':      drawNewt(ctx, cx, cy, s, drawChar); break;
+      case 'whale':     drawWhale(ctx, cx, cy, s, drawChar); break;
+      case 'snowman':   drawSnowman(ctx, cx, cy, s, drawChar); break;
+      case 'submarine': drawSubmarine(ctx, cx, cy, s, drawChar); break;
     }
-    ctx.restore();
   }
 }
 
-// ── Newt (Venus) ───────────────────────────────────────────────────────────
-function drawNewt(cx, cy, s, char) {
-  var t  = char.stateTimer;
-  var dir = char.direction;
-  var h  = s * 0.55;
-  var ol = Math.max(1.0, h * 0.015);
-  var bodyW = h * 0.65, bodyH = h * 0.28;
-  var legLen = h * 0.14, legW0 = h * 0.06;
-  var eyeR = h * 0.13;
-  var tailLen = h * 0.48;
-
-  ctx.save();
-  ctx.translate(cx, cy);
-
-  /* ── squashed ───────────────────────────────────── */
-  if (char.state === 'squashed') {
-    var sq = Math.min(1, t / 0.8);
-    dropShadow(0, 0, bodyW * 1.1, bodyH * 0.06, 0.2);
-    outlinedEllipse(0, -bodyH * 0.04, bodyW * 1.2 * (1 + sq * 0.2), bodyH * 0.07 * (1 - sq * 0.4), '#cc5500', '#772800', ol);
-    ctx.strokeStyle = '#ff3366'; ctx.lineWidth = Math.max(1.5, ol);
-    ctx.beginPath(); ctx.moveTo(dir * bodyW * 0.6, -bodyH * 0.03);
-    ctx.lineTo(dir * bodyW * 1.0, bodyH * 0.08 + Math.sin(t * 5) * 3); ctx.stroke();
-    ctx.restore(); return;
-  }
-
-  /* ── animation ──────────────────────────────────── */
-  var wiggle = 0, puff = 0, legSpd = 0;
-  if (char.state === 'walking' || char.state === 'returning') {
-    wiggle = Math.sin(t * 8) * 0.08; legSpd = t * 8;
-  } else if (char.state === 'idle') {
-    wiggle = Math.sin(t * 1.5) * 0.02;
-  } else if (char.state === 'startled') {
-    puff = Math.max(0, 1 - t * 2) * 0.4;
-    wiggle = Math.sin(t * 20) * 0.15;
-  } else if (char.state === 'running_away') {
-    wiggle = Math.sin(t * 16) * 0.12; legSpd = t * 20;
-  }
-
-  // Warm glow beneath
-  ctx.fillStyle = 'rgba(255,140,40,0.08)';
-  ctx.beginPath(); ctx.ellipse(0, bodyH * 0.1, bodyW * 0.9, bodyH * 0.4, 0, 0, Math.PI * 2); ctx.fill();
-
-  ctx.rotate(wiggle);
-  ctx.scale(dir, 1);
-
-  // Drop shadow
-  dropShadow(0, legLen * 0.6, bodyW * 0.55, bodyH * 0.04, 0.14);
-
-  /* ── legs (filled + toes) ──────────────────────── */
-  for (var li = 0; li < 2; li++) {
-    var lx = li === 0 ? bodyW * 0.4 : -bodyW * 0.3;
-    var ph = legSpd + li * Math.PI;
-    var fx = lx + Math.sin(ph) * legLen * 0.5;
-    var fy = legLen;
-    cartoonLimb(lx, -bodyH * 0.1, fx, fy, legW0, legW0 * 0.65, '#aa4400', '#662200', ol);
-    // Toes — 3 little filled ovals
-    for (var ti2 = -1; ti2 <= 1; ti2++) {
-      outlinedEllipse(fx + ti2 * legLen * 0.1, fy + h * 0.01, h * 0.02, h * 0.012, '#cc5500', '#662200', ol * 0.5);
-    }
-  }
-
-  /* ── tail (filled Bézier ribbon) ───────────────── */
-  var tailCurl = (char.state === 'running_away') ? 0.2 : 1.0;
-  outlinedPath(function() {
-    ctx.moveTo(-bodyW * 0.55, -bodyH * 0.1);
-    // Build top edge of tail
-    var txA = [], tyA = [];
-    for (var t2 = 0; t2 <= 8; t2++) {
-      var tf = t2 / 8;
-      txA.push(-bodyW * 0.6 - tf * tailLen);
-      tyA.push(-bodyH * 0.2 - Math.sin(tf * Math.PI * tailCurl * 1.5) * tailLen * 0.55 * tailCurl + Math.sin(t * 3 + tf * 2) * h * 0.02);
-    }
-    for (var t3 = 0; t3 < txA.length; t3++) ctx.lineTo(txA[t3], tyA[t3]);
-    // Tail tip
-    ctx.lineTo(txA[txA.length - 1] - h * 0.02, tyA[tyA.length - 1] + h * 0.02);
-    // Bottom edge back
-    for (var t4 = txA.length - 1; t4 >= 0; t4--) ctx.lineTo(txA[t4], tyA[t4] + bodyH * 0.22 * (1 - t4 / txA.length));
-    ctx.closePath();
-  }, '#bb4400', '#662200', ol);
-
-  /* ── body (plump oval + spots) ─────────────────── */
-  gradientEllipse(0, -bodyH * 0.3, bodyW * (1 + puff * 0.3), bodyH * (1 + puff), '#dd6600', '#993300', '#662200', ol);
-  // Belly highlight
-  ctx.fillStyle = 'rgba(255,200,100,0.15)';
-  ctx.beginPath(); ctx.ellipse(0, -bodyH * 0.05, bodyW * 0.55, bodyH * 0.45, 0, 0, Math.PI * 2); ctx.fill();
-  // Spine spots
-  ctx.fillStyle = 'rgba(80,30,0,0.35)';
-  for (var sp = 0; sp < 4; sp++) {
-    var spx = bodyW * (-0.3 + sp * 0.2);
-    ctx.beginPath(); ctx.arc(spx, -bodyH * 0.6, h * 0.032, 0, Math.PI * 2); ctx.fill();
-  }
-
-  /* ── head ───────────────────────────────────────── */
-  gradientCircle(bodyW * 0.55, -bodyH * 0.35, bodyH * 0.52, '#dd6600', '#993300', '#662200', ol);
-
-  // Eyes — big and bulging
-  var eCx = bodyW * 0.6, eCy = -bodyH * 0.58;
-  var eSt = (char.state === 'startled') ? 'startled' : (char.state === 'idle' ? 'happy' : 'normal');
-  var eSc = (char.state === 'startled') ? 1.4 : 1.0;
-  cartoonEye(eCx, eCy, eyeR * eSc, '#ffdd00', {x: 1, y: 0}, eSt);
-
-  /* ── tongue flick (idle) ────────────────────────── */
-  if (char.state === 'idle' && Math.sin(t * 1.5) > 0.8) {
-    var tL = h * 0.25;
-    ctx.strokeStyle = '#ff3366'; ctx.lineWidth = Math.max(1.5, ol);
-    ctx.beginPath();
-    ctx.moveTo(bodyW * 0.75, -bodyH * 0.2);
-    ctx.quadraticCurveTo(bodyW * 0.75 + tL * 0.7, -bodyH * 0.1, bodyW * 0.75 + tL, -bodyH * 0.3);
-    ctx.stroke();
-    // Forked tip
-    ctx.beginPath(); ctx.moveTo(bodyW * 0.75 + tL, -bodyH * 0.3);
-    ctx.lineTo(bodyW * 0.75 + tL + h * 0.03, -bodyH * 0.4); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(bodyW * 0.75 + tL, -bodyH * 0.3);
-    ctx.lineTo(bodyW * 0.75 + tL + h * 0.03, -bodyH * 0.2); ctx.stroke();
-  }
-
-  ctx.restore();
-}
-
-// ── Snowman (Neptune) ──────────────────────────────────────────────────────
-function drawSnowman(cx, cy, s, char) {
-  var t  = char.stateTimer;
-  var dir = char.direction;
-  var h  = s * 1.3;
-  var ol = Math.max(1.2, h * 0.012);
-  var botR = h * 0.19;
-  var midR = h * 0.14;
-  var topR = h * 0.10;
-
-  ctx.save();
-  ctx.translate(cx, cy);
-
-  /* ── squashed ───────────────────────────────────── */
-  if (char.state === 'squashed') {
-    var sq = Math.min(1, t / 0.8);
-    dropShadow(0, 0, botR * 1.8, botR * 0.06, 0.22);
-    outlinedEllipse(0, -botR * 0.08, botR * 1.9 * (1 + sq * 0.15), botR * 0.13 * (1 - sq * 0.4), '#e8eeff', '#8899bb', ol);
-    // Hat on blob
-    outlinedPath(function() { roundRect(-topR * 0.6, -botR * 0.3 - topR * 0.3, topR * 1.2, topR * 0.3, h * 0.008); }, '#222', '#000', ol * 0.7);
-    // Carrot sideways
-    outlinedPath(function() {
-      ctx.moveTo(botR * 0.5, -botR * 0.15);
-      ctx.lineTo(botR * 1.2, -botR * 0.1);
-      ctx.lineTo(botR * 0.5, -botR * 0.05); ctx.closePath();
-    }, '#ff8800', '#aa5500', ol * 0.6);
-    ctx.restore(); return;
-  }
-
-  /* ── animation ──────────────────────────────────── */
-  var shiver = 0, bounce = 0, spinA = 0, hatOff = 0;
-  if (char.state === 'idle') {
-    shiver = Math.sin(t * 30) * 1.5;
-  } else if (char.state === 'walking' || char.state === 'returning') {
-    bounce = Math.abs(Math.sin(t * 5)) * h * 0.06;
-    spinA = Math.sin(t * 5) * 0.08;
-  } else if (char.state === 'startled') {
-    hatOff = Math.min(t * 3, 1) * h * 0.4;
-    shiver = Math.sin(t * 25) * 4;
-  } else if (char.state === 'running_away') {
-    spinA = t * 8; bounce = Math.abs(Math.sin(t * 6)) * h * 0.04;
-  }
-  ctx.translate(shiver, -bounce);
-
-  // Ice crystals floating
-  ctx.strokeStyle = 'rgba(200,220,255,0.45)'; ctx.lineWidth = Math.max(1, ol * 0.5);
-  for (var ic = 0; ic < 4; ic++) {
-    var icA = t * 0.8 + ic * 1.57;
-    var icD = h * 0.4 + Math.sin(t * 0.5 + ic * 2) * h * 0.1;
-    var icx = Math.cos(icA) * icD, icy = -h * 0.4 + Math.sin(icA * 0.7) * h * 0.2;
-    var icS = h * 0.025;
-    for (var ia = 0; ia < 3; ia++) {
-      var iAng = ia * Math.PI / 3 + t * 0.5;
-      ctx.beginPath();
-      ctx.moveTo(icx + Math.cos(iAng) * icS, icy + Math.sin(iAng) * icS);
-      ctx.lineTo(icx - Math.cos(iAng) * icS, icy - Math.sin(iAng) * icS);
-      ctx.stroke();
-    }
-  }
-
-  ctx.rotate(spinA);
-
-  // Drop shadow
-  dropShadow(0, 0, botR * 0.7, botR * 0.05, 0.15);
-
-  /* ── bottom ball ───────────────────────────────── */
-  gradientCircle(0, -botR, botR, '#f0f4ff', '#b0c0e0', '#8099bb', ol);
-
-  /* ── middle ball ───────────────────────────────── */
-  var midY = -botR * 2 - midR + botR * 0.15;
-  gradientCircle(0, midY, midR, '#f0f4ff', '#bcc8e4', '#8099bb', ol);
-
-  /* ── buttons ────────────────────────────────────── */
-  outlinedCircle(0, midY - midR * 0.15, midR * 0.07, '#222', '#000', ol * 0.4);
-  outlinedCircle(0, midY + midR * 0.2, midR * 0.07, '#222', '#000', ol * 0.4);
-
-  /* ── twig arms ──────────────────────────────────── */
-  var twigW = Math.max(2, h * 0.022);
-  // Left
-  cartoonLimb(-midR, midY, -midR - h * 0.15, midY - h * 0.05, twigW, twigW * 0.5, '#6b4226', '#3a2010', ol * 0.7);
-  cartoonLimb(-midR - h * 0.12, midY - h * 0.04, -midR - h * 0.17, midY - h * 0.1, twigW * 0.6, twigW * 0.3, '#6b4226', '#3a2010', ol * 0.5);
-  // Right
-  cartoonLimb(midR, midY, midR + h * 0.15, midY - h * 0.05, twigW, twigW * 0.5, '#6b4226', '#3a2010', ol * 0.7);
-  cartoonLimb(midR + h * 0.12, midY - h * 0.04, midR + h * 0.17, midY - h * 0.1, twigW * 0.6, twigW * 0.3, '#6b4226', '#3a2010', ol * 0.5);
-
-  /* ── scarf ──────────────────────────────────────── */
-  var scarfY = midY - midR + topR * 0.3;
-  outlinedEllipse(0, scarfY, midR * 0.8, topR * 0.25, '#cc2222', '#881111', ol);
-  // Stripe
-  ctx.fillStyle = '#eeee44';
-  ctx.fillRect(-midR * 0.5, scarfY - topR * 0.04, midR * 1.0, topR * 0.08);
-  // Dangling end
-  outlinedPath(function() {
-    ctx.moveTo(midR * 0.2, scarfY + topR * 0.15);
-    ctx.quadraticCurveTo(midR * 0.5, scarfY + topR * 0.6, midR * 0.3, scarfY + topR * 0.9);
-    ctx.lineTo(midR * 0.15, scarfY + topR * 0.85);
-    ctx.quadraticCurveTo(midR * 0.35, scarfY + topR * 0.5, midR * 0.1, scarfY + topR * 0.15);
-    ctx.closePath();
-  }, '#cc2222', '#881111', ol * 0.6);
-
-  /* ── head ball ──────────────────────────────────── */
-  var headY = midY - midR - topR + topR * 0.2;
-  gradientCircle(0, headY, topR, '#f0f4ff', '#c4cee8', '#8099bb', ol);
-
-  // Coal eyes
-  var eSt = (char.state === 'startled') ? 'startled'
-          : (char.state === 'idle') ? 'happy' : 'normal';
-  cartoonEye(-topR * 0.32, headY - topR * 0.12, topR * 0.16, '#222', {x: dir, y: 0}, eSt);
-  cartoonEye(topR * 0.32, headY - topR * 0.12, topR * 0.16, '#222', {x: dir, y: 0}, eSt);
-
-  // Coal mouth dots
-  ctx.fillStyle = '#222';
-  for (var mi = 0; mi < 4; mi++) {
-    var mx = (mi - 1.5) * topR * 0.2;
-    var my = headY + topR * 0.25 + Math.abs(mi - 1.5) * topR * 0.08;
-    ctx.beginPath(); ctx.arc(mx, my, topR * 0.06, 0, Math.PI * 2); ctx.fill();
-  }
-
-  /* ── carrot nose ────────────────────────────────── */
-  outlinedPath(function() {
-    ctx.moveTo(dir * topR * 0.15, headY);
-    ctx.lineTo(dir * topR * 0.9, headY + topR * 0.1);
-    ctx.lineTo(dir * topR * 0.15, headY + topR * 0.2); ctx.closePath();
-  }, '#ff8800', '#aa5500', ol * 0.7);
-
-  /* ── top hat (flies off on startled) ───────────── */
-  var hatY = headY - topR - hatOff;
-  if (char.state === 'startled' && hatOff > 0) {
-    ctx.save();
-    ctx.translate(dir * hatOff * 0.3, 0);
-    ctx.rotate(t * 4 * dir);
-  }
-  // Brim
-  outlinedPath(function() { roundRect(-topR * 0.8, hatY + topR * 0.18, topR * 1.6, topR * 0.12, h * 0.006); }, '#222', '#000', ol);
-  // Cylinder
-  outlinedPath(function() { roundRect(-topR * 0.5, hatY - topR * 0.4, topR * 1.0, topR * 0.6, h * 0.008); }, '#282828', '#000', ol);
-  // Hat band
-  ctx.fillStyle = '#cc2222';
-  ctx.fillRect(-topR * 0.48, hatY + topR * 0.05, topR * 0.96, topR * 0.1);
-  if (char.state === 'startled' && hatOff > 0) ctx.restore();
-
-  /* ── snow trail when running ───────────────────── */
-  if (char.state === 'running_away') {
-    ctx.fillStyle = 'rgba(220,230,255,0.25)';
-    for (var si = 0; si < 3; si++) {
-      ctx.beginPath();
-      ctx.arc(-dir * (si + 1) * h * 0.12, -botR * 0.5 + Math.sin(t * 4 + si) * botR * 0.3, h * 0.03 + si * 1.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  ctx.restore();
-}
-
-// ── Submarine (Saturn) ─────────────────────────────────────────────────────
-function drawSubmarine(cx, cy, s, char) {
-  var t  = char.stateTimer;
-  var dir = char.direction;
-  var h  = s * 0.9;
-  var ol = Math.max(1.0, h * 0.013);
-  var hullW = h * 0.5, hullH = h * 0.2;
-  var towerW = h * 0.1, towerH = h * 0.12;
-
-  ctx.save();
-  ctx.translate(cx, cy);
-
-  /* ── squashed ───────────────────────────────────── */
-  if (char.state === 'squashed') {
-    var sq = Math.min(1, t / 0.8);
-    dropShadow(0, 0, hullW * 0.9, hullH * 0.06, 0.2);
-    var crW = hullW * (1 - sq * 0.5);
-    for (var ci = 0; ci < 5; ci++) {
-      var cx2 = (ci - 2) * crW * 0.35;
-      outlinedEllipse(cx2, -hullH * 0.5, crW * 0.12, hullH * (1 + sq) * 0.4, '#ddcc00', '#887700', ol * 0.7);
-    }
-    ctx.fillStyle = '#888';
-    for (var ri = 0; ri < 3; ri++) {
-      var ra = t * 6 + ri * 2.2;
-      ctx.beginPath(); ctx.arc(Math.cos(ra) * h * 0.3, -hullH + Math.sin(ra * 1.3) * h * 0.2, Math.max(1.5, h * 0.012), 0, Math.PI * 2); ctx.fill();
-    }
-    ctx.restore(); return;
-  }
-
-  /* ── animation ──────────────────────────────────── */
-  var bob = Math.sin(t * 2.5) * h * 0.03, pitch = 0;
-  if (char.state === 'walking' || char.state === 'returning') {
-    pitch = Math.sin(t * 2) * 0.05;
-  } else if (char.state === 'running_away') {
-    pitch = -0.12 * dir; bob = Math.sin(t * 8) * h * 0.01;
-  } else if (char.state === 'startled') {
-    bob = -h * 0.06;
-  }
-  ctx.translate(0, bob - hullH * 0.5);
-  ctx.rotate(pitch);
-  ctx.scale(dir, 1);
-
-  // Bubbles
-  ctx.fillStyle = 'rgba(255,255,255,0.25)';
-  for (var bi = 0; bi < 4; bi++) {
-    var bAge = (t * 0.8 + bi * 0.7) % 2.5;
-    var bx = -hullW * 0.3 - bi * hullW * 0.15;
-    var by = -hullH - bAge * h * 0.25;
-    ctx.beginPath(); ctx.arc(bx + Math.sin(bAge * 3) * 3, by, h * 0.015 + bi * 0.5, 0, Math.PI * 2); ctx.fill();
-  }
-
-  /* ── hull (gradient capsule + outline) ─────────── */
-  gradientEllipse(0, 0, hullW, hullH, '#eedd22', '#aa9500', '#776600', ol);
-  // Centre seam
-  ctx.strokeStyle = '#99880088'; ctx.lineWidth = Math.max(1, ol * 0.5);
-  ctx.beginPath(); ctx.moveTo(-hullW * 0.92, 0); ctx.lineTo(hullW * 0.92, 0); ctx.stroke();
-  // Rivets along seam
-  for (var ri2 = 0; ri2 < 6; ri2++) {
-    var rx = -hullW * 0.8 + ri2 * hullW * 0.32;
-    outlinedCircle(rx, 0, Math.max(1.2, h * 0.008), '#bb9900', '#776600', ol * 0.3);
-  }
-
-  /* ── portholes ──────────────────────────────────── */
-  for (var pi = 0; pi < 3; pi++) {
-    var px = -hullW * 0.4 + pi * hullW * 0.35;
-    var pR = hullH * 0.21;
-    gradientCircle(px, -hullH * 0.15, pR, '#a8ccee', '#6899bb', '#886600', Math.max(1.5, ol));
-    // Glass glint
-    ctx.fillStyle = 'rgba(255,255,255,0.3)';
-    ctx.beginPath(); ctx.arc(px - pR * 0.25, -hullH * 0.15 - pR * 0.25, pR * 0.25, 0, Math.PI * 2); ctx.fill();
-  }
-
-  /* ── face in middle porthole ───────────────────── */
-  var fpx = -hullW * 0.4 + hullW * 0.35;
-  var fpy = -hullH * 0.15;
-  var fR = hullH * 0.12;
-  if (char.state === 'startled') {
-    cartoonEye(fpx - fR * 0.55, fpy - fR * 0.15, fR * 0.4, '#446688', {x: 0, y: 0}, 'startled');
-    cartoonEye(fpx + fR * 0.55, fpy - fR * 0.15, fR * 0.4, '#446688', {x: 0, y: 0}, 'startled');
-    outlinedCircle(fpx, fpy + fR * 0.35, fR * 0.25, '#333', '#111', ol * 0.4);
-  } else {
-    cartoonEye(fpx - fR * 0.45, fpy - fR * 0.1, fR * 0.25, '#446688', {x: 1, y: 0}, char.state === 'idle' ? 'happy' : 'normal');
-    cartoonEye(fpx + fR * 0.45, fpy - fR * 0.1, fR * 0.25, '#446688', {x: 1, y: 0}, char.state === 'idle' ? 'happy' : 'normal');
-    ctx.strokeStyle = '#335'; ctx.lineWidth = Math.max(1, ol * 0.5);
-    ctx.beginPath(); ctx.arc(fpx, fpy + fR * 0.2, fR * 0.3, 0, Math.PI); ctx.stroke();
-  }
-
-  /* ── conning tower ──────────────────────────────── */
-  outlinedPath(function() { roundRect(-towerW * 0.5, -hullH - towerH, towerW, towerH, h * 0.01); }, '#ccbb00', '#887700', ol);
-
-  /* ── periscope ──────────────────────────────────── */
-  var periH = h * 0.12;
-  var periRet = (char.state === 'startled') ? Math.min(1, t * 4) * periH * 0.8 : 0;
-  var periRot = (char.state === 'idle') ? Math.sin(t * 1.5) * 0.4 : 0;
-  ctx.strokeStyle = '#666'; ctx.lineWidth = Math.max(2, ol * 1.2);
-  ctx.beginPath();
-  ctx.moveTo(0, -hullH - towerH);
-  ctx.lineTo(0, -hullH - towerH - periH + periRet); ctx.stroke();
-  ctx.save();
-  ctx.translate(0, -hullH - towerH - periH + periRet);
-  ctx.rotate(periRot);
-  outlinedPath(function() { roundRect(-h * 0.02, -h * 0.015, h * 0.05, h * 0.03, h * 0.005); }, '#444', '#222', ol * 0.5);
-  gradientCircle(h * 0.03, 0, h * 0.013, '#aaccff', '#6688bb', '#335', ol * 0.4);
-  ctx.restore();
-
-  // Alarm light
-  if (char.state === 'startled' && Math.sin(t * 15) > 0) {
-    ctx.fillStyle = 'rgba(255,40,40,0.55)';
-    ctx.beginPath(); ctx.arc(0, -hullH - towerH - h * 0.01, h * 0.025, 0, Math.PI * 2); ctx.fill();
-  }
-
-  /* ── rear fins ──────────────────────────────────── */
-  outlinedPath(function() {
-    ctx.moveTo(-hullW * 0.85, -hullH * 0.3);
-    ctx.lineTo(-hullW * 1.05, -hullH * 0.8);
-    ctx.lineTo(-hullW * 0.75, -hullH * 0.3); ctx.closePath();
-  }, '#ccbb00', '#887700', ol * 0.7);
-  outlinedPath(function() {
-    ctx.moveTo(-hullW * 0.85, hullH * 0.3);
-    ctx.lineTo(-hullW * 1.05, hullH * 0.8);
-    ctx.lineTo(-hullW * 0.75, hullH * 0.3); ctx.closePath();
-  }, '#ccbb00', '#887700', ol * 0.7);
-
-  /* ── propeller ──────────────────────────────────── */
-  var ps = (char.state === 'running_away') ? t * 30 : (char.state === 'walking' || char.state === 'returning') ? t * 8 : t * 3;
-  ctx.strokeStyle = '#555'; ctx.lineWidth = Math.max(1.5, h * 0.018);
-  for (var pb = 0; pb < 3; pb++) {
-    var pa = ps + pb * Math.PI * 2 / 3;
-    ctx.beginPath(); ctx.moveTo(-hullW, 0);
-    ctx.lineTo(-hullW - Math.cos(pa) * h * 0.06, Math.sin(pa) * h * 0.06); ctx.stroke();
-  }
-  outlinedCircle(-hullW, 0, h * 0.013, '#777', '#444', ol * 0.4);
-
-  ctx.restore();
-}
-
-// ── Whale (Jupiter) ────────────────────────────────────────────────────────
-function drawWhale(cx, cy, s, char) {
-  var t  = char.stateTimer;
-  var h  = s * 2.0;
-  var ol = Math.max(1.2, h * 0.01);
-  var bodyW = h * 0.5, bodyH = h * 0.2;
-  var surf = char.surfaceAmount || 0;
-
-  ctx.save();
-  ctx.translate(cx, cy);
-
-  /* ── submerged ripples ──────────────────────────── */
-  if (char.state === 'submerged') {
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
-    for (var ri0 = 0; ri0 < 2; ri0++) {
-      var rw0 = h * 0.08 + ri0 * h * 0.04;
-      ctx.beginPath(); ctx.arc(0, 0, rw0, Math.PI, Math.PI * 2); ctx.stroke();
-    }
-    ctx.restore(); return;
-  }
-
-  /* ── squashed / splash ──────────────────────────── */
-  if (char.state === 'squashed') {
-    var sq = Math.min(1, t / 2);
-    var wobble = Math.sin(t * 15) * (1 - sq) * bodyH * 0.3;
-    outlinedEllipse(0, -bodyH * 0.3 * (1 - sq) + wobble, bodyW * (1 + sq * 0.2), Math.max(1, bodyH * 0.3 * (1 - sq * 0.8)), 'rgba(60,80,110,0.5)', 'rgba(30,45,65,0.3)', ol);
-    ctx.fillStyle = 'rgba(200,220,255,0.3)';
-    for (var si2 = 0; si2 < 6; si2++) {
-      var sa2 = si2 * 1.05 - 1.5, sd2 = Math.min(t * 2, 1) * h * 0.25;
-      ctx.beginPath(); ctx.arc(Math.cos(sa2) * sd2 * 2, -sd2 + Math.sin(sa2) * sd2 * 0.5, Math.max(2, h * 0.012), 0, Math.PI * 2); ctx.fill();
-    }
-    ctx.restore(); return;
-  }
-
-  /* ── surface ripples ────────────────────────────── */
-  ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = Math.max(1, ol * 0.5);
-  for (var ri = 0; ri < 3; ri++) {
-    var rAge = (t * 0.5 + ri * 0.8) % 2.5;
-    var rw = bodyW * 0.4 + rAge * bodyW * 0.4;
-    ctx.beginPath(); ctx.arc(0, 0, rw, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
-  }
-
-  /* ── body (gradient ellipse, clipped above water) ─ */
-  var peakY = -bodyH * surf;
-  ctx.save();
-  ctx.beginPath(); ctx.rect(-bodyW * 1.5, -h, bodyW * 3, h); ctx.clip();
-
-  // Main body with gradient + outline
-  var wG = ctx.createRadialGradient(-bodyW * 0.15, peakY + bodyH * 0.2, bodyH * 0.15, 0, peakY + bodyH * 0.5, bodyW);
-  wG.addColorStop(0, 'rgb(90,115,160)');
-  wG.addColorStop(0.5, 'rgb(60,82,120)');
-  wG.addColorStop(1, 'rgb(40,55,85)');
-  ctx.fillStyle = wG;
-  ctx.beginPath(); ctx.ellipse(0, peakY + bodyH * 0.5, bodyW, bodyH, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = 'rgba(25,40,65,0.6)'; ctx.lineWidth = ol;
-  ctx.beginPath(); ctx.ellipse(0, peakY + bodyH * 0.5, bodyW, bodyH, 0, 0, Math.PI * 2); ctx.stroke();
-
-  // Belly lightening
-  ctx.fillStyle = 'rgba(140,160,200,0.15)';
-  ctx.beginPath(); ctx.ellipse(0, peakY + bodyH * 0.7, bodyW * 0.7, bodyH * 0.4, 0, 0, Math.PI * 2); ctx.fill();
-
-  // Specular highlight on back
-  ctx.fillStyle = 'rgba(255,255,255,0.08)';
-  ctx.beginPath(); ctx.ellipse(-bodyW * 0.1, peakY + bodyH * 0.15, bodyW * 0.4, bodyH * 0.2, -0.2, 0, Math.PI * 2); ctx.fill();
-
-  /* ── eye ────────────────────────────────────────── */
-  if (surf > 0.5) {
-    var eyeX = bodyW * 0.55, eyeY = peakY + bodyH * 0.15;
-    cartoonEye(eyeX, eyeY, bodyH * 0.1, '#334466', {x: 1, y: 0}, 'normal');
-    ctx.strokeStyle='#263d53';ctx.lineWidth=ol;ctx.lineCap='round';
-    ctx.beginPath();ctx.moveTo(bodyW*.42,peakY+bodyH*.55);
-    ctx.quadraticCurveTo(bodyW*.6,peakY+bodyH*.82,bodyW*.77,peakY+bodyH*.48);ctx.stroke();
-  }
-
-  ctx.restore(); // undo clip
-
-  /* ── blowhole ───────────────────────────────────── */
-  if (surf > 0.7) {
-    var bhX = bodyW * 0.15, bhY = peakY - bodyH * 0.05;
-    outlinedEllipse(bhX, bhY, bodyH * 0.06, bodyH * 0.03, 'rgba(40,55,85,0.55)', 'rgba(25,35,55,0.4)', ol * 0.5);
-  }
-
-  /* ── spout particles ────────────────────────────── */
-  if (char.spoutParticles && char.spoutParticles.length > 0) {
-    var bhBx = bodyW * 0.15, bhBy = peakY - bodyH * 0.08;
-    for (var sp = 0; sp < char.spoutParticles.length; sp++) {
-      var p = char.spoutParticles[sp];
-      var pr = 1.5 + p.life * 2.5;
-      ctx.fillStyle = 'rgba(200,220,255,' + (0.55 - p.life * 0.2) + ')';
-      ctx.beginPath(); ctx.arc(bhBx + p.ox * s, bhBy + p.oy * s * 0.3, pr, 0, Math.PI * 2); ctx.fill();
-    }
-  }
-
-  /* ── tail flukes (diving) ───────────────────────── */
-  if (char.state === 'diving' && surf < 0.6) {
-    var tp = 1 - surf / 0.6;
-    var tw = bodyW * 0.35 * tp;
-    var ty = -bodyH * 0.3 * tp;
-    // Left fluke
-    outlinedPath(function() {
-      ctx.moveTo(0, 0);
-      ctx.quadraticCurveTo(-tw * 0.5, ty - h * 0.08, -tw, ty);
-      ctx.quadraticCurveTo(-tw * 0.3, ty + h * 0.02, 0, 0);
-    }, 'rgb(55,75,110)', 'rgba(25,40,65,0.5)', ol);
-    // Right fluke
-    outlinedPath(function() {
-      ctx.moveTo(0, 0);
-      ctx.quadraticCurveTo(tw * 0.5, ty - h * 0.08, tw, ty);
-      ctx.quadraticCurveTo(tw * 0.3, ty + h * 0.02, 0, 0);
-    }, 'rgb(55,75,110)', 'rgba(25,40,65,0.5)', ol);
-  }
-
-  ctx.restore();
-}
 
 // ── Persistent character close-up, beneath the target readout ────────────────
 function drawCharacterAside(char) {
@@ -2459,12 +1846,17 @@ function drawCharacterAside(char) {
   ctx.save();
   ctx.beginPath();ctx.arc(W-52,90,36,0,Math.PI*2);ctx.clip();
   ctx.fillStyle='rgba(255,249,233,.78)';ctx.fill();
-  var scale = char.type === 'newt' ? 100 : char.type === 'submarine' ? 74 : char.type === 'whale' ? 60 : 43;
-  var footY = char.type === 'newt' ? 105 : char.type === 'whale' ? 108 : char.type === 'submarine' ? 110 : 120;
+  // Frame faces rather than shrinking wide bodies into the little round window.
+  var framing = char.type === 'newt' ? { scale: 68, x: -26.35, footY: 122.3 }
+    : char.type === 'snowman' ? { scale: 54, x: 0, footY: 147 }
+    : char.type === 'whale' ? { scale: 54, x: -27.7, footY: 124.4 }
+    : char.type === 'submarine' ? { scale: 65, x: -21.1, footY: 119.3 }
+    : { scale: 43, x: 0, footY: 120 };
   // Keep their face visible even while the world sprite is flattened or out of view.
   var portrait = { ...char, state: !char.visible || char.state === 'squashed' ? 'idle' : char.state };
+  if (['newt', 'whale', 'submarine'].includes(char.type)) portrait.direction = 1;
   if (char.type === 'whale') portrait = { ...portrait, state: 'spouting', surfaceAmount: 1 };
-  drawCharacterSprite(W-(char.type === 'whale' ? 60 : 52),footY,scale,portrait);
+  drawCharacterSprite(W-52+framing.x,framing.footY,framing.scale,portrait);
   ctx.restore();
 }
 
@@ -3032,6 +2424,7 @@ export const Renderer = {
   setCameraImmediate: setCameraImmediate,
   setCameraImmediateY: setCameraImmediateY,
   resetCamera: resetCamera,
+  setRocketCamera: setRocketCamera,
   setBarrelLength: setBarrelLength,
   clear: clear,
   drawWorld: drawWorld,

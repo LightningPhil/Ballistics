@@ -17,6 +17,7 @@ Start with **Let it fly** or the ready-to-fly rocket. Four optional experiment c
 
 - The analogue chronograph displays **simulation time**. Auto builds and sheds speed smoothly around ignition, burnout, guidance changes, apex and contact. It never runs below **1×**. Manual choices are 1×, 4×, 16× and 64×, with smooth transitions. Pause is a separate inspection action.
 - Replay, the time slider and **Next moment** use recorded flight data. Changing viewing speed cannot change the trajectory. Next moment deliberately pauses at an event; Auto does not impose pauses.
+- The rocket camera keeps the complete vehicle visible through fast playback, timeline jumps, descent and landing, with clear space around the character close-up and nozzle diagram.
 - The previous flight is kept as a ghost. Pin a baseline while trying alternatives. Comparable flights use the same clock and camera; trajectories from different worlds are not overlaid.
 - Drag the reference flag or height line, or enter its value. Results show how far from the target the flight finished. The target is a measuring aid, not a collision object.
 - Full-path reveal and direction arrows are optional. Arrows distinguish velocity, thrust and gravity; their lengths are not a force/speed scale.
@@ -51,7 +52,7 @@ The build creates the web bundle in `dist/` and a portable, self-contained `dist
 - `src/flight.ts`: immutable settings, canonical recording, event snapshots and replay sampling.
 - `src/playback.ts`, `src/flight-deck.ts`: smooth viewing clock, inspection and comparison controls.
 - `src/main.ts`: experiment lifecycle and presentation effects.
-- `src/renderer.ts`, `src/crew.ts`, `src/nozzle_render.ts`: scene, illustrated crew and engine cutaway.
+- `src/renderer.ts`, `src/crew.ts`, `src/aquatic-characters.ts`, `src/planet-guests.ts`, `src/nozzle_render.ts`: scene, illustrated characters and engine cutaway.
 - `src/ui.ts`, `index.html`, stylesheets: accessible experiment controls and responsive layout.
 
 ## License

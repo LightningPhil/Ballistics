@@ -990,7 +990,7 @@ function handleRocketLanding(state) {
     flightTime: run.duration, burnTime: state.burnoutTime ?? state.time,
     dvTsiolkovsky: state.idealDeltaV, dvActual: state.burnoutSpeed, burnoutSpeed: state.burnoutSpeed });
   rocketLanded = true;
-  landedRocket = { x: state.x, epsilon: state.epsilon, timer: 0, phase: 'impact', impactSpeed: state.impactSpeed };
+  landedRocket = { x: state.x, epsilon: run.config.epsilon, timer: 0, phase: 'impact', impactSpeed: state.impactSpeed };
   activeRocket = null; stopEngineLoop(); UI.setFlightActive(false);
 }
 
@@ -1308,14 +1308,15 @@ function updateRecordedFlight(dt: number) {
     activeRocket = { ...state, phase: run.outcome === 'no-liftoff' ? 'fizzle_done' : 'flight', maxThrust: rocketMaxThrust };
     UI.updateRocketReadouts(state);
     const settings = UI.getRocketZoomSettings();
-    const ppm = computeNeededZoom(Math.max(1, Math.abs(state.x)), Math.max(2, state.y), settings.marginPercent / 100);
     Renderer.setViewTransitionDuration(reducedMotion() ? .01 : settings.durationSeconds);
-    if (ppm < Renderer.getCurrentPPM()) Renderer.setTargetZoom(Math.max(ppm, Renderer.getWholePlanetPPM() * .65));
-    const blend = 1 - Renderer.getPlanetViewFrac();
-    const visibleWidth = Renderer.getWidth() / Renderer.getCurrentPPM();
-    Renderer.setCameraTarget((state.x - visibleWidth / 2) * blend);
-    const cameraY = state.y + (Renderer.getHeight() / 2 - Renderer.getBaseGroundY()) / Renderer.getCurrentPPM();
-    Renderer.setCameraTargetY(Math.max(0, cameraY * blend));
+    const horizon = Math.max(.4, settings.durationSeconds * .6) * deck.clock.rate;
+    const ahead = Array.from({ length: 5 }, (_, index) => sampleFlight(run, time + horizon * (index + 1) / 5));
+    const contact = time >= run.duration && run.outcome === 'impact';
+    Renderer.setRocketCamera({
+      state: contact ? { ...state, y: .6, theta: 8 } : state, ahead,
+      launchX: run.launchX, radius: run.config.planetRadius,
+      epsilon: run.config.epsilon, margin: settings.marginPercent / 100
+    });
   }
   if (time > lastFlightTime) {
     for (const event of run.events) {
@@ -1406,10 +1407,18 @@ function loop(timestamp) {
   // Anticipate the complete setup/rebuild envelope before smoothly easing the
   // idle camera. Recorded flights retain their existing framing policy.
   frameCannonSetup();
-  // Update renderer world (environment blend + zoom animation)
-  Renderer.updateWorld(dt);
-
+  // Advance the recorded vehicle first so framing uses this frame's position,
+  // including seeks and accelerated playback, rather than yesterday's target.
   updateRecordedFlight(elapsed);
+  if (currentMode === 'rocket' && !viewActive && !deck.busy) {
+    const values = UI.getRocketValues();
+    const pad = Renderer.getRocketPadPosition(values.launchAngle, values.epsilon);
+    Renderer.setRocketCamera({ state: pad, ahead: [{ x: Renderer.TOWER_BASE_X_M, y: Renderer.TOWER_HEIGHT_M }], launchX: pad.x,
+      radius: currentPlanetRadius, epsilon: values.epsilon, margin: .15 });
+  }
+  // Update renderer world (environment blend + zoom animation), then frame the
+  // current rocket projection before anything is painted.
+  Renderer.updateWorld(dt);
 
   // ─── Animations ───
   if (currentMode === 'cannon') {
@@ -1536,8 +1545,8 @@ function loop(timestamp) {
           activeRocket.fizzleProgress || 0
         );
       }
-    } else if (landedRocket && drawSurfaceDetail) {
-      Renderer.drawCrater(landedRocket.x);
+    } else if (landedRocket) {
+      if (drawSurfaceDetail) Renderer.drawCrater(landedRocket.x);
       Renderer.drawRocket({ phase: 'flight', x: landedRocket.x, y: 0.6, theta: 8 }, 8, landedRocket.epsilon);
     } else if (!rocketLanded) {
       // Pre-launch: rocket sitting on the pad
