@@ -2,7 +2,8 @@ import './style.css';
 import { FlightDeck } from './flight-deck.ts';
 import { recordFlight, sampleFlight, compatibleRuns, type FlightRecord } from './flight.ts';
 import { resolveEnvironment } from './environment.ts';
-import { CharacterRemarks, launchRemark } from './character-remarks.ts';
+import { CharacterRemarks } from './character-remarks.ts';
+import { createCloudGuest, updateCloudGuest, diveCloudGuest } from './cloud-guests.ts';
 import { cannonSetupZoom } from './camera.ts';
 import { Physics } from './physics.ts';
 import { RocketPropellants } from './rocket_propellants.ts';
@@ -120,7 +121,7 @@ var pendingFire       = false;
 var clangCooldown     = 0;
 
 // ── Comic Character state ────────────────────────────────────────────────
-// One character walks on the planet surface and reacts to cannon fire.
+// One character walks on solid ground or cruises through clouds and reacts to launches.
 // Type is chosen based on the nearest planet name.
 var activeCharacter = null;
 var lastCharacterPlanet = null; // track planet to detect changes
@@ -142,30 +143,25 @@ function createCharacter(type) {
     bubbleTimer: 0,
     thoughtCooldown: 1.5
   };
-  // Whale has custom submerge/surface cycle
-  if (type === 'whale') {
-    ch.state = 'submerged';
-    ch.visible = true;
-    ch.surfaceAmount = 0;
-    ch.spoutParticles = [];
-    ch.submergeDuration = 5 + Math.random() * 7;
-    ch.x = 8 + Math.random() * 20;
+  if (type === 'whale' || type === 'submarine') {
+    // Keep the guest inside the initial field, then drift gently around it.
+    const fieldX = Math.max(1.5, Math.min(12, toPhysX(Renderer.getWidth()) * .62));
+    ch.cloudMotion = createCloudGuest(fieldX, { reducedMotion: reducedMotion() });
+    Object.assign(ch, { x: ch.cloudMotion.x, y: ch.cloudMotion.y,
+      surfaceAmount: ch.cloudMotion.surfaceAmount, state: 'cruising', direction: 1 });
   }
   return ch;
 }
 
 function startleCharacter(isRocket?) {
   if (!activeCharacter) return;
-  if (isRocket) sayCharacter(launchRemark(resolveEnvironment(currentGravity)));
+  if (isRocket && deck?.banter) {
+    sayCharacter(characterRemarks.reaction('launch', resolveEnvironment(currentGravity))!);
+  }
   if (!activeCharacter.visible) return;
   if (activeCharacter.state === 'squashed') return;
-  // Whale: if surfaced, dive immediately
-  if (activeCharacter.type === 'whale') {
-    if (activeCharacter.state === 'surfacing' || activeCharacter.state === 'spouting') {
-      activeCharacter.state = 'diving';
-      activeCharacter.stateTimer = 0;
-      activeCharacter.submergeDuration = isRocket ? 20 + Math.random() * 8 : 12 + Math.random() * 5;
-    }
+  if (activeCharacter.cloudMotion) {
+    activeCharacter.cloudMotion = diveCloudGuest(activeCharacter.cloudMotion, isRocket ? 18 : 12);
     return;
   }
   if (isRocket) {
@@ -179,28 +175,12 @@ function startleCharacter(isRocket?) {
   }
 }
 
-function fizzleReactCharacter() {
-  if (!activeCharacter || !activeCharacter.visible) return;
-  if (activeCharacter.state === 'squashed') return;
-  // Whale: just show a bubble if surfaced
-  if (activeCharacter.type === 'whale') {
-    if (activeCharacter.state === 'spouting' || activeCharacter.state === 'surfacing') {
-      activeCharacter.bubbleText = 'Ha!';
-      activeCharacter.bubbleTimer = 2.5;
-    }
-    return;
-  }
-  // Laughing reaction — character stops running and mocks the fizzle
-  var laughs = ['We have made a heater.', 'More lift. Less luggage.', 'The launch pad remains undefeated.'];
-  activeCharacter.state = 'idle';
-  activeCharacter.stateTimer = 0;
-  activeCharacter.bubbleText = laughs[Math.floor(Math.random() * laughs.length)];
-  activeCharacter.bubbleTimer = 3.0;
-  activeCharacter.thoughtCooldown = 6 + Math.random() * 5;
-}
-
 function squashCharacter() {
   if (!activeCharacter || !activeCharacter.visible) return;
+  if (activeCharacter.cloudMotion) {
+    activeCharacter.cloudMotion = diveCloudGuest(activeCharacter.cloudMotion);
+    return;
+  }
   activeCharacter.state = 'squashed';
   activeCharacter.stateTimer = 0;
   activeCharacter.bubbleText = null;
@@ -231,73 +211,14 @@ function updateCharacter(dt, captionDt = dt) {
     }
   }
 
-  // ── Whale custom state machine ──
-  if (ch.type === 'whale') {
-    switch (ch.state) {
-      case 'submerged':
-        // Hidden, drifting to new position
-        if (ch.stateTimer > ch.submergeDuration) {
-          ch.x = 6 + Math.random() * 22;
-          ch.state = 'surfacing';
-          ch.stateTimer = 0;
-          ch.visible = true;
-        }
-        break;
-      case 'surfacing':
-        ch.surfaceAmount = Math.min(1, ch.stateTimer / 1.5);
-        if (ch.stateTimer > 1.5) {
-          ch.state = 'spouting';
-          ch.stateTimer = 0;
-          ch.surfaceAmount = 1;
-        }
-        break;
-      case 'spouting':
-        ch.surfaceAmount = 1;
-        // Generate spout particles
-        if (ch.spoutParticles.length < 10 && Math.random() < 0.4) {
-          var ang = -Math.PI * 0.5 + (Math.random() - 0.5) * 0.8;
-          ch.spoutParticles.push({
-            ox: (Math.random() - 0.5) * 0.3,
-            oy: 0,
-            vx: Math.cos(ang) * (1.5 + Math.random() * 2),
-            vy: Math.sin(ang) * (3 + Math.random() * 2),
-            life: 0.8 + Math.random() * 0.4
-          });
-        }
-        if (ch.stateTimer > 1.8) {
-          ch.state = 'diving';
-          ch.stateTimer = 0;
-        }
-        break;
-      case 'diving':
-        ch.surfaceAmount = Math.max(0, 1 - ch.stateTimer / 1.5);
-        if (ch.stateTimer > 1.5) {
-          ch.state = 'submerged';
-          ch.stateTimer = 0;
-          ch.surfaceAmount = 0;
-          ch.submergeDuration = 5 + Math.random() * 7;
-        }
-        break;
-      case 'squashed':
-        ch.surfaceAmount = Math.max(0, 1 - ch.stateTimer / 2);
-        if (ch.stateTimer > 3) {
-          ch.state = 'submerged';
-          ch.stateTimer = 0;
-          ch.surfaceAmount = 0;
-          ch.submergeDuration = 8 + Math.random() * 5;
-        }
-        break;
-    }
-    // Update spout particles
-    for (var sp = ch.spoutParticles.length - 1; sp >= 0; sp--) {
-      var p = ch.spoutParticles[sp];
-      p.ox += p.vx * dt;
-      p.oy += p.vy * dt;
-      p.vy += 9 * dt; // gravity pulls drops down
-      p.life -= dt;
-      if (p.life <= 0) ch.spoutParticles.splice(sp, 1);
-    }
-    return; // skip standard state machine
+  if (ch.cloudMotion) {
+    // Cloud swimming uses presentation time, independent of fast flight playback.
+    ch.cloudMotion = updateCloudGuest(ch.cloudMotion, captionDt, { reducedMotion: reducedMotion() });
+    const motion = ch.cloudMotion;
+    Object.assign(ch, { x: motion.x, y: motion.y, surfaceAmount: motion.surfaceAmount,
+      stateTimer: motion.age, reducedMotion: reducedMotion(),
+      state: motion.phase === 'surfaced' ? (ch.type === 'whale' ? 'spouting' : 'idle') : motion.phase });
+    return;
   }
 
   switch (ch.state) {
@@ -1283,12 +1204,12 @@ function crewReaction(kind: string) {
   if (kind !== 'coast') crewReactionUntil = performance.now() / 1000 + 4;
   const now = performance.now() / 1000;
   const count = remarkCounts.get(kind) || 0;
-  const lines = { coast: 'I brought a folding chair.', apex: 'The view was worth it.',
-    impact: 'We need a longer measuring tape.', escape: 'About that return ticket…',
-    orbit: 'We may be here a while.', fizzle: 'We have made a heater.' };
-  if (deck.banter && now - lastCrewRemark > 8 && count < 2 && lines[kind]) {
-    sayCharacter(lines[kind]);
-    lastCrewRemark = now; remarkCounts.set(kind, count + 1);
+  if (deck.banter && now - lastCrewRemark > 8 && count < 2) {
+    const line = characterRemarks.reaction(kind, resolveEnvironment(currentGravity));
+    if (line) {
+      sayCharacter(line);
+      lastCrewRemark = now; remarkCounts.set(kind, count + 1);
+    }
   }
 }
 

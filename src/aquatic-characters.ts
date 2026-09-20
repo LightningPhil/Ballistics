@@ -2,6 +2,7 @@ import type { CrewPose } from './crew.ts';
 
 interface AquaticPose extends CrewPose {
   surfaceAmount?: number;
+  portrait?: boolean;
   spoutParticles?: { ox: number; oy: number; life: number }[];
 }
 
@@ -48,16 +49,45 @@ function finite(value: number | undefined, fallback = 0) {
   return Number.isFinite(value) ? value as number : fallback;
 }
 
+/** Soft local cloud banks, painted in the same metre scale as their guest.
+ * Their feathered overlaps veil the lower hull/body without a hard waterline.
+ * Portraits skip these entirely: the little face remains clear at every depth.
+ */
+function cloudBank(ctx: CanvasRenderingContext2D, surface: number, t: number,
+  whale: boolean, foreground: boolean) {
+  const hidden = 1 - surface;
+  const colour = whale ? '211,171,132' : '218,200,151';
+  const drift = Math.sin(t * .38) * 5;
+  const puffs = foreground
+    ? [[-69,12,49,19],[-27,10,54,26],[23,12,52,30],[65,9,42,20],[2,28,75,25]]
+    : [[-64,-15,58,20],[40,-16,64,22],[0,6,102,28]];
+  for (let i = 0; i < puffs.length; i++) {
+    const [x,y,rx,ry] = puffs[i];
+    const opacity = foreground ? .13 + hidden * .84 : .13 + hidden * .3;
+    ctx.save();
+    ctx.translate(x + drift * (i % 2 ? -1 : 1), y + Math.sin(t * .55 + i) * 1.4);
+    ctx.scale(rx, ry);
+    const haze = ctx.createRadialGradient(0,0,.04,0,0,1);
+    haze.addColorStop(0,`rgba(${colour},${opacity})`);
+    haze.addColorStop(.48,`rgba(${colour},${opacity * .8})`);
+    haze.addColorStop(1,`rgba(${colour},0)`);
+    ctx.fillStyle = haze;
+    ctx.beginPath(); ctx.arc(0,0,1,0,TAU); ctx.fill();
+    ctx.restore();
+  }
+}
+
 /**
  * At s=80, the surfaced whale is about 184×112 pixels, x=-110…74, y=-112…0.
  * Its eye is (45,-53); a portrait can crop the tail while retaining the face.
- * surfaceAmount translates the whole creature beneath the existing surface.
+ * surfaceAmount gently lowers it into a feathered cloud bank, never clipping
+ * the sprite at a hard horizon or hiding it completely during its idle cycle.
  */
 export function drawWhale(ctx: CanvasRenderingContext2D, cx: number, footY: number, s: number, char: AquaticPose) {
   const t = char.reducedMotion ? 0 : finite(char.stateTimer);
-  const state = char.state || 'spouting';
+  const state = char.portrait ? 'idle' : char.state || 'spouting';
   const direction = char.direction === -1 ? -1 : 1;
-  const surface = Math.max(0, Math.min(1, finite(char.surfaceAmount, state === 'submerged' ? 0 : 1)));
+  const surface = char.portrait ? 1 : Math.max(.34, Math.min(1, finite(char.surfaceAmount, 1)));
   const startled = state === 'startled' || state === 'rocket_startled';
   const blinking = !char.reducedMotion && t > 0 && t % 4.7 > 4.53;
 
@@ -66,18 +96,11 @@ export function drawWhale(ctx: CanvasRenderingContext2D, cx: number, footY: numb
   ctx.scale(s / 80, s / 80);
   ink(ctx);
 
-  // The ripples are deliberately horizontal: they mark the surface, not water
-  // implied on Jupiter. Their small, low-contrast crescents work as cloud wakes.
-  for (let i = 0; i < 2; i++) {
-    const spread = 34 + i * 19 + Math.sin(t * 1.5 + i) * 3;
-    stroke(ctx, () => ctx.ellipse(0, -1, spread, 4 + i * 2.5, 0, .06, Math.PI - .06),
-      state === 'submerged' ? 'rgba(255,243,217,.18)' : 'rgba(255,243,217,.4)', 1.6);
-  }
-  if (state === 'submerged' || surface <= 0) { ctx.restore(); return; }
+  if (!char.portrait) cloudBank(ctx, surface, t, true, false);
 
   ctx.save();
-  ctx.beginPath(); ctx.rect(-280, -280, 560, 280); ctx.clip();
-  ctx.translate(0, (1 - surface) * 118);
+  ctx.translate(0, (1 - surface) * 62);
+  ctx.globalAlpha *= .7 + surface * .3;
   ctx.scale(direction, 1);
 
   if (state === 'squashed') {
@@ -86,7 +109,7 @@ export function drawWhale(ctx: CanvasRenderingContext2D, cx: number, footY: numb
     ctx.scale(1 + squash * .12, .32 - squash * .1);
   }
 
-  const bob = Math.sin(t * 1.8) * 1.7;
+  const bob = char.portrait ? 0 : Math.sin(t * 1.8) * 1.7;
   ctx.translate(0, bob - (startled ? 5 : 0));
 
   // An upswept peduncle and two broad flukes make a whale even in silhouette.
@@ -190,7 +213,7 @@ export function drawWhale(ctx: CanvasRenderingContext2D, cx: number, footY: numb
     oval(ctx,-1,-110,2.6,3.6,'#cde2db',false);
     oval(ctx,23,-104,2,2.8,'#a5cdd0',false);
   }
-  if (!char.reducedMotion) {
+  if (!char.reducedMotion && !char.portrait) {
     for (const particle of char.spoutParticles || []) {
       if (!Number.isFinite(particle.ox) || !Number.isFinite(particle.oy) || !Number.isFinite(particle.life)) continue;
       const life = Math.max(0, Math.min(1.2, particle.life));
@@ -202,20 +225,7 @@ export function drawWhale(ctx: CanvasRenderingContext2D, cx: number, footY: numb
   }
   ctx.restore();
 
-  // The last visible part of a dive is a pair of flukes lifting into the air.
-  if (state === 'diving' && surface < .6) {
-    const lift = Math.sin((1 - surface / .6) * Math.PI);
-    ctx.save(); ctx.scale(direction, 1); ctx.translate(-33,0);
-    shape(ctx, BLUE_DARK, () => {
-      ctx.moveTo(-7,0); ctx.quadraticCurveTo(0,-18*lift,-5,-34*lift);
-      ctx.quadraticCurveTo(-27,-51*lift,-35,-38*lift);
-      ctx.quadraticCurveTo(-26,-24*lift,-9,-26*lift);
-      ctx.quadraticCurveTo(7,-17*lift,25,-37*lift);
-      ctx.quadraticCurveTo(10,-47*lift,-1,-34*lift);
-      ctx.quadraticCurveTo(7,-12*lift,7,0);
-    });
-    ctx.restore();
-  }
+  if (!char.portrait) cloudBank(ctx, surface, t, true, true);
   ctx.restore();
 }
 
@@ -225,14 +235,18 @@ export function drawWhale(ctx: CanvasRenderingContext2D, cx: number, footY: numb
  */
 export function drawSubmarine(ctx: CanvasRenderingContext2D, cx: number, footY: number, s: number, char: AquaticPose) {
   const t = char.reducedMotion ? 0 : finite(char.stateTimer);
-  const state = char.state || 'idle';
+  const state = char.portrait ? 'idle' : char.state || 'idle';
+  const surface = char.portrait ? 1 : Math.max(.34, Math.min(1, finite(char.surfaceAmount, 1)));
   const direction = char.direction === -1 ? -1 : 1;
   const startled = state === 'startled' || state === 'rocket_startled';
   const swimming = ['walking','returning','running_away'].includes(state);
-  const bob = Math.sin(t * 1.8) * 1.8;
+  const bob = char.portrait ? 0 : Math.sin(t * 1.8) * 1.8;
 
   ctx.save(); ctx.translate(cx,footY); ctx.scale(s / 80,s / 80); ink(ctx);
-  oval(ctx,0,-1,53,3.7,'rgba(41,59,67,.13)',false);
+  if (!char.portrait) cloudBank(ctx, surface, t, false, false);
+  ctx.save();
+  ctx.translate(0,(1 - surface) * 54);
+  ctx.globalAlpha *= .74 + surface * .26;
   ctx.translate(0,bob - (startled ? 4 : 0));
   ctx.scale(direction,1);
   ctx.rotate(swimming ? Math.sin(t * 2) * .035 : 0);
@@ -344,5 +358,7 @@ export function drawSubmarine(ctx: CanvasRenderingContext2D, cx: number, footY: 
   if (startled) {
     stroke(ctx,() => { ctx.moveTo(-17,-74); ctx.lineTo(-20,-77); ctx.moveTo(-10,-77); ctx.lineTo(-10,-81); },'#e2ac55',2.2);
   }
+  ctx.restore();
+  if (!char.portrait) cloudBank(ctx, surface, t, false, true);
   ctx.restore();
 }

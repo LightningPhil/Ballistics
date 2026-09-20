@@ -1796,13 +1796,13 @@ function drawStickman(physX, physY, poseData) {
 
 
 // ── Comic Characters ────────────────────────────────────────────────────────
-// Characters walk on the ground and react to cannon fire. Drawn in physics space.
+// Characters walk on solid ground or drift above a cloud deck in physics space.
 // State machine is managed by main.js; renderer just draws based on the state object.
 
 function drawCharacter(char) {
   if (!char || !char.visible) return;
 
-  var position = toCanvas(char.x, 0);
+  var position = toCanvas(char.x, Number.isFinite(char.y) ? char.y : 0);
   ctx.save();
   ctx.translate(position.x, position.y);
   ctx.rotate(surfaceNormalAngle(char.x));
@@ -1853,9 +1853,10 @@ function drawCharacterAside(char) {
     : char.type === 'submarine' ? { scale: 65, x: -21.1, footY: 119.3 }
     : { scale: 43, x: 0, footY: 120 };
   // Keep their face visible even while the world sprite is flattened or out of view.
-  var portrait = { ...char, state: !char.visible || char.state === 'squashed' ? 'idle' : char.state };
+  var portrait = { ...char, portrait: true,
+    state: !char.visible || char.state === 'squashed' ? 'idle' : char.state };
   if (['newt', 'whale', 'submarine'].includes(char.type)) portrait.direction = 1;
-  if (char.type === 'whale') portrait = { ...portrait, state: 'spouting', surfaceAmount: 1 };
+  if (['whale', 'submarine'].includes(char.type)) portrait.surfaceAmount = 1;
   drawCharacterSprite(W-52+framing.x,framing.footY,framing.scale,portrait);
   ctx.restore();
 }

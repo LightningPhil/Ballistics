@@ -2,6 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Renderer } from '../src/renderer.ts';
 import { NozzleRender } from '../src/nozzle_render.ts';
+import { ROCKY_REMARKS } from '../src/remarks/rocky-worlds.ts';
+import { GIANT_REMARKS } from '../src/remarks/giant-worlds.ts';
+import { GENERIC_REMARKS, EVENT_REMARKS, reactionPool } from '../src/character-remarks.ts';
+import { ENVIRONMENTS } from '../src/environment.ts';
+import { createCloudGuest } from '../src/cloud-guests.ts';
 
 function harness() {
   const calls = [];
@@ -157,14 +162,37 @@ test('flattened and submerged world characters retain a recognizable close-up wi
     h.calls.length = 0;
     Renderer.drawSceneNotes(NaN, 'cannon', character);
     const normalPortrait = h.calls.slice();
-    for (const extra of [{ state: 'squashed' }, { visible: false, state: 'running_away' },
-      ...(type === 'whale' ? [{ state: 'submerged', surfaceAmount: 0 }, { state: 'diving', surfaceAmount: .2 }] : [])]) {
-      const worldCharacter = { ...character, ...extra };
+    for (const extra of [{ state: 'squashed' }, { visible: false, state: 'running_away', x: 1e12, y: 1e12 },
+      ...(['whale', 'submarine'].includes(type) ? [
+        { state: 'submerged', surfaceAmount: 0 }, { state: 'cruising', surfaceAmount: .34 },
+        { state: 'surfacing', surfaceAmount: .61 }, { state: 'surfaced', surfaceAmount: 1 },
+        { state: 'diving', surfaceAmount: .55 }, { state: 'rocket_startled', surfaceAmount: .34 },
+        { state: 'diving', surfaceAmount: .34, visible: false, x: 1e12 },
+      ] : [])]) {
+      const worldCharacter = Object.freeze({ ...character, ...extra });
       const original = { ...worldCharacter };
       h.calls.length = 0;
       Renderer.drawSceneNotes(NaN, 'cannon', worldCharacter);
       assert.deepEqual(h.calls, normalPortrait, `${type} remains recognizable`);
       assert.deepEqual(worldCharacter, original, 'Drawing the close-up does not mutate the world character');
+    }
+  }
+});
+
+test('cloud guests anchor at their world altitude while ground characters and invalid altitudes use zero', () => {
+  const h = harness();
+  for (const ppm of [80, .00003]) {
+    Renderer.setZoomImmediate(ppm); Renderer.updateWorld(0);
+    for (const type of ['whale', 'submarine', 'golfer']) {
+      const motion = createCloudGuest(ppm === 80 ? 5 : 1e6, { random: () => .5 });
+      for (const y of [motion.y, 0, undefined, NaN, Infinity, -Infinity]) {
+        const character = Object.freeze({ ...motion, type, y, visible: true, state: 'idle', stateTimer: 0 });
+        h.calls.length = 0;
+        Renderer.drawCharacter(character);
+        const anchor = h.calls.find(call => call.name === 'translate').args;
+        const expected = Renderer.toCanvas(character.x, Number.isFinite(y) ? y : 0);
+        assert.deepEqual(anchor, [expected.x, expected.y], `${type} anchor at ${y} m and ${ppm} PPM`);
+      }
     }
   }
 });
@@ -183,6 +211,30 @@ test('close-up speech only appears when enabled and remains inside the mobile sc
     for (const { args: [line, x, y] } of text) {
       assert.ok(x >= 0 && x + h.context.measureText(line).width < 218, 'Speech stays inside the scene and left of the portrait');
       assert.ok(y >= 56 && y + 18 <= 126, 'Speech stays beneath the target and above the nozzle view');
+    }
+  }
+});
+
+test('every planet, generic and event remark fits beside the portrait on a narrow viewport without losing text', () => {
+  const h = harness();
+  const remarks = new Set([...Object.values(ROCKY_REMARKS).flat(), ...Object.values(GIANT_REMARKS).flat(), ...GENERIC_REMARKS,
+    ...ENVIRONMENTS.flatMap(environment => Object.keys(EVENT_REMARKS).flatMap(kind => reactionPool(kind, environment)))]);
+  for (const width of [320, 375]) {
+    h.bounds.width = width; h.resizeLayout();
+    for (const speech of remarks) {
+      h.calls.length = 0;
+      Renderer.drawSceneNotes(NaN, 'cannon', {
+        type: 'golfer', state: 'idle', reducedMotion: true, visible: false, bubbleText: speech,
+      });
+      const text = h.calls.filter(call => call.name === 'fillText');
+      assert.equal(text.map(call => call.args[0]).join(' '), speech, 'Every word remains visible');
+      assert.ok(text.length <= 3, `Remark needs too many lines at ${width}px: ${speech}`);
+      for (const { args: [line, x, y] } of text) {
+        assert.ok(x >= 10 && x + h.context.measureText(line).width <= width - 114,
+          `Speech fits left of the portrait at ${width}px: ${speech}`);
+        assert.ok(y >= 65 && y + 18 <= 126,
+          `Speech clears the target and nozzle view at ${width}px: ${speech}`);
+      }
     }
   }
 });
