@@ -50,6 +50,8 @@ Tests cover analytical rocket impulse, timestep convergence, exact fuel depletio
 
 The build creates the web bundle in `dist/` and a portable, self-contained `dist-single/index.html`. The latter is committed and regenerated with source changes; CI also uploads a freshly built copy. Vite uses its native config loader, supported by Node 24.
 
+The live site at <https://lightningphil.github.io/Ballistics/> is deployed by `.github/workflows/pages.yml` on every push to `main`: it runs the tests, builds `dist/` and publishes it with `actions/deploy-pages`. The repository's Pages source is set to "GitHub Actions"; the raw `index.html` at the repo root is a Vite dev entry and does not run unbuilt.
+
 ## Source map
 
 - `src/physics.ts`, `src/rocket_physics.ts`, `src/rocket_propellants.ts`, `src/environment.ts`: pure scientific model — cannon ballistics, variable-mass rocket solver, illustrative propellant/nozzle performance, planet data and orbit classification. No DOM access; fully covered by the Node tests.
