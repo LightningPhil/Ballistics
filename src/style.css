@@ -37,7 +37,7 @@ button { touch-action: manipulation; }
 .skip-link:focus { top: 10px; }
 .app-container { display: grid; grid-template-columns: 342px minmax(0, 1fr); width: 100%; height: 100dvh; }
 .control-panel { min-width: 0; height: 100dvh; display: flex; flex-direction: column; background: var(--bg-panel); border-right: 1px solid #d4dac5; box-shadow: 3px 0 18px #223d2f08; z-index: 2; }
-.controls-scroll { min-height: 0; flex: 1; overflow: auto; overscroll-behavior: contain; padding: 0 22px 24px; scrollbar-width: thin; scrollbar-color: #bac6b6 transparent; }
+.controls-scroll { min-height: 0; flex: 1; overflow: auto; overscroll-behavior: contain; padding: 18px 22px 24px; scrollbar-width: thin; scrollbar-color: #bac6b6 transparent; }
 .canvas-area { min-width: 0; position: relative; height: 100dvh; overflow: hidden; background: #c8dfd5; }
 .canvas-area canvas { display: block; width: 100%; height: 100%; }
 .lab-brand { display: flex; align-items: center; gap: 10px; padding: 22px 22px 17px; }
@@ -61,9 +61,7 @@ button { touch-action: manipulation; }
 .btn-clear:hover { background: #e6ebdb; }
 .btn-launch.caution { background: #a95d3e; border-color: #854731; box-shadow: 0 3px 0 #83462f; }
 #flight-lock-note { margin-top: 10px; }
-.lab-intro { padding: 19px 0 18px; }
 .eyebrow { color: #9a7750; font: 9px/1.5 var(--font-mono); font-weight: 700; letter-spacing: 1.4px; }
-.lab-intro p { font: 18px/1.4 var(--font-serif); margin-top: 7px; max-width: 275px; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
 .section-header { font-size: 13px; line-height: 1.4; font-weight: 750; color: #436152; }
 .world-caption { font-size: 9px; font-variant-numeric: tabular-nums; color: #7c8b77; text-align: right; }
@@ -134,13 +132,13 @@ input[type='range']::-moz-range-thumb { width: 15px; height: 15px; border: 3px s
 .experiment-card small { display: block; color: #6f7d63; font-size: 11px; line-height: 1.5; margin-top: 4px; }
 .lab-footer { text-align: center; color: #a0a58b; font-size: 11px; font-family: var(--font-serif); font-style: italic; padding-top: 26px; }
 .lab-footer span { display: block; margin-top: 5px; font-family: 'Segoe UI', system-ui, sans-serif; font-style: normal; font-size: 9px; color: #a2ac94; }
-@media (max-width: 1050px) and (min-width: 761px) { .app-container { grid-template-columns: 302px minmax(0, 1fr); } .lab-brand { padding: 18px 15px 15px; } .mode-toggle { margin: 0 15px 12px; } .launch-actions { padding: 0 15px 15px; } .controls-scroll { padding: 0 15px 22px; } .edition-mark { display: none; } }
+@media (max-width: 1050px) and (min-width: 761px) { .app-container { grid-template-columns: 302px minmax(0, 1fr); } .lab-brand { padding: 18px 15px 15px; } .mode-toggle { margin: 0 15px 12px; } .launch-actions { padding: 0 15px 15px; } .controls-scroll { padding: 18px 15px 22px; } .edition-mark { display: none; } }
 @media (max-width: 760px) {
   body { overflow: auto; }
   .app-container { display: flex; flex-direction: column; height: auto; min-height: 100dvh; }
   .canvas-area { order: -1; height: 660px; min-height: 640px; max-height: none; }
   .control-panel { height: auto; min-height: 0; width: 100%; border-right: 0; border-top: 1px solid #d1dac7; }
-  .controls-scroll { overflow: visible; padding: 0 22px 30px; }
+  .controls-scroll { overflow: visible; padding: 18px 22px 30px; }
   .lab-brand { padding-top: 20px; }
   .launch-actions { position: sticky; top: 0; z-index: 5; padding-top: 10px; }
   .planet-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -150,7 +148,6 @@ input[type='range']::-moz-range-thumb { width: 15px; height: 15px; border: 3px s
   .field-note, .propellant-note { font-size: 12px; }
   .readout-label, .lab-details summary, .experiment-card strong { font-size: 12px; }
   .readout-value { font-size: 12px; }
-  .lab-intro p { max-width: none; }
   .lab-details { margin-top: 12px; }
   .details-content { gap: 20px; }
   .slider-group { gap: 22px; }

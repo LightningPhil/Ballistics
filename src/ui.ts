@@ -239,10 +239,6 @@ function setMode(newMode) {
   }
   document.getElementById('cannon-actions').hidden = currentMode !== 'cannon';
   document.getElementById('rocket-actions').hidden = currentMode !== 'rocket';
-  const question = document.getElementById('experiment-question');
-  if (question) question.textContent = currentMode === 'rocket'
-    ? 'How high can a little fuel take you?'
-    : 'Pick an angle. Make a prediction. Let it fly.';
   // Show/hide panels
   if (currentMode === 'cannon') {
     cannonPanel.style.display = '';
@@ -733,6 +729,9 @@ function updatePreLaunchReadouts(pre) {
 
   // T/W warning banner & button caution
   if (!canLaunch) {
+    twWarning.textContent = pre.thrust <= 0
+      ? 'This nozzle cannot produce thrust in this atmosphere. Try higher chamber pressure or a smaller expansion ratio.'
+      : 'Not enough upward thrust for immediate lift-off. Try less mass, more thrust, or a steeper launch.';
     twWarning.classList.remove('tw-warning-hidden');
     btnLaunch.classList.add('caution');
   } else {
@@ -1061,7 +1060,6 @@ function applyExperiment(id) {
     return;
   }
   restoreFlightConfig(mode, config);
-  document.getElementById('experiment-question').textContent = question;
   document.querySelectorAll<HTMLButtonElement>('[data-experiment]').forEach(function (button) {
     button.classList.toggle('active', button.dataset.experiment === id);
     button.setAttribute('aria-pressed', String(button.dataset.experiment === id));

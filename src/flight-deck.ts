@@ -151,9 +151,11 @@ export class FlightDeck {
     this.input('flight-timeline').value = String(time);
     this.input('flight-timeline').setAttribute('aria-valuetext', `${time.toFixed(1)} seconds of flight`);
     for (const id of ['flight-pause', 'flight-replay', 'flight-pin']) this.button(id).disabled = !run || this.busy;
-    this.button('flight-pause').disabled = !run || this.busy || time >= run.duration;
     this.button('flight-next').disabled = !run || this.busy || time >= run.duration;
     this.input('flight-timeline').disabled = !run || this.busy;
-    this.button('flight-pause').textContent = run && time >= run.duration ? 'Finished' : run && this.clock.paused ? 'Resume' : 'Pause';
+    const finished = !!(run && time >= run.duration);
+    this.button('flight-pause').textContent = finished ? 'Finished' : run && this.clock.paused ? 'Resume' : 'Pause';
+    this.button('flight-pause').setAttribute('aria-label',
+      !run ? 'Pause flight' : finished ? 'Replay finished flight' : this.clock.paused ? 'Resume flight' : 'Pause flight');
   }
 }
