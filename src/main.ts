@@ -316,9 +316,9 @@ function updateCharacter(dt, captionDt = dt) {
         ch.x = (ch.direction > 0)
           ? -1
           : toPhysX(Renderer.getWidth()) + 2;
-        ch.direction = -ch.direction;
         const returnsNearby = ch.type === 'icebear' || ch.type === 'squid';
         ch.walkTarget = returnsNearby ? nearbyGuestTarget() : 8 + Math.random() * 15;
+        ch.direction = ch.walkTarget >= ch.x ? 1 : -1;
         ch.speed = ch.type === 'icebear' ? .7 : ch.type === 'squid' ? .6 : 1.5 + Math.random() * 1.0;
         if (ch.type === 'icebear') {
           ch.iceBearGait = 'four';

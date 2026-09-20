@@ -58,6 +58,7 @@ The build creates the web bundle in `dist/` and a portable, self-contained `dist
 - `src/camera.ts`: pure framing maths for the cannon setup zoom and the rocket follow camera.
 - `src/main.ts`: experiment lifecycle (record → replay → inspect), presentation effects, character state machine and synthesised sound.
 - `src/renderer.ts`, `src/crew.ts`, `src/aquatic-characters.ts`, `src/planet-guests.ts`, `src/cloud-guests.ts`, `src/nozzle_render.ts`: scene and camera, illustrated characters, cloud-guest motion and the engine cutaway.
+- `src/squid.ts`, `src/ice-bear.ts`: Ganymede's curling, ten-limbed squid and Pluto's sculpted ice bear, with dedicated close-up framing and separate walking poses.
 - `src/character-remarks.ts`, `src/remarks/`: the quip pools and shuffled-round selection for every world and flight event.
 - `src/ui.ts`, `src/world-art.ts`, `index.html`, stylesheets: accessible experiment controls, optimised world artwork and responsive layout.
 

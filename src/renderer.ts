@@ -1979,8 +1979,8 @@ function drawCharacterAside(char) {
   // Frame faces rather than shrinking wide bodies into the little round window.
   var framing = char.type === 'newt' ? { scale: 68, x: -26.35, footY: 122.3 }
     : char.type === 'snowman' ? { scale: 54, x: 0, footY: 147 }
-    : char.type === 'icebear' ? { scale: 58, x: -13, footY: 130 }
-    : char.type === 'squid' ? { scale: 48, x: 0, footY: 145 }
+    : char.type === 'icebear' ? { scale: 72, x: -.9, footY: 163.8 }
+    : char.type === 'squid' ? { scale: 62, x: 0, footY: 137.3 }
     : char.type === 'whale' ? { scale: 54, x: -27.7, footY: 124.4 }
     : char.type === 'submarine' ? { scale: 65, x: -21.1, footY: 119.3 }
     : { scale: 43, x: 0, footY: 120 };
