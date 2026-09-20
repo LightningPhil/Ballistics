@@ -78,32 +78,32 @@
 <span>Venus</span>
 <small>8.87</small>
 </button>
-<button type="button" class="planet-btn" data-planet="jupiter" data-gravity="24.79" aria-pressed="false">
+<button type="button" class="planet-btn" data-planet="jupiter" data-gravity="25.92" aria-pressed="false">
 <span class="planet-icon" style="--planet-colour:#c89a81" aria-hidden="true">
 </span>
 <span>Jupiter</span>
-<small>24.79</small>
+<small>25.92</small>
 </button>
-<button type="button" class="planet-btn" data-planet="saturn" data-gravity="10.44" aria-pressed="false">
+<button type="button" class="planet-btn" data-planet="saturn" data-gravity="11.19" aria-pressed="false">
 <span class="planet-icon" style="--planet-colour:#d1b885" aria-hidden="true">
 </span>
 <span>Saturn</span>
-<small>10.44</small>
+<small>11.19</small>
 </button>
-<button type="button" class="planet-btn" data-planet="uranus" data-gravity="8.69" aria-pressed="false">
+<button type="button" class="planet-btn" data-planet="uranus" data-gravity="9.01" aria-pressed="false">
 <span class="planet-icon" style="--planet-colour:#8cbdbb" aria-hidden="true">
 </span>
 <span>Uranus</span>
-<small>8.69</small>
+<small>9.01</small>
 </button>
-<button type="button" class="planet-btn" data-planet="neptune" data-gravity="11.15" aria-pressed="false">
+<button type="button" class="planet-btn" data-planet="neptune" data-gravity="11.27" aria-pressed="false">
 <span class="planet-icon" style="--planet-colour:#7395b9" aria-hidden="true">
 </span>
 <span>Neptune</span>
-<small>11.15</small>
+<small>11.27</small>
 </button>
 </div>
-<p class="field-note" id="environment-note">No air drag. Gravity points towards the centre of the planet.</p>
+<p class="field-note" id="environment-note">No air drag. Gravity points towards the centre of a non-rotating planet.</p>
 <details class="lab-details">
 <summary>Custom gravity</summary>
 <div class="details-content">
@@ -202,7 +202,7 @@
 <span class="legend-dot pe">
 </span>Height</span>
 </div>
-<p class="field-note">Energy trades between motion and height. Potential energy is measured from the surface using the same radial gravity as the flight.</p>
+<p class="field-note">Energy trades between motion and height. Potential energy uses the same radial gravity as the flight; motion energy is treated as dissipated at contact.</p>
 </div>
 </details>
 </section>
@@ -240,7 +240,7 @@
 <div class="readout-grid" id="rocket-prelaunch">
 <span class="readout-label">Thrust</span>
 <span class="readout-value " id="read-rocket-thrust">—</span>
-<span class="readout-label">Thrust / weight<button type="button" class="tooltip-trigger" aria-label="About Thrust / weight" data-tip="Thrust ÷ weight. An inclined launch needs sufficient upward thrust, not just a total ratio above one.">?</button>
+<span class="readout-label">Total thrust / weight<button type="button" class="tooltip-trigger" aria-label="About total thrust / weight" data-tip="Total thrust ÷ surface weight. An inclined launch needs sufficient upward thrust, not just a total ratio above one; the launch warning checks that upward component.">?</button>
 </span>
 <span class="readout-value " id="read-rocket-tw">—</span>
 <span class="readout-label">Estimated burn</span>
@@ -253,7 +253,7 @@
 <span class="readout-label">Specific impulse<button type="button" class="tooltip-trigger" aria-label="About Specific impulse" data-tip="Isp = effective exhaust speed ÷ standard gravity. Its unit is seconds; a larger value means more impulse per kilogram of propellant.">?</button>
 </span>
 <span class="readout-value " id="read-rocket-isp">—</span>
-<span class="readout-label">Measured range</span>
+<span class="readout-label">Distance from pad</span>
 <span class="readout-value " id="read-rocket-pred-range">—</span>
 <span class="readout-label">Highest point</span>
 <span class="readout-value " id="read-rocket-pred-apogee">—</span>
@@ -305,7 +305,7 @@
 <div class="slider-label-row">
 <span class="slider-label">
 <label for="slider-rocket-eps">Expansion ratio</label>
-<button type="button" class="tooltip-trigger" aria-label="About Expansion ratio" data-tip="&lt;b&gt;How wide is the bell?&lt;/b&gt;&lt;br&gt;Exit area ÷ throat area. Expansion and surrounding pressure affect exhaust thrust. This is an ideal nozzle model; flow separation and atmospheric drag are not modelled.">?</button>
+<button type="button" class="tooltip-trigger" aria-label="About Expansion ratio" data-tip="&lt;b&gt;How wide is the bell?&lt;/b&gt;&lt;br&gt;Exit area ÷ throat area. Expansion and surrounding pressure affect exhaust thrust. Nozzle separation uses a simple teaching approximation; atmospheric drag is not modelled.">?</button>
 </span>
 <output class="slider-value" id="val-rocket-eps" for="slider-rocket-eps">20</output>
 </div>
@@ -432,7 +432,7 @@
 <span class="readout-value " id="read-rocket-velocity">—</span>
 <span class="readout-label">Altitude</span>
 <span class="readout-value " id="read-rocket-height">—</span>
-<span class="readout-label">Surface position</span>
+<span class="readout-label">Distance from pad</span>
 <span class="readout-value " id="read-rocket-range">—</span>
 <span class="readout-label">Thrust</span>
 <span class="readout-value " id="read-rocket-live-thrust">—</span>
@@ -442,7 +442,7 @@
 <span class="readout-value " id="read-rocket-prop">—</span>
 <span class="readout-label">Specific impulse</span>
 <span class="readout-value " id="read-rocket-live-isp">—</span>
-<span class="readout-label">Thrust / weight</span>
+<span class="readout-label">Total thrust / local weight<button type="button" class="tooltip-trigger" aria-label="About live thrust / weight" data-tip="Current total thrust divided by local weight. Gravity becomes weaker with altitude.">?</button></span>
 <span class="readout-value " id="read-rocket-live-tw">—</span>
 <span class="readout-label">Total impulse</span>
 <span class="readout-value " id="read-rocket-impulse">—</span>
@@ -474,7 +474,7 @@
 <span class="readout-value " id="read-post-flighttime">—</span>
 <span class="readout-label">Engine on</span>
 <span class="readout-value " id="read-post-burntime">—</span>
-<span class="readout-label">Delivered ideal Δv</span>
+<span class="readout-label">Integrated ideal Δv</span>
 <span class="readout-value " id="read-post-dv-tsiolkovsky">—</span>
 <span class="readout-label">Speed at burnout</span>
 <span class="readout-value " id="read-post-dv-actual">—</span>

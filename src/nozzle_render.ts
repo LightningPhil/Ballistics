@@ -412,7 +412,18 @@ function drawPlume(ctx, L, cy, d) {
     var pe_pc = RocketPropellants._exitPressureRatio(gamma, Me);
     Pe = pe_pc * Pc_Pa;
   }
-  if (Pe > 0) {
+  if (!(L.mdot > 0) || d.flowRegime === 'unchoked' || d.flowRegime === 'off') {
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.fillStyle = '#ffb36b';
+    ctx.globalAlpha = 0.8;
+    ctx.textAlign = 'center';
+    ctx.fillText('not choked', x0 + plumeLen * 0.4, cy + Math.max(hh, L.chamberHalfH) + 12);
+    ctx.globalAlpha = 1;
+    return;
+  }
+  if (d.flowRegime === 'separated') {
+    plumeHalfW *= 0.6;
+  } else if (Pe > 0) {
     var ratio = Pa_Pa > 0 ? Pe / Pa_Pa : Infinity;
     if (ratio < 0.95) {
       plumeHalfW *= 0.6;   // over-expanded — shock pinch
@@ -438,7 +449,9 @@ function drawPlume(ctx, L, cy, d) {
   if (Pe > 0) {
     var r = Pa_Pa > 0 ? Pe / Pa_Pa : Infinity;
     var label, colour;
-    if (Pa_Pa === 0) {
+    if (d.flowRegime === 'separated') {
+      label = 'separated'; colour = '#ff8b61';
+    } else if (Pa_Pa === 0) {
       label = 'vacuum'; colour = '#ffaa44';
     } else if (Math.abs(r - 1) < 0.05) {
       label = 'optimal'; colour = '#66dd66';
@@ -488,6 +501,7 @@ function halfHeightAt(L, tNorm) {
 }
 
 function drawStreamlines(ctx, L, cy, worldTime) {
+  if (!(L.mdot > 0)) return;
   var numLines = 3 + Math.floor(clamp(L.mdot / 10, 0, 5));
   var nozzleStartX = L.xChamber;
   var nozzleLen = L.xExit - L.xChamber;

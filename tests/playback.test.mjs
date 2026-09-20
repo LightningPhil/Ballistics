@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PlaybackClock, automaticRate } from '../src/playback.ts';
-import { recordFlight, sampleFlight, compatibleRuns } from '../src/flight.ts';
+import { PHYSICS_STEP, recordFlight, sampleFlight, compatibleRuns } from '../src/flight.ts';
 import { Physics } from '../src/physics.ts';
 import { RocketPhysics } from '../src/rocket_physics.ts';
 import { resolveEnvironment } from '../src/environment.ts';
@@ -129,6 +129,42 @@ test('recorded body attitude crosses the angle wrap smoothly and readouts interp
   assert.equal(midpoint.Pa_Pa,75);
   assert.equal(midpoint.mass,15);
   assert.equal(midpoint.mProp,5);
+});
+
+test('rocket replay uses the solver between sparse samples during an extreme burn', async () => {
+  const environment = resolveEnvironment(9.81);
+  const config = { gravity: 9.81, environment, planetRadius: environment.radius,
+    propellantId: 'LOX_RP1', MR: 2.56, Pc_bar: 300, epsilon: 20, throatDia_mm: 200,
+    dryMass: 1, propMass: 5000, launchAngle: 90, etaC: .95, etaN: .95,
+    guidanceMode: 'fixed' };
+  const initial = RocketPhysics.createRocketState(config);
+  Object.assign(initial, { x: 1.5, y: 1.45,
+    wx: (environment.radius + 1.45) * Math.sin(1.5 / environment.radius),
+    wy: (environment.radius + 1.45) * Math.cos(1.5 / environment.radius) });
+  const run = await recordFlight('rocket', config, initial, undefined, { maxTime: 10 });
+  const burnout = run.samples.at(-1).burnoutTime;
+  assert.ok(burnout > 9 && burnout < 10);
+  const inspectionTime = burnout - .02175;
+  const replay = sampleFlight(run, inspectionTime);
+
+  const guidance = RocketPhysics.buildGuidance(config);
+  let reference = structuredClone(initial);
+  while (inspectionTime - reference.time > PHYSICS_STEP + 1e-12) {
+    reference = RocketPhysics.stepRocket(reference, PHYSICS_STEP, config.gravity, guidance);
+  }
+  reference = RocketPhysics.stepRocket(reference, inspectionTime - reference.time, config.gravity, guidance);
+  assert.ok(Math.abs(replay.x - reference.x) < 1e-7);
+  assert.ok(Math.abs(replay.y - reference.y) < 1e-7);
+  assert.ok(Math.abs(replay.vx - reference.vx) < 1e-7);
+  assert.ok(Math.abs(replay.vy - reference.vy) < 1e-7);
+  assert.ok(Math.abs(replay.mass - reference.mass) < 1e-9);
+
+  const upperIndex = run.samples.findIndex(sample => sample.time > inspectionTime);
+  const lower = run.samples[upperIndex - 1], upper = run.samples[upperIndex];
+  const fraction = (inspectionTime - lower.time) / (upper.time - lower.time);
+  const linearlyInterpolatedVy = lower.vy + (upper.vy - lower.vy) * fraction;
+  assert.ok(Math.abs(linearlyInterpolatedVy - reference.vy) > 1000,
+    'the regression case must expose the old sparse linear interpolation error');
 });
 
 test('a recording already in progress yields so cancellation can interrupt an unbounded flight', async () => {

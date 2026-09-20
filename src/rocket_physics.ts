@@ -84,9 +84,12 @@ function ambientPressure(state, altitude) {
 function engineAt(state, altitude) {
   const pressure = ambientPressure(state, altitude);
   const perf = RocketPropellants.lookupPerformance(state.propellantId, state.MR, state.Pc_Pa, state.epsilon, pressure);
-  const mdot = computeMassFlow(state.Pc_Pa, state.At, state.etaC * perf.cStar);
+  const mdot = perf.choked
+    ? computeMassFlow(state.Pc_Pa, state.At, state.etaC * perf.cStar)
+    : 0;
   const thrust = computeThrust(state.etaN * perf.Cf, state.Pc_Pa, state.At);
-  return { pressure, mdot, thrust, Isp: computeIsp(thrust, mdot) };
+  return { pressure, mdot, thrust, Isp: computeIsp(thrust, mdot),
+    flowRegime: perf.flowRegime, effectiveEpsilon: perf.effectiveEpsilon };
 }
 
 function createRocketState(config) {
@@ -105,6 +108,7 @@ function createRocketState(config) {
     etaN: Math.max(0, Math.min(1, config.etaN ?? 0.95)),
     Pa_Pa: environment ? environment.surfacePressure : (config.Pa_Pa ?? 101325),
     engineOn: config.propMass > 0, thrustMagnitude: 0, attemptedThrust: 0, mdot: 0, Isp: 0,
+    flowRegime: 'off', effectiveEpsilon: 0,
     theta: config.launchAngle, time: 0, totalImpulse: 0, idealDeltaV: 0,
     // Integral of the gravity acceleration vector; retained for honest diagnostics.
     gravityImpulseX: 0, gravityImpulseY: 0,
@@ -119,6 +123,8 @@ function createRocketState(config) {
   state.thrustMagnitude = state.engineOn ? engine.thrust : 0;
   state.mdot = engine.mdot;
   state.Isp = engine.Isp;
+  state.flowRegime = engine.flowRegime;
+  state.effectiveEpsilon = engine.effectiveEpsilon;
   return state;
 }
 export type RocketState = ReturnType<typeof createRocketState>;
@@ -190,7 +196,8 @@ function advanceSegment(state, duration, gravity, guidance): RocketState {
     local.py + local.vy * half + 0.5 * local.gy * half * half + initialDirection.y * firstHalf.displacement,
     local.vx + local.gx * half + initialDirection.x * firstHalf.dv,
     local.vy + local.gy * half + initialDirection.y * firstHalf.dv);
-  const engine = burning ? engineAt(state, midpoint.y) : { ...initialEngine, thrust: 0, mdot: 0 };
+  const engine = burning ? engineAt(state, midpoint.y)
+    : { ...initialEngine, thrust: 0, mdot: 0, Isp: 0, flowRegime: 'off' };
   const direction = thrustDirection(midpoint, guidance, gravity);
   const integrals = thrustIntegrals(state.mass, mdot, engine.thrust, duration);
   const px = local.px + local.vx * duration + 0.5 * local.gx * duration * duration + direction.x * integrals.displacement;
@@ -213,6 +220,8 @@ function advanceSegment(state, duration, gravity, guidance): RocketState {
   next.thrustMagnitude = engine.thrust;
   next.mdot = mdot;
   next.Isp = engine.Isp;
+  next.flowRegime = engine.flowRegime;
+  next.effectiveEpsilon = engine.effectiveEpsilon;
   next.theta = guidance.getAngle(next);
   return next;
 }
@@ -320,7 +329,8 @@ function computePreLaunch(config, gravity) {
     deltaV: computeDeltaV(engine.Isp, mass, state.mDry), m0: mass,
     cStar: engine.mdot > 0 ? state.Pc_Pa * state.At / engine.mdot : 0,
     Cf: state.Pc_Pa * state.At > 0 ? engine.thrust / (state.Pc_Pa * state.At) : 0,
-    At: state.At, Pc_Pa: state.Pc_Pa, pressure: engine.pressure };
+    At: state.At, Pc_Pa: state.Pc_Pa, pressure: engine.pressure,
+    flowRegime: engine.flowRegime, effectiveEpsilon: engine.effectiveEpsilon };
 }
 
 function predictTrajectory(config, gravity, options: any = {}) {

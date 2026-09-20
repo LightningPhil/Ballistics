@@ -1,5 +1,10 @@
 # Launch Lab — Dual-Mode Refactor Plan
 
+> **Status:** Historical implementation plan. Rocket mode and the later
+> spherical-physics work are shipped; this document is not the current physics
+> specification. See the README and
+> `docs/rocket_lab_single_source_of_truth.md` for current assumptions.
+>
 > **Goal:** Transform "Matilda's Cannon Lab" into **"Launch Lab"** — a dual-mode physics sandbox with a **Cannon Mode** (existing, untouched) and a new **Rocket Mode** (continuous-thrust flight from a launch tower).
 >
 > The planet/gravity system, character system, environment rendering, and overall aesthetic remain shared. The two modes swap out the launcher (cannon vs rocket + tower), the physics model, and the control panel.

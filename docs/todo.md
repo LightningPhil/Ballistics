@@ -13,12 +13,12 @@
 | Moon     | 1.62    | false   | `moon`      | ✅ Spaceman        | —                         |
 | Mercury  | 3.70    | false   | `mercury`   | —                 | 🤖 Robot                  |
 | Mars     | 3.72    | false   | `mars`      | ✅ Alien           | —                         |
-| Uranus   | 8.69    | true    | `icegas`    | —                 | 🤖 Different Robot        |
+| Uranus   | 9.01    | true    | `icegas`    | —                 | 🤖 Different Robot        |
 | Venus    | 8.87    | false   | `venus`     | —                 | 🦎 Newt                   |
 | Earth    | 9.81    | false   | `earth`     | ✅ Golfer          | —                         |
-| Saturn   | 10.44   | true    | `saturn`    | —                 | 🛥️ Submarine              |
-| Neptune  | 11.15   | true    | `deepgas`   | —                 | ⛄ Snowman                |
-| Jupiter  | 24.79   | true    | `jupiter`   | —                 | 🐋 Whale                  |
+| Saturn   | 11.19   | true    | `saturn`    | —                 | 🛥️ Submarine              |
+| Neptune  | 11.27   | true    | `deepgas`   | —                 | ⛄ Snowman                |
+| Jupiter  | 25.92   | true    | `jupiter`   | —                 | 🐋 Whale                  |
 
 ---
 

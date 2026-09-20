@@ -28,9 +28,11 @@ Start with **Let it fly** or the ready-to-fly rocket. Four optional experiment c
 
 ## Physics and assumptions
 
-The shared solver records a run at a canonical 1/120-second step, with refined event times. Rocket thrust uses logarithmic variable-mass impulse and splits fuel depletion, guidance boundaries and contact. Both modes use spherical, inverse-square gravity and consistent surface-relative energy.
+The shared solver records a run at a canonical 1/120-second step, with refined event times. Sparse replays are re-evaluated with that solver instead of linearly inventing states between samples. Rocket thrust uses logarithmic variable-mass impulse and splits fuel depletion, guidance boundaries and contact. Both modes use spherical, inverse-square gravity and consistent surface-relative energy.
 
-Planet pressure follows an illustrative exponential profile and affects the rocket nozzle; **air resistance is not modelled**. Intermediate gravity settings represent imaginary worlds. Gas giants use a fictional launch platform at the one-bar reference level. Propellant properties are approximate; mixture-ratio changes alter tank proportions, not a chemical-equilibrium performance calculation. The nozzle cutaway illustrates the chosen engine design.
+This is a deliberately simplified universe: planets are spherical and non-rotating, vehicles are point masses with a prescribed thrust direction, and the reference surface has no terrain. Planet pressure follows an illustrative exponential profile and affects the rocket nozzle; **air resistance and wind are not modelled**. Intermediate gravity settings represent imaginary worlds. Gas giants use a fictional launch platform at the one-bar reference level.
+
+The nozzle uses ideal choked-flow equations plus a conservative Summerfield flow-separation approximation. A chamber pressure too low to choke the throat is treated as engine-off. Propellant properties remain illustrative single-point calibrations; mixture-ratio changes alter tank proportions, not a chemical-equilibrium performance calculation. Engine, tank and structural mass do not scale with the chosen hardware. The nozzle cutaway illustrates the chosen design and labels separated or unchoked operation.
 
 A failed ignition shuts down immediately if outward thrust cannot exceed weight. Burning fuel on the pad until later lift-off is not simulated. An orbit must clear the planet; escape must be unpowered and outgoing. Such flights end after a short observation interval. Other runs are bounded at six simulated hours and report an observation limit honestly.
 

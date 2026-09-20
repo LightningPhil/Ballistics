@@ -114,6 +114,30 @@ export async function recordFlight(mode: FlightRecord['mode'], config: any, init
   return run;
 }
 
+/** Rebuild the state at an inspection time with the same canonical solver used
+ * to record the flight. Sparse samples keep long runs compact, but linear
+ * interpolation is not valid during a high-mass-ratio burn because rocket
+ * velocity varies logarithmically with mass.
+ */
+function resamplePhysics(run: FlightRecord, start: any, time: number): any | null {
+  if ((run.mode !== 'cannon' && run.mode !== 'rocket') ||
+      !run.config || !Number.isFinite(run.config.gravity) ||
+      !Number.isFinite(start?.time) || start.time > time) return null;
+  const guidance = run.mode === 'rocket' ? RocketPhysics.buildGuidance(run.config) : null;
+  const advance = (state: any, duration: number) => run.mode === 'rocket'
+    ? RocketPhysics.stepRocket(state, duration, run.config.gravity, guidance)
+    : Physics.stepProjectile(state, duration, run.config.gravity);
+  let state = { ...start };
+  while (time - state.time > PHYSICS_STEP + 1e-12) {
+    const next = advance(state, PHYSICS_STEP);
+    if (!(next.time > state.time)) return null;
+    state = next;
+  }
+  const remainder = time - state.time;
+  if (remainder > 1e-12) state = advance(state, remainder);
+  return { ...state, time };
+}
+
 export function sampleFlight(run: FlightRecord, time: number): any {
   const samples = run.samples;
   if (time >= run.duration) return { ...samples[samples.length - 1] };
@@ -121,6 +145,9 @@ export function sampleFlight(run: FlightRecord, time: number): any {
   let lo = 0, hi = samples.length - 1;
   while (hi - lo > 1) { const mid = (lo + hi) >>> 1; if (samples[mid].time <= time) lo = mid; else hi = mid; }
   const a = samples[lo], b = samples[hi];
+  if (Math.abs(time - a.time) <= 1e-12) return { ...a };
+  const physical = resamplePhysics(run, a, time);
+  if (physical) return physical;
   const fraction = (time - a.time) / (b.time - a.time);
   const state = { ...a, time };
   // Interpolate toward the incoming contact velocity, never toward the stopped

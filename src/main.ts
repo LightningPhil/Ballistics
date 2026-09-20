@@ -931,7 +931,7 @@ function handleRocketLanding(state) {
   const run = deck.run!;
   createImpactParticles(state.x, Renderer.isCurrentGas());
   impactShockwaveProgress = 0; impactShockwaveX = state.x;
-  UI.updateRocketReadouts(state);
+  UI.updateRocketReadouts(state, run.launchX);
   UI.showPostFlightSummary({ range: state.x - run.launchX, maxHeight: run.maxHeight,
     flightTime: run.duration, burnTime: state.burnoutTime ?? state.time,
     dvTsiolkovsky: state.idealDeltaV, dvActual: state.burnoutSpeed, burnoutSpeed: state.burnoutSpeed });
@@ -1271,7 +1271,7 @@ function updateRecordedFlight(dt: number) {
       maxThrust: rocketMaxThrust,
       fizzleProgress: rocketFizzleDuration > 0 ? Math.min(1, rocketFizzleTimer / rocketFizzleDuration) : 1
     };
-    UI.updateRocketReadouts(state);
+    UI.updateRocketReadouts(state, run.launchX);
     const settings = UI.getRocketZoomSettings();
     Renderer.setViewTransitionDuration(reducedMotion() ? .01 : settings.durationSeconds);
     const horizon = Math.max(.4, settings.durationSeconds * .6) * deck.clock.rate;
@@ -1537,6 +1537,8 @@ function loop(timestamp) {
       Isp:          nzPre.Isp,
       cStar:        nzPre.cStar,
       Cf:           nzPre.Cf,
+      flowRegime:   nzPre.flowRegime,
+      effectiveEpsilon: nzPre.effectiveEpsilon,
       gamma:        nzPh.gamma,
       Tc_K:         nzPh.Tc_K,
       Pa_Pa:        nzVals.Pa_Pa,

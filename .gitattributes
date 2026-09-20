@@ -1,0 +1,2 @@
+# Keep the generated portable build reviewable across platforms.
+dist-single/index.html text eol=lf

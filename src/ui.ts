@@ -19,7 +19,7 @@ import { resolveEnvironment } from './environment.ts';
  *   getMode()                    — 'cannon' | 'rocket'
  *   getRocketValues()            — Rocket slider values (full config object)
  *   updateReadouts(state, energy)— Push cannon telemetry to DOM
- *   updateRocketReadouts(state)  — Push rocket flight telemetry to DOM
+ *   updateRocketReadouts(state, launchX) — Push rocket flight telemetry to DOM
  *   updatePreLaunchReadouts(pre) — Push pre-launch computed values to DOM
  *   resetRocketReadouts()        — Zero-out rocket displays
  *   setFlightActive(bool)        — Enable/disable fire/launch & mode toggle
@@ -292,12 +292,12 @@ var PLANET_GRAVITY_MAP = [
   { name: 'moon',    g: 1.62 },
   { name: 'mercury', g: 3.7 },
   { name: 'mars',    g: 3.72 },
-  { name: 'uranus',  g: 8.69 },
   { name: 'venus',   g: 8.87 },
+  { name: 'uranus',  g: 9.01 },
   { name: 'earth',   g: 9.81 },
-  { name: 'saturn',  g: 10.44 },
-  { name: 'neptune', g: 11.15 },
-  { name: 'jupiter', g: 24.79 }
+  { name: 'saturn',  g: 11.19 },
+  { name: 'neptune', g: 11.27 },
+  { name: 'jupiter', g: 25.92 }
 ];
 
 function matchPlanet(g) {
@@ -334,10 +334,10 @@ function highlightPlanet(name) {
   if (label) label.textContent = (env.interpolated ? 'Custom world' : env.name[0].toUpperCase() + env.name.slice(1)) + ' · ' + env.gravity.toFixed(2) + ' m/s²';
   var note = document.getElementById('environment-note');
   if (note) note.textContent = env.isGas
-    ? 'An imaginary platform at the planet’s reference radius. No air drag; nozzle pressure uses a simplified atmosphere.'
+    ? 'An imaginary platform on a non-rotating planet. No air drag; nozzle pressure uses a simplified atmosphere.'
     : env.surfacePressure === 0
-      ? 'Vacuum outside the engine. Gravity points towards the planet’s centre.'
-      : 'No air drag. Gravity is radial; a simplified atmosphere affects nozzle thrust.';
+      ? 'Vacuum outside the engine. Gravity points towards the centre of a non-rotating planet.'
+      : 'No air drag. Gravity is radial on a non-rotating planet; a simplified atmosphere affects nozzle thrust.';
 }
 
 // ── Tooltips ───────────────────────────────────────────────────────────────
@@ -618,7 +618,8 @@ function onPropellantChange() {
   updateRocketSliderDisplay(sliderRocketMR, valRocketMR, '');
 
   // Update info note
-  propellantNote.textContent = prop.notes.join(' ') + ' Mixture ratio changes the tank split; chemistry stays fixed for this pair.';
+  propellantNote.textContent = 'Illustrative performance model. ' + prop.notes.join(' ') +
+    ' Mixture ratio changes the tank split; chemistry stays fixed for this pair.';
 }
 
 // ── Guidance sub-panel toggling ────────────────────────────────────────────
@@ -729,8 +730,10 @@ function updatePreLaunchReadouts(pre) {
 
   // T/W warning banner & button caution
   if (!canLaunch) {
-    twWarning.textContent = pre.thrust <= 0
-      ? 'This nozzle cannot produce thrust in this atmosphere. Try higher chamber pressure or a smaller expansion ratio.'
+    twWarning.textContent = pre.flowRegime === 'unchoked'
+      ? 'Chamber pressure is too low for choked nozzle flow in this atmosphere. Try higher chamber pressure.'
+      : pre.thrust <= 0
+        ? 'This nozzle cannot produce thrust in this atmosphere. Try higher chamber pressure or a smaller expansion ratio.'
       : 'Not enough upward thrust for immediate lift-off. Try less mass, more thrust, or a steeper launch.';
     twWarning.classList.remove('tw-warning-hidden');
     btnLaunch.classList.add('caution');
@@ -755,7 +758,7 @@ function updatePreLaunchReadouts(pre) {
 
 // ── Rocket flight readouts (live during flight) ────────────────────────────
 
-function updateRocketReadouts(state) {
+function updateRocketReadouts(state, launchX?) {
   if (!state) {
     resetRocketReadouts();
     return;
@@ -763,7 +766,8 @@ function updateRocketReadouts(state) {
   var spd = Math.sqrt(state.vx * state.vx + state.vy * state.vy);
   readRocketVelocity.textContent = spd.toFixed(1) + ' m/s';
   readRocketHeight.textContent = Math.max(0, state.y).toFixed(1) + ' m';
-  readRocketRange.textContent = state.x.toFixed(1) + ' m';
+  var origin = Number.isFinite(launchX) ? launchX : 0;
+  readRocketRange.textContent = (state.x - origin).toFixed(1) + ' m';
   var propPct = state.mPropInitial > 0
     ? ((state.mProp / state.mPropInitial) * 100).toFixed(0)
     : '0';
@@ -785,10 +789,13 @@ function updateRocketReadouts(state) {
       : '\u2014';
   }
   if (readRocketLiveTW) {
-    // T/W needs gravity — use slider value
-    var g = parseFloat(sliderGravity.value) || 9.81;
+    var surfaceG = parseFloat(sliderGravity.value) || 9.81;
+    var altitude = Math.max(0, state.y);
+    var localG = state.planetRadius > 0
+      ? surfaceG * Math.pow(state.planetRadius / (state.planetRadius + altitude), 2)
+      : surfaceG;
     var tw = state.mass > 0 && state.engineOn
-      ? state.thrustMagnitude / (state.mass * g)
+      ? state.thrustMagnitude / (state.mass * localG)
       : 0;
     readRocketLiveTW.textContent = tw > 0 ? tw.toFixed(2) : '\u2014';
     readRocketLiveTW.className = 'readout-value ' + (tw > 0 && tw < 1 ? 'rocket-tw-warn' : (tw >= 1 ? 'rocket-tw-ok' : ''));
@@ -836,7 +843,7 @@ function resetRocketReadouts() {
 
 function showFizzleMessage(tw) {
   if (!fizzleMessage) return;
-  fizzleMessage.textContent = 'Thrust / weight was ' + tw.toFixed(2) +
+  fizzleMessage.textContent = 'Upward thrust / weight was ' + tw.toFixed(2) +
     '. The upward thrust must exceed the weight for immediate lift-off. Try less mass, more thrust, or a steeper angle.';
   fizzleMessage.classList.remove('fizzle-message-hidden');
 }

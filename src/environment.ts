@@ -19,12 +19,12 @@ export const ENVIRONMENTS: readonly Environment[] = Object.freeze([
   { name: 'moon', gravity: 1.62, radius: 1737400, surfacePressure: 0, scaleHeight: 1, isGas: false, interpolated: false },
   { name: 'mercury', gravity: 3.7, radius: 2439700, surfacePressure: 0, scaleHeight: 1, isGas: false, interpolated: false },
   { name: 'mars', gravity: 3.72, radius: 3389500, surfacePressure: 636, scaleHeight: 11000, isGas: false, interpolated: false },
-  { name: 'uranus', gravity: 8.69, radius: 25362000, surfacePressure: 100000, scaleHeight: 27700, isGas: true, interpolated: false },
   { name: 'venus', gravity: 8.87, radius: 6051800, surfacePressure: 9200000, scaleHeight: 15900, isGas: false, interpolated: false },
+  { name: 'uranus', gravity: 9.01, radius: 25362000, surfacePressure: 100000, scaleHeight: 27700, isGas: true, interpolated: false },
   { name: 'earth', gravity: 9.81, radius: 6371000, surfacePressure: 101325, scaleHeight: 8500, isGas: false, interpolated: false },
-  { name: 'saturn', gravity: 10.44, radius: 58232000, surfacePressure: 100000, scaleHeight: 59500, isGas: true, interpolated: false },
-  { name: 'neptune', gravity: 11.15, radius: 24622000, surfacePressure: 100000, scaleHeight: 19700, isGas: true, interpolated: false },
-  { name: 'jupiter', gravity: 24.79, radius: 69911000, surfacePressure: 100000, scaleHeight: 27000, isGas: true, interpolated: false },
+  { name: 'saturn', gravity: 11.19, radius: 58232000, surfacePressure: 100000, scaleHeight: 59500, isGas: true, interpolated: false },
+  { name: 'neptune', gravity: 11.27, radius: 24622000, surfacePressure: 100000, scaleHeight: 19700, isGas: true, interpolated: false },
+  { name: 'jupiter', gravity: 25.92, radius: 69911000, surfacePressure: 100000, scaleHeight: 27000, isGas: true, interpolated: false },
 ].map(environment => Object.freeze(environment)));
 
 /** Radius interpolation exactly matches the historical renderer. Intermediate

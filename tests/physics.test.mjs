@@ -136,14 +136,41 @@ test('shared environments preserve radius interpolation and use altitude-depende
   near(next.Pa_Pa, pressureAtAltitude(earth, next.y), 1e-8);
 });
 
+test('giant-world mean gravity and radius imply the reference gravitational parameter', () => {
+  for (const [gravity, radius, expectedMu] of [
+    [9.01, 25362000, 5.7940e15],
+    [11.19, 58232000, 3.7931e16],
+    [11.27, 24622000, 6.8351e15],
+    [25.92, 69911000, 1.26687e17],
+  ]) {
+    const environment = resolveEnvironment(gravity);
+    assert.equal(environment.radius, radius);
+    assert.ok(Math.abs(gravity * radius * radius / expectedMu - 1) < 0.001);
+  }
+});
+
 test('the nozzle does not invent minimum thrust when ambient pressure prevents operation', () => {
   const ordinary = RocketPropellants.lookupPerformance('LOX_RP1', 2.56, 1e7, 20, 101325);
   const blocked = RocketPropellants.lookupPerformance('LOX_RP1', 2.56, 1e7, 20, 9.2e6);
+  const separated = RocketPropellants.lookupPerformance('LOX_RP1', 2.56, 1e7, 200, 101325);
   const unpressurised = RocketPropellants.lookupPerformance('LOX_RP1', 2.56, 0, 20, 0);
   assert.ok(ordinary.Cf > 0);
+  assert.equal(ordinary.flowRegime, 'attached');
   assert.equal(blocked.Cf, 0);
+  assert.equal(blocked.choked, false);
+  assert.equal(blocked.flowRegime, 'unchoked');
+  assert.ok(separated.Cf > 0);
+  assert.equal(separated.flowRegime, 'separated');
+  assert.ok(separated.effectiveEpsilon > 1 && separated.effectiveEpsilon < 200);
   assert.equal(unpressurised.Cf, 0);
   assert.equal(RocketPropellants.lookupPerformance('unknown', 1, 1e7, 20, 0).Cf, 0);
+
+  const venus = resolveEnvironment(8.87);
+  const pre = RocketPhysics.computePreLaunch({ ...config, launchAngle: 90, environment: venus }, venus.gravity);
+  assert.equal(pre.thrust, 0);
+  assert.equal(pre.mdot, 0);
+  assert.equal(pre.flowRegime, 'unchoked');
+  assert.equal(pre.burnTime, Infinity);
 });
 
 test('radial cannon potential energy matches inverse-square gravity and is conserved in flight', () => {
