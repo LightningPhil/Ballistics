@@ -621,7 +621,6 @@ function drawTarget(value, mode = 'cannon') {
   ctx.lineCap = 'round';
   ctx.lineWidth = 2;
   ctx.strokeStyle = '#315d59';
-  var distance = Math.abs(value) >= 1000 ? (value / 1000).toFixed(1) + ' km' : Math.round(value) + ' m';
   if (rocketMode) {
     ctx.strokeStyle = 'rgba(236,201,115,.9)';
     ctx.setLineDash([6, 5]);
@@ -633,12 +632,9 @@ function drawTarget(value, mode = 'cannon') {
     }
     ctx.setLineDash([]);
     var markerY = clamp(point.y, 30, H - 35);
-    drawAnnotation('Height goal · ' + distance, clamp(point.x + 22, 16, W - 170), markerY - 25);
     ctx.fillStyle = '#f3cf76';ctx.beginPath();ctx.arc(clamp(point.x,12,W-12),markerY,5,0,Math.PI*2);ctx.fill();
   } else {
-    if (point.x < -60 || point.x > W + 60 || point.y < -70 || point.y > H + 70) {
-      drawAnnotation('Target · ' + distance + (point.x > W ? ' →' : ' ←'),clamp(point.x,12,W-145),H-35);
-    } else {
+    if (point.x >= -60 && point.x <= W + 60 && point.y >= -70 && point.y <= H + 70) {
       ctx.translate(point.x,point.y);
       if (curveActive) ctx.rotate(value / curveRadius);
       ctx.fillStyle = 'rgba(33,52,48,.18)';ctx.beginPath();ctx.ellipse(0,0,17,4,0,0,Math.PI*2);ctx.fill();
@@ -648,11 +644,27 @@ function drawTarget(value, mode = 'cannon') {
       ctx.lineTo(22,-31);ctx.quadraticCurveTo(12,-37,1,-34);ctx.closePath();
       ctx.fillStyle='#e9ae57';ctx.fill();ctx.lineWidth=1.5;ctx.stroke();
       ctx.fillStyle='#fff1c8';ctx.beginPath();ctx.arc(11,-42,3,0,Math.PI*2);ctx.fill();
-      ctx.restore();ctx.save();
-      drawAnnotation('Target · ' + distance,clamp(point.x-50,12,W-140),clamp(point.y+10,16,H-31));
     }
   }
   ctx.restore();
+}
+
+/** Screen-space notes stay clear of the target and the running character. */
+function drawSceneNotes(value, mode, char) {
+  if (Number.isFinite(value)) {
+    var rocketMode = mode === 'rocket';
+    var point = toCanvas(rocketMode ? TOWER_BASE_X_M : value, rocketMode ? value : 0);
+    var distance = Math.abs(value) >= 1000 ? (value / 1000).toFixed(1) + ' km' : Math.round(value) + ' m';
+    var direction = point.x > W ? ' →' : point.x < 0 ? ' ←' : point.y < 0 ? ' ↑' : point.y > H ? ' ↓' : '';
+    var text = (rocketMode ? 'Height goal · ' : 'Target · ') + distance + direction;
+    ctx.save();
+    ctx.font = '600 12px system-ui, sans-serif';
+    drawAnnotation(text, W - ctx.measureText(text).width - 34, 16);
+    ctx.restore();
+  }
+  if (char?.visible && char.banter !== false && char.bubbleText) {
+    drawCharacterAside(char);
+  }
 }
 
 function drawAnnotation(text, x, y) {
@@ -1844,6 +1856,16 @@ function roundRect(x, y, w, h, r) {
 function drawCharacter(char) {
   if (!char || !char.visible) return;
 
+  var position = toCanvas(char.x, 0);
+  ctx.save();
+  ctx.translate(position.x, position.y);
+  ctx.rotate(surfaceNormalAngle(char.x));
+  drawCharacterSprite(0, 0, currentPPM, char);
+  ctx.restore();
+}
+
+function drawCharacterSprite(cx, cy, s, char) {
+
   // Normalize rocket_startled to startled for drawing purposes
   // (visually identical, only duration differs — handled in main.js)
   var drawChar = char;
@@ -1855,45 +1877,21 @@ function drawCharacter(char) {
     drawChar.state = 'startled';
   }
 
-  var position = toCanvas(drawChar.x, 0);
-  var cx = position.x;
-  var cy = position.y;
-  var s = currentPPM;
-  var docked = s < 26 || cx < 30 || cx > W - 30 || cy < 70 || cy > H + 30;
-  if (docked) {
-    // A labelled reaction portrait, rather than a giant character on a planet.
-    cx = 52; cy = H - 23; s = 43;
-    ctx.save();
-    ctx.beginPath();ctx.roundRect(13,H-108,80,99,18);
-    ctx.fillStyle='rgba(255,245,220,.94)';ctx.fill();
-    ctx.strokeStyle='rgba(48,73,68,.2)';ctx.lineWidth=1;ctx.stroke();
-    ctx.fillStyle='#536969';ctx.font='600 10px system-ui, sans-serif';
-    ctx.textAlign='center';ctx.fillText('GROUND CREW',53,H-15);
-    ctx.restore();
-    cy -= 10;
-  }
   var isCrew = ['golfer','alien','spaceman','robot','icerobot'].includes(drawChar.type);
   if (isCrew) {
     drawCrew(ctx,cx,cy,s*1.32,drawChar);
   } else {
-    // The planet-specific guests keep their own silhouettes and share the same LOD.
-    s = docked ? 37 : Math.max(24,s);
-
-  switch (drawChar.type) {
-    case 'newt':      drawNewt(cx, cy, s, drawChar); break;
-    case 'whale':     drawWhale(cx, cy, s, drawChar); break;
-    case 'snowman':   drawSnowman(cx, cy, s, drawChar); break;
-    case 'submarine': drawSubmarine(cx, cy, s, drawChar); break;
-  }
-  }
-
-  // Thought bubble (drawn above head)
-  if (char.banter !== false && char.bubbleText) {
-    var bubbleYOff = s * 1.7;
-    if (drawChar.type === 'submarine') bubbleYOff = s * 1.2;
-    else if (drawChar.type === 'newt') bubbleYOff = s * 0.8;
-    else if (drawChar.type === 'whale') bubbleYOff = s * 2.0;
-    drawThoughtBubble(cx, docked ? H - 116 : cy - bubbleYOff, s, char.bubbleText);
+    // Scale strokes and animation offsets too, so guests shrink with the world.
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(s / 80, s / 80);
+    switch (drawChar.type) {
+      case 'newt':      drawNewt(0, 0, 80, drawChar); break;
+      case 'whale':     drawWhale(0, 0, 80, drawChar); break;
+      case 'snowman':   drawSnowman(0, 0, 80, drawChar); break;
+      case 'submarine': drawSubmarine(0, 0, 80, drawChar); break;
+    }
+    ctx.restore();
   }
 }
 
@@ -2418,13 +2416,13 @@ function drawWhale(cx, cy, s, char) {
   ctx.restore();
 }
 
-// ── Thought Bubble ─────────────────────────────────────────────────────────
-function drawThoughtBubble(cx, cy, _s, text) {
+// ── Occasional character aside, beneath the target readout ──────────────────
+function drawCharacterAside(char) {
   ctx.save();
   ctx.font = '500 13px system-ui, sans-serif';
-  var maxWidth = Math.min(220, W - 40);
+  var maxWidth = Math.min(190, W - 112);
   var lines = [], current = '';
-  for (var word of String(text).split(/\s+/)) {
+  for (var word of String(char.bubbleText).split(/\s+/)) {
     var next = current ? current + ' ' + word : word;
     if (current && ctx.measureText(next).width > maxWidth - 24) {
       lines.push(current); current = word;
@@ -2433,19 +2431,22 @@ function drawThoughtBubble(cx, cy, _s, text) {
   if (current) lines.push(current);
   var bubbleW = Math.min(maxWidth,Math.max(64,...lines.map(line=>ctx.measureText(line).width+24)));
   var bubbleH = lines.length*18+18;
-  var bx = clamp(cx + 12,10,W-bubbleW-10);
-  var by = clamp(cy-bubbleH-12,10,H-bubbleH-10);
+  var bx = W - 102 - bubbleW;
+  var by = 56;
   ctx.fillStyle='rgba(255,249,233,.97)';
   ctx.strokeStyle='rgba(39,61,61,.55)';ctx.lineWidth=1.5;
   ctx.beginPath();ctx.roundRect(bx,by,bubbleW,bubbleH,12);ctx.fill();ctx.stroke();
-  if(cy>by+bubbleH && cy<by+bubbleH+60) {
-    ctx.beginPath();ctx.moveTo(clamp(cx,bx+12,bx+bubbleW-12),by+bubbleH-1);
-    ctx.lineTo(clamp(cx-7,bx+6,bx+bubbleW-6),by+bubbleH+8);
-    ctx.lineTo(clamp(cx+12,bx+15,bx+bubbleW-6),by+bubbleH-1);
-    ctx.fill();ctx.stroke();
-  }
+  ctx.beginPath();ctx.moveTo(bx+bubbleW-1,by+15);
+  ctx.lineTo(bx+bubbleW+9,by+22);ctx.lineTo(bx+bubbleW-1,by+28);
+  ctx.fill();ctx.stroke();
   ctx.fillStyle='#2d4145';ctx.textAlign='left';ctx.textBaseline='top';
   lines.forEach((line,i)=>ctx.fillText(line,bx+12,by+9+i*18));
+
+  // A duplicate only while speaking; the character keeps moving in the field.
+  ctx.beginPath();ctx.arc(W-52,90,36,0,Math.PI*2);ctx.clip();
+  ctx.fillStyle='rgba(255,249,233,.78)';ctx.fill();
+  var scale = char.type === 'newt' ? 100 : char.type === 'submarine' ? 74 : char.type === 'whale' ? 36 : 43;
+  drawCharacterSprite(W-52,120,scale,char);
   ctx.restore();
 }
 
@@ -2986,6 +2987,7 @@ export const Renderer = {
   drawTrajectoryDot: drawTrajectoryDot,
   drawGhost: drawGhost,
   drawTarget: drawTarget,
+  drawSceneNotes: drawSceneNotes,
   drawFlag: drawFlag,
   drawCrater: drawCrater,
   drawGasHole: drawGasHole,

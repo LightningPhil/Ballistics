@@ -1538,6 +1538,7 @@ function loop(timestamp) {
 
   // Particles (shared across both modes)
   Renderer.drawParticles(particles);
+  Renderer.drawSceneNotes(deck.target, currentMode, activeCharacter);
 
   requestAnimationFrame(loop);
 }

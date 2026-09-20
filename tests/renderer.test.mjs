@@ -115,8 +115,10 @@ test('all crew reactions and annotations render finite geometry at close and pla
     Renderer.drawTarget(20, 'cannon'); Renderer.drawTarget(100, 'rocket');
     for (const type of ['golfer', 'alien', 'spaceman', 'robot', 'icerobot', 'newt', 'whale', 'submarine', 'snowman']) {
       for (const reaction of [undefined, 'coast', 'apex', 'impact', 'escape', 'fizzle']) {
-        Renderer.drawCharacter({ type, visible: true, x: 5, state: 'idle', stateTimer: 1, direction: 1,
-          reaction, bubbleText: 'Now that is a very long way to walk.', surfaceAmount: 1 });
+        const character = { type, visible: true, x: 5, state: 'idle', stateTimer: 1, direction: 1,
+          reaction, bubbleText: 'Now that is a very long way to walk.', surfaceAmount: 1 };
+        Renderer.drawCharacter(character);
+        Renderer.drawSceneNotes(20, 'cannon', character);
       }
     }
     for (const pose of ['running', 'carrying', 'screwing', 'panicked', 'celebrating']) {

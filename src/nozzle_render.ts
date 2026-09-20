@@ -27,7 +27,7 @@ import { RocketPropellants } from './rocket_propellants.ts';
 
 // ── Layout Constants ─────────────────────────────────────────────────────
 var INSET_MARGIN_X = 20;
-var INSET_MARGIN_Y = 20;
+var INSET_MARGIN_Y = 150; // Leave room for the target readout and character asides.
 var INSET_MAX_W    = 320;
 var INSET_MAX_H    = 184;
 var INSET_W_FRAC   = 0.28;
@@ -575,7 +575,7 @@ function draw(ctx, canvasW, canvasH, d) {
   var iw = Math.min(INSET_MAX_W, Math.max(260, canvasW * INSET_W_FRAC));
   var ih = INSET_MAX_H;
   // Don't draw if canvas is too small
-  if (canvasW < 580 || canvasH < 330) return;
+  if (canvasW < 580 || canvasH < INSET_MARGIN_Y + ih + 20) return;
 
   var ix = canvasW - iw - INSET_MARGIN_X;
   var iy = INSET_MARGIN_Y;
