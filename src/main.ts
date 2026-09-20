@@ -2,6 +2,7 @@ import './style.css';
 import { FlightDeck } from './flight-deck.ts';
 import { recordFlight, sampleFlight, compatibleRuns, type FlightRecord } from './flight.ts';
 import { resolveEnvironment } from './environment.ts';
+import { CharacterRemarks, launchRemark } from './character-remarks.ts';
 import { cannonSetupZoom } from './camera.ts';
 import { Physics } from './physics.ts';
 import { RocketPropellants } from './rocket_propellants.ts';
@@ -38,6 +39,7 @@ let lastFlightTime = 0;
 let lastCrewRemark = -30;
 let crewReactionUntil = 0;
 const remarkCounts = new Map<string, number>();
+const characterRemarks = new CharacterRemarks();
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -123,18 +125,6 @@ var clangCooldown     = 0;
 var activeCharacter = null;
 var lastCharacterPlanet = null; // track planet to detect changes
 
-var CHAR_THOUGHTS = {
-  golfer:    ['Nice day...', 'Fore!', 'Hmm, 9-iron?', 'Par 3...', 'Tee time!'],
-  alien:     ['Gzorp?', 'Beep boop', '*Blinks*', 'Zyx norp!', 'Greetings!'],
-  spaceman:  ['Houston...', 'One small...', 'Low grav!', 'Copy that', 'Visor fog!'],
-  robot:     ['BEEP BOOP', '01001000', 'SO HOT...', 'SCANNING...', 'ERROR 404'],
-  newt:      ['Toasty!', '*lick*', 'Sulphur...', 'Nice lava', 'Hmm, warm'],
-  whale:     ['Bluuub', '*spout*', 'Big sky!', 'Gassy...', 'Belly flop?'],
-  snowman:   ['Brrr!', 'So cold!', 'Need scarf', 'Icy!', '*shivers*'],
-  submarine: ['All clear!', 'Dive! Dive!', 'Ping!', 'Aye aye!', 'Periscope up'],
-  icerobot:  ['SCANNING...', 'ICE STABLE', 'COLD OK', '-224\u00b0C', 'PROBE READY']
-};
-
 function createCharacter(type) {
   // Spawn off screen to the right, walk in
   var spawnX = toPhysX(Renderer.getWidth()) * 0.7 + Math.random() * 5;
@@ -150,7 +140,7 @@ function createCharacter(type) {
     speed: 1.5 + Math.random() * 1.0,   // metres per second
     bubbleText: null,
     bubbleTimer: 0,
-    thoughtCooldown: 3 + Math.random() * 5
+    thoughtCooldown: 1.5
   };
   // Whale has custom submerge/surface cycle
   if (type === 'whale') {
@@ -165,7 +155,9 @@ function createCharacter(type) {
 }
 
 function startleCharacter(isRocket?) {
-  if (!activeCharacter || !activeCharacter.visible) return;
+  if (!activeCharacter) return;
+  if (isRocket) sayCharacter(launchRemark(resolveEnvironment(currentGravity)));
+  if (!activeCharacter.visible) return;
   if (activeCharacter.state === 'squashed') return;
   // Whale: if surfaced, dive immediately
   if (activeCharacter.type === 'whale') {
@@ -174,16 +166,12 @@ function startleCharacter(isRocket?) {
       activeCharacter.stateTimer = 0;
       activeCharacter.submergeDuration = isRocket ? 20 + Math.random() * 8 : 12 + Math.random() * 5;
     }
-    activeCharacter.bubbleText = null;
     return;
   }
   if (isRocket) {
-    // Rocket launches are more dramatic — longer startled hold + thought bubble
+    // Rocket launches are more dramatic; the remark follows this world's air.
     activeCharacter.state = 'rocket_startled';
     activeCharacter.stateTimer = 0;
-    var rocketScared = ['RUMBLE!!', 'WHAT THE—!', '*covers ears*', 'SO LOUD!', 'AAAH!!', 'THE GROUND!'];
-    activeCharacter.bubbleText = rocketScared[Math.floor(Math.random() * rocketScared.length)];
-    activeCharacter.bubbleTimer = 2.0;
   } else {
     activeCharacter.state = 'startled';
     activeCharacter.stateTimer = 0;
@@ -223,20 +211,23 @@ function updateCharacter(dt, captionDt = dt) {
   var ch = activeCharacter;
   ch.stateTimer += dt;
 
-  // Captions use elapsed presentation time even when reduced motion freezes
-  // the character's pose and movement. They must never become permanent UI.
+  // Keep remarks readable at any flight rate, including reduced motion.
+  // The portrait stays visible; only its caption takes a quiet break.
+  if (!deck?.banter) {
+    ch.bubbleText = null;
+    ch.bubbleTimer = 0;
+    ch.thoughtCooldown = 1.5;
+  }
   if (ch.bubbleText) {
     ch.bubbleTimer -= captionDt;
     if (ch.bubbleTimer <= 0) ch.bubbleText = null;
   }
-  var canThink = deck?.banter && !viewActive && (ch.state === 'idle' || ch.state === 'walking' || ch.state === 'spouting');
-  if (!ch.bubbleText && canThink) {
-    ch.thoughtCooldown -= captionDt * 0.3;
+  // The close-up can talk while the field character is away or submerged,
+  // and during long flights instead of falling silent until landing.
+  if (!ch.bubbleText && deck?.banter) {
+    ch.thoughtCooldown -= captionDt;
     if (ch.thoughtCooldown <= 0) {
-      var pool = CHAR_THOUGHTS[ch.type] || CHAR_THOUGHTS.golfer;
-      ch.bubbleText = pool[Math.floor(Math.random() * pool.length)];
-      ch.bubbleTimer = 2.5 + Math.random() * 2;
-      ch.thoughtCooldown = 8 + Math.random() * 10;
+      sayCharacter(characterRemarks.next(resolveEnvironment(currentGravity)), 5);
     }
   }
 
@@ -399,9 +390,13 @@ function updateCharacter(dt, captionDt = dt) {
 
 /** Detect planet from gravity and spawn correct character type */
 function syncCharacterToPlanet() {
-  var name = Renderer.getNearestPlanetName();
-  if (name === lastCharacterPlanet) return;
-  lastCharacterPlanet = name;
+  // Match the selected world immediately, not the intermediate planets passed
+  // through by the scenery's gravity crossfade. Custom worlds get generic wit.
+  var environment = resolveEnvironment(currentGravity);
+  var name = environment.name;
+  var key = name + (environment.interpolated ? ':custom' : '');
+  if (key === lastCharacterPlanet) return;
+  lastCharacterPlanet = key;
 
   var type = null;
   if      (name === 'earth')   type = 'golfer';
@@ -1266,11 +1261,20 @@ function syncEngineAudio() {
 
 function resetCrewReaction() {
   crewReactionUntil = 0;
+  lastCrewRemark = -30;
+  remarkCounts.clear();
   if (!activeCharacter) return;
   activeCharacter.reaction = null;
   activeCharacter.bubbleText = null;
   activeCharacter.bubbleTimer = 0;
-  activeCharacter.thoughtCooldown = Math.max(4, activeCharacter.thoughtCooldown || 0);
+  activeCharacter.thoughtCooldown = 4;
+}
+
+function sayCharacter(text: string, seconds = 4) {
+  if (!activeCharacter || !deck?.banter) return;
+  activeCharacter.bubbleText = text;
+  activeCharacter.bubbleTimer = seconds;
+  activeCharacter.thoughtCooldown = 4 + Math.random() * 3;
 }
 
 function crewReaction(kind: string) {
@@ -1283,8 +1287,8 @@ function crewReaction(kind: string) {
     impact: 'We need a longer measuring tape.', escape: 'About that return ticket…',
     orbit: 'We may be here a while.', fizzle: 'We have made a heater.' };
   if (deck.banter && now - lastCrewRemark > 8 && count < 2 && lines[kind]) {
-    activeCharacter.bubbleText = lines[kind]; activeCharacter.bubbleTimer = 4;
-    activeCharacter.thoughtCooldown = 20; lastCrewRemark = now; remarkCounts.set(kind, count + 1);
+    sayCharacter(lines[kind]);
+    lastCrewRemark = now; remarkCounts.set(kind, count + 1);
   }
 }
 

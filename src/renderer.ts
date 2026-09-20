@@ -664,9 +664,7 @@ function drawSceneNotes(value, mode, char) {
     drawAnnotation(text, W - ctx.measureText(text).width - 34, 16);
     ctx.restore();
   }
-  if (char?.visible && char.banter !== false && char.bubbleText) {
-    drawCharacterAside(char);
-  }
+  if (char) drawCharacterAside(char);
 }
 
 function drawAnnotation(text, x, y) {
@@ -2453,13 +2451,29 @@ function drawWhale(cx, cy, s, char) {
   ctx.restore();
 }
 
-// ── Occasional character aside, beneath the target readout ──────────────────
+// ── Persistent character close-up, beneath the target readout ────────────────
 function drawCharacterAside(char) {
+  var speech = typeof char.bubbleText === 'string' ? char.bubbleText.trim() : '';
+  if (char.banter !== false && speech) drawCharacterSpeech(speech);
+
+  ctx.save();
+  ctx.beginPath();ctx.arc(W-52,90,36,0,Math.PI*2);ctx.clip();
+  ctx.fillStyle='rgba(255,249,233,.78)';ctx.fill();
+  var scale = char.type === 'newt' ? 100 : char.type === 'submarine' ? 74 : char.type === 'whale' ? 60 : 43;
+  var footY = char.type === 'newt' ? 105 : char.type === 'whale' ? 108 : char.type === 'submarine' ? 110 : 120;
+  // Keep their face visible even while the world sprite is flattened or out of view.
+  var portrait = { ...char, state: !char.visible || char.state === 'squashed' ? 'idle' : char.state };
+  if (char.type === 'whale') portrait = { ...portrait, state: 'spouting', surfaceAmount: 1 };
+  drawCharacterSprite(W-(char.type === 'whale' ? 60 : 52),footY,scale,portrait);
+  ctx.restore();
+}
+
+function drawCharacterSpeech(speech) {
   ctx.save();
   ctx.font = '500 13px system-ui, sans-serif';
   var maxWidth = Math.min(190, W - 112);
   var lines = [], current = '';
-  for (var word of String(char.bubbleText).split(/\s+/)) {
+  for (var word of speech.split(/\s+/)) {
     var next = current ? current + ' ' + word : word;
     if (current && ctx.measureText(next).width > maxWidth - 24) {
       lines.push(current); current = word;
@@ -2482,14 +2496,6 @@ function drawCharacterAside(char) {
   ctx.lineTo(bx,by+12);ctx.quadraticCurveTo(bx,by,bx+12,by);ctx.closePath();ctx.fill();ctx.stroke();
   ctx.fillStyle='#2d4145';ctx.textAlign='left';ctx.textBaseline='top';
   lines.forEach((line,i)=>ctx.fillText(line,bx+12,by+9+i*18));
-
-  // A duplicate only while speaking; the character keeps moving in the field.
-  ctx.beginPath();ctx.arc(W-52,90,36,0,Math.PI*2);ctx.clip();
-  ctx.fillStyle='rgba(255,249,233,.78)';ctx.fill();
-  var scale = char.type === 'newt' ? 100 : char.type === 'submarine' ? 74 : char.type === 'whale' ? 60 : 43;
-  var footY = char.type === 'newt' ? 105 : char.type === 'whale' ? 108 : char.type === 'submarine' ? 110 : 120;
-  var portrait = char.type === 'whale' ? { ...char, state: 'spouting', surfaceAmount: 1 } : char;
-  drawCharacterSprite(W-(char.type === 'whale' ? 60 : 52),footY,scale,portrait);
   ctx.restore();
 }
 

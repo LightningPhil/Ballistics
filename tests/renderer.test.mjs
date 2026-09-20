@@ -119,7 +119,75 @@ test('initial recorded rocket and prelaunch sprite share the same centre and noz
   }
 });
 
-test('all crew reactions and annotations render finite geometry at close and planet scales', () => {
+test('character close-up stays visible when silent, muted, or outside the world view', () => {
+  const h = harness();
+  const character = { type: 'golfer', visible: true, x: 5, state: 'idle', stateTimer: 1, direction: 1 };
+  for (const width of [320, 960]) {
+    h.bounds.width = width;
+    h.resizeLayout();
+    for (const ppm of [80, 1e-8]) {
+      Renderer.setZoomImmediate(ppm); Renderer.updateWorld(0);
+      h.calls.length = 0;
+      Renderer.drawSceneNotes(NaN, 'cannon', character);
+      const silentPortrait = h.calls.slice();
+      assert.ok(silentPortrait.some(call => call.name === 'arc' &&
+        call.args[0] === width - 52 && call.args[1] === 90 && call.args[2] === 36), 'Portrait keeps its top-right screen anchor');
+      assert.ok(silentPortrait.some(call => call.name === 'translate'), 'Portrait contains the character sprite');
+      assert.ok(!silentPortrait.some(call => call.name === 'fillText'), 'Silence has no empty balloon or label');
+      for (const extra of [
+        { bubbleText: null }, { bubbleText: '' }, { bubbleText: '   ' },
+        { banter: false, bubbleText: 'Unheard remark.' },
+        { visible: false, x: 1e12 },
+      ]) {
+        h.calls.length = 0;
+        Renderer.drawSceneNotes(NaN, 'cannon', { ...character, ...extra });
+        assert.deepEqual(h.calls, silentPortrait, 'World visibility and speech settings do not remove or alter the portrait');
+      }
+    }
+  }
+  h.calls.length = 0;
+  Renderer.drawSceneNotes(NaN, 'cannon', null);
+  assert.equal(h.calls.length, 0, 'No character means no portrait');
+});
+
+test('flattened and submerged world characters retain a recognizable close-up without changing world state', () => {
+  const h = harness();
+  for (const type of ['golfer', 'alien', 'spaceman', 'robot', 'icerobot', 'newt', 'whale', 'submarine', 'snowman']) {
+    const character = { type, visible: true, x: 5, state: 'idle', stateTimer: 1, direction: 1, surfaceAmount: 1 };
+    h.calls.length = 0;
+    Renderer.drawSceneNotes(NaN, 'cannon', character);
+    const normalPortrait = h.calls.slice();
+    for (const extra of [{ state: 'squashed' }, { visible: false, state: 'running_away' },
+      ...(type === 'whale' ? [{ state: 'submerged', surfaceAmount: 0 }, { state: 'diving', surfaceAmount: .2 }] : [])]) {
+      const worldCharacter = { ...character, ...extra };
+      const original = { ...worldCharacter };
+      h.calls.length = 0;
+      Renderer.drawSceneNotes(NaN, 'cannon', worldCharacter);
+      assert.deepEqual(h.calls, normalPortrait, `${type} remains recognizable`);
+      assert.deepEqual(worldCharacter, original, 'Drawing the close-up does not mutate the world character');
+    }
+  }
+});
+
+test('close-up speech only appears when enabled and remains inside the mobile scene', () => {
+  const h = harness();
+  h.bounds.width = 320; h.resizeLayout();
+  const character = { type: 'golfer', visible: false, state: 'idle', stateTimer: 1, direction: 1,
+    bubbleText: 'My calculations need a snack.' };
+  for (const banter of [undefined, true, false]) {
+    h.calls.length = 0;
+    Renderer.drawSceneNotes(NaN, 'cannon', { ...character, banter });
+    const text = h.calls.filter(call => call.name === 'fillText');
+    assert.equal(text.length > 0, banter !== false, 'Remarks can be muted independently of the portrait');
+    if (text.length) assert.equal(text.map(call => call.args[0]).join(' '), character.bubbleText);
+    for (const { args: [line, x, y] } of text) {
+      assert.ok(x >= 0 && x + h.context.measureText(line).width < 218, 'Speech stays inside the scene and left of the portrait');
+      assert.ok(y >= 56 && y + 18 <= 126, 'Speech stays beneath the target and above the nozzle view');
+    }
+  }
+});
+
+test('all character reactions and annotations render finite geometry at close and planet scales', () => {
   const { context } = harness();
   for (const ppm of [80, 10, .00003, 1e-8]) {
     Renderer.setZoomImmediate(ppm); Renderer.updateWorld(0);

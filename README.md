@@ -20,7 +20,8 @@ Start with **Let it fly** or the ready-to-fly rocket. Four optional experiment c
 - The previous flight is kept as a ghost. Pin a baseline while trying alternatives. Comparable flights use the same clock and camera; trajectories from different worlds are not overlaid.
 - Drag the reference flag or height line, or enter its value. Results show how far from the target the flight finished. The target is a measuring aid, not a collision object.
 - Full-path reveal and direction arrows are optional. Arrows distinguish velocity, thrust and gravity; their lengths are not a force/speed scale.
-- Sound and crew remarks have separate switches. Reduced-motion preferences suppress decorative movement. Hiding the page pauses the flight.
+- The character close-up stays at the top right, with ten shared quips and five for each world. Remarks shuffle without repetition; custom gravity worlds use only the shared lines. Noise jokes require an atmosphere, and missing-ground jokes belong only to worlds without a solid surface.
+- Sound and character remarks have separate switches; silencing remarks leaves the close-up visible. Reduced-motion preferences suppress decorative movement. Hiding the page pauses the flight.
 - Saved flights are retained for this browser session, not persisted across reloads.
 
 ## Physics and assumptions

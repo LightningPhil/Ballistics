@@ -55,7 +55,7 @@ export class FlightDeck {
       <label><input id="flight-prediction" type="checkbox"> Reveal full path</label>
       <label><input id="flight-vectors" type="checkbox"> Motion & force arrows</label>
       <label><input id="flight-sound" type="checkbox"> Sound</label>
-      <label><input id="flight-banter" type="checkbox" checked> Crew remarks</label>
+      <label><input id="flight-banter" type="checkbox" checked> Character remarks</label>
       </div></details></div><p class="comparison-note" id="flight-comparison">The next flight can be compared with this one.</p></div>`;
     parent.prepend(el); this.element = el; this.status = this.get('flight-status');
     this.button('flight-pause').onclick = () => {
