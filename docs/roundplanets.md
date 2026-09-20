@@ -1,5 +1,11 @@
 # Round Planets — Feasibility Analysis
 
+> **Status:** Implemented. This is the historical design analysis, not the
+> runtime specification. The shipped app now uses a shared spherical,
+> inverse-square-gravity solver on intentionally non-rotating worlds. See the
+> README and `src/environment.ts`, `src/physics.ts`, and
+> `src/rocket_physics.ts` for current behavior.
+
 ## The Vision
 
 Replace the current flat ground with actual spherical (circular, in 2D) planets.
@@ -20,7 +26,7 @@ ripple uncontrollably into the others.
 
 ---
 
-## What Currently Assumes Flat Earth
+## What the pre-refactor app assumed
 
 ### Physics (`physics.ts`)
 - Gravity is a scalar applied as constant `−y` acceleration.
@@ -53,7 +59,7 @@ ripple uncontrollably into the others.
 
 ---
 
-## What Needs to Change (and How)
+## What the plan proposed
 
 ### Phase 1 — Spherical Physics (Flat Renderer)
 
@@ -70,10 +76,10 @@ that curve slightly because gravity was pulling toward centre, not straight down
    | Mars | 3,390 | 3.72 |
    | Venus | 6,052 | 8.87 |
    | Earth | 6,371 | 9.81 |
-   | Uranus | 25,362 | 8.69 |
-   | Neptune | 24,622 | 11.15 |
-   | Saturn | 58,232 | 10.44 |
-   | Jupiter | 69,911 | 24.79 |
+   | Uranus | 25,362 | 9.01 |
+   | Neptune | 24,622 | 11.27 |
+   | Saturn | 58,232 | 11.19 |
+   | Jupiter | 69,911 | 25.92 |
 
    Gravity parameter `μ = g × R²` replaces the scalar `g`.
 

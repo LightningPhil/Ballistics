@@ -3,24 +3,27 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build && vite build --config vite.config.singlefile.ts",
-    "build:single": "tsc && vite build --config vite.config.singlefile.ts",
-    "preview": "vite preview"
+    "dev": "vite --configLoader native",
+    "test": "node --test tests/*.test.mjs",
+    "check": "tsc --noEmit",
+    "build": "tsc && vite build --configLoader native && vite build --configLoader native --config vite.config.singlefile.ts",
+    "build:single": "tsc && vite build --configLoader native --config vite.config.singlefile.ts",
+    "preview": "vite preview --configLoader native"
   },
+  "engines": { "node": ">=24.0.0" },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/LightningPhil/Ballistics.git"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["physics", "education", "simulation", "ballistics", "rocket", "canvas"],
+  "author": "Philip Leichauer",
   "license": "UNLICENSED",
   "private": true,
   "bugs": {
     "url": "https://github.com/LightningPhil/Ballistics/issues"
   },
   "homepage": "https://github.com/LightningPhil/Ballistics#readme",
-  "description": "",
+  "description": "Launch Lab: a playful cannon and rocket physics sandbox with recorded, inspectable flights on twelve worlds.",
   "devDependencies": {
     "typescript": "^5.9.3",
     "vite": "^7.3.1",

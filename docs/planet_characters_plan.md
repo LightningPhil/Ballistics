@@ -1,5 +1,14 @@
-# Matilda's Cannon Lab — New Planet Characters Plan
+# Launch Lab — New Planet Characters Plan
 
+> **Status:** Implemented. Historical design plan, kept for the character
+> concepts and state-machine rationale. Eleven characters now exist across the
+> twelve selectable worlds; Pluto's quiet ice bear and Ganymede's giant squid
+> were added later, while the Sun deliberately has no character. The
+> shipped rigs live in `src/crew.ts`, `src/planet-guests.ts` and
+> `src/aquatic-characters.ts`, cloud-guest motion in `src/cloud-guests.ts`,
+> and the state machine in `src/main.ts`. File names below (`main.js`,
+> `renderer.js`) predate the TypeScript move.
+>
 > **Goal:** Add a unique comic character to every planet that currently lacks one.
 > Characters follow the same state-machine and drawing patterns as the existing golfer (Earth), alien (Mars), and spaceman (Moon).
 > All previous features (zoom fix, celestial bodies, comic characters, barrel stickmen) are ✅ DONE.
@@ -10,15 +19,18 @@
 
 | Planet   | Gravity | `isGas` | `features`  | Existing Character | New Character             |
 |----------|---------|---------|-------------|-------------------|---------------------------|
+| Pluto    | 0.62    | false   | `pluto`     | —                 | 🐻‍❄️ Crystalline ice bear   |
+| Ganymede | 1.428   | false   | `ganymede`  | —                 | 🦑 Giant squid             |
 | Moon     | 1.62    | false   | `moon`      | ✅ Spaceman        | —                         |
 | Mercury  | 3.70    | false   | `mercury`   | —                 | 🤖 Robot                  |
 | Mars     | 3.72    | false   | `mars`      | ✅ Alien           | —                         |
-| Uranus   | 8.69    | true    | `icegas`    | —                 | 🤖 Different Robot        |
+| Uranus   | 9.01    | true    | `icegas`    | —                 | 🤖 Different Robot        |
 | Venus    | 8.87    | false   | `venus`     | —                 | 🦎 Newt                   |
 | Earth    | 9.81    | false   | `earth`     | ✅ Golfer          | —                         |
-| Saturn   | 10.44   | true    | `saturn`    | —                 | 🛥️ Submarine              |
-| Neptune  | 11.15   | true    | `deepgas`   | —                 | ⛄ Snowman                |
-| Jupiter  | 24.79   | true    | `jupiter`   | —                 | 🐋 Whale                  |
+| Saturn   | 11.19   | true    | `saturn`    | —                 | 🛥️ Submarine              |
+| Neptune  | 11.27   | true    | `deepgas`   | —                 | ⛄ Snowman                |
+| Jupiter  | 25.92   | true    | `jupiter`   | —                 | 🐋 Whale                  |
+| Sun      | 274.00  | true    | `sun`       | —                 | None by design            |
 
 ---
 

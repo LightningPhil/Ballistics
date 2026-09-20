@@ -1,25 +1,27 @@
 /**
  * ============================================================================
- * rocket_propellants.js — Propellant Registry & Performance Tables
+ * rocket_propellants.ts — Propellant Registry & Performance Model
  * ============================================================================
  *
  * ROLE:  Contains the complete propellant library (metadata + slider bounds)
- *        and placeholder CEA-derived performance lookup/interpolation.
- *        No DOM access — pure data.
+ *        and an approximate isentropic performance model.
+ *        No DOM access — pure data and pure functions.
  *
- * EXPORTS (via window.RocketPropellants namespace):
+ * EXPORTS (via the `RocketPropellants` object at the bottom):
  *   REGISTRY         — Array of propellant definition objects
  *   getById(id)      — Look up a propellant by ID string
  *   lookupPerformance(id, MR, Pc_Pa, epsilon, Pa_Pa)
- *                    — Returns { cStar, Cf } (m/s, dimensionless)
+ *                    — Returns { cStar, Cf, effectiveEpsilon, exitPressure,
+ *                                flowRegime, choked }
  *
- * Placeholder grids use analytical isentropic approximations that give
- * reasonable "shape" for teaching. When real CEA JSON files are loaded
- * later, the lookupPerformance function will switch to interpolated data
- * automatically.
- *
- * LOADED BY: <script src="rocket_propellants.js"> in index.html
- *            (before rocket_physics.js)
+ * The model uses analytical isentropic approximations that give a reasonable
+ * "shape" for teaching, calibrated to a single textbook vacuum-Isp anchor per
+ * pair. Strong over-expansion uses the conservative Summerfield separation
+ * criterion (wall pressure ≈ 0.4 ambient pressure). An unchoked throat is
+ * reported as engine-off. Mixture ratio is metadata only; no chemistry is
+ * simulated. `docs/rocket_lab_single_source_of_truth.md` §8–11 describes the
+ * intended future replacement with interpolated CEA grids, which would slot
+ * in behind `lookupPerformance` without touching the solver.
  * ============================================================================
  */
 
@@ -173,7 +175,7 @@ var REGISTRY = [
 ];
 
 // ── Quick ID lookup map ────────────────────────────────────────────────────
-var byId = {};
+var byId = Object.create(null);
 for (var i = 0; i < REGISTRY.length; i++) {
   byId[REGISTRY[i].id] = REGISTRY[i];
 }
@@ -211,12 +213,19 @@ var R_UNIVERSAL = 8314.46; // J/(kmol·K)
  */
 function idealCStar(gamma, molWt, Tc) {
   var g = gamma;
-  var M = molWt / 1000; // kg/mol
   var R = R_UNIVERSAL / (molWt); // J/(kg·K)  — note: molWt in g/mol → R_u/molWt
   // Gamma function: gamma * (2/(gamma+1))^((gamma+1)/(gamma-1))
   var exp = (g + 1) / (g - 1);
   var GammaFn = g * Math.pow(2 / (g + 1), exp);
   return Math.sqrt(R * Tc / GammaFn);
+}
+
+/** Area ratio A/A* for a Mach number. */
+function epsilonFromMach(gamma, mach) {
+  var g = gamma;
+  var M = Math.max(1.000001, mach);
+  var term = (2 / (g + 1)) * (1 + 0.5 * (g - 1) * M * M);
+  return Math.pow(term, (g + 1) / (2 * (g - 1))) / M;
 }
 
 /**
@@ -234,10 +243,7 @@ function exitMachFromEpsilon(gamma, epsilon) {
   var exp = gp1 / (2 * gm1);
 
   // Area-Mach function: A/A*(M)
-  function areaMach(M) {
-    var t = 1 + 0.5 * gm1 * M * M;
-    return (1 / M) * Math.pow((2 / gp1) * t, exp);
-  }
+  function areaMach(M) { return epsilonFromMach(g, M); }
 
   // Derivative d(A/A*)/dM
   function dAreaMach(M) {
@@ -311,7 +317,7 @@ function computeCalibrationFactor(prop) {
 }
 
 // Pre-compute calibration factors
-var calibrationFactors = {};
+var calibrationFactors = Object.create(null);
 for (var j = 0; j < REGISTRY.length; j++) {
   calibrationFactors[REGISTRY[j].id] = computeCalibrationFactor(REGISTRY[j]);
 }
@@ -330,29 +336,69 @@ for (var j = 0; j < REGISTRY.length; j++) {
  * @param {number} Pa_Pa    Ambient pressure in Pascals (0 for vacuum)
  * @returns {{ cStar: number, Cf: number }} c* in m/s, Cf dimensionless
  */
+const SEPARATION_PRESSURE_RATIO = 0.4;
+const nozzleCache = new Map<string, {
+  cStar: number;
+  vacuumCf: number;
+  exitPressureRatio: number;
+  gamma: number;
+}>();
+
 function lookupPerformance(id, MR, Pc_Pa, epsilon, Pa_Pa) {
   var prop = byId[id];
-  if (!prop) {
-    // Fallback: return conservative defaults
-    return { cStar: 1500, Cf: 1.5 };
+  if (!prop || !Number.isFinite(Pc_Pa) || Pc_Pa <= 0 ||
+      !Number.isFinite(epsilon) || epsilon < 1 || !Number.isFinite(Pa_Pa) || Pa_Pa < 0) {
+    return { cStar: 0, Cf: 0, effectiveEpsilon: 0, exitPressure: 0,
+      flowRegime: 'off', choked: false };
+  }
+  const eps = Math.max(1.01, epsilon);
+  const key = id + ':' + eps;
+  let nozzle = nozzleCache.get(key);
+  if (!nozzle) {
+    const ph = prop.placeholder;
+    const Me = exitMachFromEpsilon(ph.gamma, eps);
+    const pePc = exitPressureRatio(ph.gamma, Me);
+    nozzle = {
+      cStar: idealCStar(ph.gamma, ph.molWt, ph.Tc_K) * calibrationFactors[id],
+      vacuumCf: idealCf(ph.gamma, eps, pePc, 0, Pc_Pa),
+      exitPressureRatio: pePc,
+      gamma: ph.gamma
+    };
+    if (nozzleCache.size >= 128) nozzleCache.clear();
+    nozzleCache.set(key, nozzle);
+  }
+  // The isentropic supersonic solution requires a choked throat. Below the
+  // critical chamber/ambient pressure ratio this simplified rocket engine is
+  // treated as off instead of reporting mass flow with zero thrust.
+  const criticalBackPressureRatio = Math.pow(2 / (nozzle.gamma + 1),
+    nozzle.gamma / (nozzle.gamma - 1));
+  const choked = Pa_Pa === 0 || Pa_Pa / Pc_Pa <= criticalBackPressureRatio;
+  if (!choked) {
+    return { cStar: nozzle.cStar, Cf: 0, effectiveEpsilon: 1,
+      exitPressure: Pa_Pa, flowRegime: 'unchoked', choked: false };
   }
 
-  var ph = prop.placeholder;
-  var cal = calibrationFactors[id];
+  const idealExitPressure = nozzle.exitPressureRatio * Pc_Pa;
+  if (Pa_Pa > 0 && idealExitPressure < SEPARATION_PRESSURE_RATIO * Pa_Pa) {
+    // Conservative free-shock-separation approximation: replace the portion
+    // downstream of the separation station with an effective exit at the
+    // isentropic area where p ≈ 0.4 Pa. This avoids extending an impossible
+    // attached-flow solution until its pressure term erases all thrust.
+    const separatedPePc = SEPARATION_PRESSURE_RATIO * Pa_Pa / Pc_Pa;
+    const exponent = -(nozzle.gamma - 1) / nozzle.gamma;
+    const separatedMach = Math.sqrt((2 / (nozzle.gamma - 1)) *
+      (Math.pow(separatedPePc, exponent) - 1));
+    const effectiveEpsilon = Math.min(eps, epsilonFromMach(nozzle.gamma, separatedMach));
+    const Cf = Math.max(0, idealCf(nozzle.gamma, effectiveEpsilon,
+      separatedPePc, Pa_Pa, Pc_Pa));
+    return { cStar: nozzle.cStar, Cf, effectiveEpsilon,
+      exitPressure: separatedPePc * Pc_Pa, flowRegime: 'separated', choked: true };
+  }
 
-  // c* — calibrated ideal
-  var cStarRaw = idealCStar(ph.gamma, ph.molWt, ph.Tc_K);
-  var cStar = cStarRaw * cal;
-
-  // Cf — ideal isentropic with pressure thrust term
-  var Me = exitMachFromEpsilon(ph.gamma, Math.max(1.01, epsilon));
-  var pe_pc = exitPressureRatio(ph.gamma, Me);
-  var Cf = idealCf(ph.gamma, Math.max(1.01, epsilon), pe_pc, Pa_Pa, Pc_Pa);
-
-  // Clamp Cf to physical range [0.8, 2.2]
-  Cf = Math.max(0.8, Math.min(2.2, Cf));
-
-  return { cStar: cStar, Cf: Cf };
+  const Cf = Math.max(0, nozzle.vacuumCf - eps * Pa_Pa / Pc_Pa);
+  return { cStar: nozzle.cStar, Cf, effectiveEpsilon: eps,
+    exitPressure: idealExitPressure, flowRegime: Pa_Pa === 0 ? 'vacuum' : 'attached',
+    choked: true };
 }
 
 // ── Expose namespace ───────────────────────────────────────────────────────
@@ -363,7 +409,9 @@ export const RocketPropellants = {
   // Expose internals for testing / future CEA grid loader
   _idealCStar: idealCStar,
   _exitMachFromEpsilon: exitMachFromEpsilon,
+  _epsilonFromMach: epsilonFromMach,
   _exitPressureRatio: exitPressureRatio,
   _idealCf: idealCf,
+  SEPARATION_PRESSURE_RATIO: SEPARATION_PRESSURE_RATIO,
   _calibrationFactors: calibrationFactors
 };

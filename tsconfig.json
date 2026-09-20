@@ -4,6 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": false,
+    "noUnusedLocals": true,
     "noEmit": true,
     "isolatedModules": true,
     "skipLibCheck": true,

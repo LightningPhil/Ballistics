@@ -1,27 +1,7 @@
-# Dependencies
 node_modules/
-
-# Build output
 dist/
-
-# Vite
-*.local
-
-# Editor / OS
-.vscode/*
-!.vscode/settings.json
-!.vscode/extensions.json
-.idea/
-*.swp
-*.swo
-*~
 .DS_Store
-Thumbs.db
-
-# Logs
 *.log
-npm-debug.log*
-
-# Environment
 .env
 .env.*
+!.env.example

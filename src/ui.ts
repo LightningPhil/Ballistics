@@ -1,35 +1,25 @@
 import { Physics } from './physics.ts';
-import { Renderer } from './renderer.ts';
 import { RocketPropellants } from './rocket_propellants.ts';
 import { RocketPhysics } from './rocket_physics.ts';
+import { ENVIRONMENTS, resolveEnvironment } from './environment.ts';
+import { getPlanetFact } from './planet-facts.ts';
+import { clampGravity, gravityFromSliderPosition, sliderPositionForGravity } from './gravity-scale.ts';
+import { getWorldArt } from './world-art.ts';
 
 /**
  * ============================================================================
- * ui.js — Control Panel Logic for Launch Lab
+ * ui.ts — Control Panel Logic for Launch Lab
  * ============================================================================
  *
  * ROLE:  Manages all DOM controls: mode toggle, cannon sliders, rocket panel,
- *        planet buttons, fire/launch buttons, tooltips, live telemetry
- *        readouts, pre-launch rocket readouts, and the energy bar.
- *        Reads from DOM, writes to DOM — but never touches canvas or physics.
+ *        planet buttons, fire/launch buttons, tooltips, experiment cards,
+ *        live telemetry readouts, pre-launch rocket readouts and the energy
+ *        bar. Reads from DOM, writes to DOM — never touches the canvas.
+ *        It calls the pure physics modules only to compute pre-launch
+ *        readouts; recorded flights are owned by main.ts / flight.ts.
  *
- * EXPORTS (via window.UI namespace):
- *   init(callbacks)              — Wire up all event listeners
- *   getValues()                  — Cannon slider values { angle, mass, force, gravity }
- *   getMode()                    — 'cannon' | 'rocket'
- *   getRocketValues()            — Rocket slider values (full config object)
- *   updateReadouts(state, energy)— Push cannon telemetry to DOM
- *   updateRocketReadouts(state)  — Push rocket flight telemetry to DOM
- *   updatePreLaunchReadouts(pre) — Push pre-launch computed values to DOM
- *   resetRocketReadouts()        — Zero-out rocket displays
- *   setFlightActive(bool)        — Enable/disable fire/launch & mode toggle
- *   highlightPlanet(name)        — Set active planet button
- *   resetReadouts()              — Zero-out cannon displays
- *
- * DEPENDS ON: DOM elements defined in index.html,
- *             window.RocketPropellants (for registry data),
- *             window.RocketPhysics (for live pre-launch computation)
- * LOADED BY:  <script src="ui.js"> in index.html (after renderer.js)
+ * The `UI` object exported at the bottom is the public surface used by
+ * main.ts; everything else in this file is private.
  * ============================================================================
  */
 
@@ -40,9 +30,14 @@ var btnFire, btnClear;
 var planetButtons;
 var readVelocity, readHeight, readDistance;
 var readKE, readPE, readTME;
-var energyBarKE, energyBarPE, energyBarContainer;
-var flightDataSection;
+var energyBarKE, energyBarPE;
 var tooltipEl;
+var planetFactButton, planetFactButtonLabel, planetFactDialog, planetFactCard, planetFactArtwork;
+
+// Surface gravity in m/s². The slider holds a logarithmic position (see
+// gravity-scale.ts), so the authoritative value lives here and presets keep
+// their exact figures (e.g. Ganymede's 1.428).
+var gravityValue = 9.81;
 
 // Mode state
 var currentMode = 'cannon'; // 'cannon' | 'rocket'
@@ -57,6 +52,8 @@ var onModeChange = null;
 var isFlightActive = false;  // Track flight state for mode toggle guard
 var onRocketLaunch = null;
 var onRocketClear = null;
+var onExperiment = null;
+var activeTooltipAnchor = null;
 
 // ── Rocket DOM references (populated in initRocketPanel) ───────────────────
 var rocketPropSelect, propellantNote;
@@ -101,6 +98,7 @@ function init(callbacks) {
   onModeChange = callbacks.onModeChange || null;
   onRocketLaunch = callbacks.onRocketLaunch || null;
   onRocketClear = callbacks.onRocketClear || null;
+  onExperiment = callbacks.onExperiment || null;
 
   // Mode toggle
   cannonPanel = document.getElementById('cannon-panel');
@@ -127,6 +125,8 @@ function init(callbacks) {
 
   // Planet buttons
   planetButtons = document.querySelectorAll('.planet-btn');
+  initWorldArtwork();
+  initPlanetFacts();
 
   // Telemetry
   readVelocity = document.getElementById('read-velocity');
@@ -139,10 +139,6 @@ function init(callbacks) {
   // Energy bar
   energyBarKE = document.getElementById('energy-bar-ke');
   energyBarPE = document.getElementById('energy-bar-pe');
-  energyBarContainer = document.getElementById('energy-bar');
-
-  // Flight data section
-  flightDataSection = document.getElementById('flight-data');
 
   // Tooltip element
   tooltipEl = document.getElementById('tooltip');
@@ -159,7 +155,7 @@ function init(callbacks) {
   updateSliderDisplay(sliderMass, valMass, ' kg');
   updateSliderDisplay(sliderForce, valForce, ' N');
   updateSliderDisplay(sliderBarrel, valBarrel, ' m');
-  updateSliderDisplay(sliderGravity, valGravity, ' m/s²');
+  setGravity(gravityValue);
 
   // Fire button
   btnFire.addEventListener('click', function () {
@@ -175,11 +171,12 @@ function init(callbacks) {
   for (var i = 0; i < planetButtons.length; i++) {
     (function (btn) {
       btn.addEventListener('click', function () {
+        if (isFlightActive) return;
         var g = parseFloat(btn.getAttribute('data-gravity'));
-        sliderGravity.value = g;
-        updateSliderDisplay(sliderGravity, valGravity, ' m/s²');
+        setGravity(g);
         highlightPlanet(btn.getAttribute('data-planet'));
         if (onGravityChange) onGravityChange(g);
+        refreshPreLaunch();
       });
     })(planetButtons[i]);
   }
@@ -192,6 +189,12 @@ function init(callbacks) {
 
   // Rocket panel controls
   initRocketPanel();
+
+  document.querySelectorAll<HTMLButtonElement>('[data-experiment]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      applyExperiment(button.dataset.experiment);
+    });
+  });
 
   // Initial planet highlight
   highlightPlanet('earth');
@@ -214,43 +217,45 @@ function wireModeToggle() {
 }
 
 function setMode(newMode) {
+  if (isFlightActive || (newMode !== 'cannon' && newMode !== 'rocket')) return;
+  // Restoring a recorded flight or applying an experiment card in the current
+  // mode must not re-run the mode-switch side effects (range clear, camera).
+  if (newMode === currentMode) return;
   currentMode = newMode;
   // Update toggle button highlights
   for (var i = 0; i < modeButtons.length; i++) {
     var btn = modeButtons[i];
+    btn.setAttribute('aria-pressed', String(btn.getAttribute('data-mode') === currentMode));
     if (btn.getAttribute('data-mode') === currentMode) {
       btn.classList.add('active');
     } else {
       btn.classList.remove('active');
     }
   }
-  // Show/hide panels
-  if (currentMode === 'cannon') {
-    cannonPanel.style.display = '';
-    rocketPanel.style.display = 'none';
-  } else {
-    cannonPanel.style.display = 'none';
-    rocketPanel.style.display = 'flex';
-  }
-  // Notify main.js
+  document.getElementById('cannon-actions').hidden = currentMode !== 'cannon';
+  document.getElementById('rocket-actions').hidden = currentMode !== 'rocket';
+  // Show/hide panels (the [hidden] rule in style.css does the display work)
+  cannonPanel.hidden = currentMode !== 'cannon';
+  rocketPanel.hidden = currentMode !== 'rocket';
+  // Notify main.ts
   if (onModeChange) onModeChange(currentMode);
-}
-
-function getMode() {
-  return currentMode;
 }
 
 // ── Slider helpers ─────────────────────────────────────────────────────────
 
 function wireSlider(slider, display, unit) {
   slider.addEventListener('input', function () {
-    updateSliderDisplay(slider, display, unit);
-    // If gravity slider changes, check planet match
+    // The gravity slider is logarithmic; convert its position and check the
+    // planet match. setGravity() refreshes its readout.
     if (slider === sliderGravity) {
-      var g = parseFloat(slider.value);
-      matchPlanet(g);
+      var g = gravityFromSliderPosition(parseFloat(slider.value));
+      setGravity(g);
+      highlightNearestPlanet(g);
       if (onGravityChange) onGravityChange(g);
+      refreshPreLaunch();
+      return;
     }
+    updateSliderDisplay(slider, display, unit);
     // If barrel slider changes, trigger barrel animation
     if (slider === sliderBarrel) {
       if (onBarrelChange) onBarrelChange(parseFloat(slider.value));
@@ -258,13 +263,25 @@ function wireSlider(slider, display, unit) {
   });
 }
 
+/** Set the surface gravity (m/s²), moving the slider thumb to match. */
+function setGravity(g) {
+  gravityValue = clampGravity(g);
+  sliderGravity.value = String(sliderPositionForGravity(gravityValue));
+  var text = gravityValue.toFixed(2) + ' m/s²';
+  valGravity.textContent = text;
+  sliderGravity.setAttribute('aria-valuetext', text);
+}
+
+function currentGravity() {
+  return gravityValue;
+}
+
 function updateSliderDisplay(slider, display, unit) {
+  if (slider === sliderGravity) { setGravity(gravityValue); return; }
   var v = parseFloat(slider.value);
   // Format nicely
   if (unit === '°') {
     display.textContent = v.toFixed(0) + unit;
-  } else if (unit === ' m/s²') {
-    display.textContent = v.toFixed(2) + unit;
   } else if (unit === ' N') {
     display.textContent = v.toFixed(0) + unit;
   } else {
@@ -272,21 +289,12 @@ function updateSliderDisplay(slider, display, unit) {
   }
 }
 
-var PLANET_GRAVITY_MAP = [
-  { name: 'moon',    g: 1.62 },
-  { name: 'mercury', g: 3.7 },
-  { name: 'mars',    g: 3.72 },
-  { name: 'uranus',  g: 8.69 },
-  { name: 'venus',   g: 8.87 },
-  { name: 'earth',   g: 9.81 },
-  { name: 'saturn',  g: 10.44 },
-  { name: 'neptune', g: 11.15 },
-  { name: 'jupiter', g: 24.79 }
-];
-
-function matchPlanet(g) {
-  highlightPlanet(findClosestPlanetName(g));
-}
+// Preset gravities come from the shared ENVIRONMENTS table (single source of
+// truth with the solver and renderer); index.html's data-gravity attributes are
+// checked against it in tests/worlds.test.mjs.
+var PLANET_GRAVITY_MAP = ENVIRONMENTS.map(function (environment) {
+  return { name: environment.name, g: environment.gravity };
+});
 
 function findClosestPlanetName(g) {
   var best = PLANET_GRAVITY_MAP[0], bd = Math.abs(g - best.g);
@@ -306,33 +314,161 @@ function highlightNearestPlanet(g) {
 function highlightPlanet(name) {
   for (var i = 0; i < planetButtons.length; i++) {
     var btn = planetButtons[i];
+    btn.setAttribute('aria-pressed', String(btn.getAttribute('data-planet') === name));
     if (btn.getAttribute('data-planet') === name) {
       btn.classList.add('active');
     } else {
       btn.classList.remove('active');
     }
   }
+  var env = resolveEnvironment(currentGravity());
+  var label = document.getElementById('environment-label');
+  if (label) label.textContent = (env.interpolated ? 'Custom world' : env.name[0].toUpperCase() + env.name.slice(1)) + ' · ' + env.gravity.toFixed(2) + ' m/s²';
+  // A custom (interpolated) world has no fact card; the nearest preset stays
+  // highlighted in the grid, but its facts would be misleading here.
+  updatePlanetFactButton(env.interpolated ? null : env.name);
+}
+
+function initPlanetFacts() {
+  planetFactButton = document.getElementById('planet-fact-button');
+  planetFactButtonLabel = document.getElementById('planet-fact-button-label');
+  planetFactDialog = document.getElementById('planet-fact-dialog');
+  planetFactCard = document.getElementById('planet-fact-card');
+  planetFactArtwork = document.getElementById('planet-fact-artwork');
+  planetFactButton.addEventListener('click', function () {
+    const fact = getPlanetFact(planetFactButton.dataset.planet);
+    if (!fact) return;
+    const art = getWorldArt(fact.id);
+    hideTooltip();
+    planetFactCard.dataset.world = fact.id;
+    planetFactCard.style.setProperty('--fact-accent', fact.accent);
+    if (art && planetFactArtwork) planetFactArtwork.src = art.full;
+    const fields = {
+      'planet-fact-kind': fact.kind,
+      'planet-fact-title': fact.name,
+      'planet-fact-tagline': fact.tagline,
+      'planet-fact-mass': fact.mass,
+      'planet-fact-diameter': fact.diameter,
+      'planet-fact-distance': fact.distance,
+      'planet-fact-gravity': fact.gravity,
+      'planet-fact-day': fact.dayLength,
+      'planet-fact-year': fact.yearLength,
+      'planet-fact-tilt': fact.axialTilt,
+      'planet-fact-temp-average': fact.averageTemp,
+      'planet-fact-temp-min': fact.minTemp,
+      'planet-fact-temp-max': fact.maxTemp,
+      'planet-fact-atmosphere': fact.atmosphere,
+      'planet-fact-exploration': fact.exploration,
+      'planet-fact-temperature-note': fact.temperatureNote,
+    };
+    Object.entries(fields).forEach(function ([id, text]) {
+      const element = document.getElementById(id);
+      if (element) element.textContent = text;
+    });
+    planetFactDialog.showModal();
+  });
+  planetFactDialog.addEventListener('click', function (event) {
+    if (event.target === planetFactDialog) planetFactDialog.close();
+  });
+}
+
+function initWorldArtwork() {
+  for (const button of planetButtons) {
+    const id = button.getAttribute('data-planet');
+    const art = getWorldArt(id);
+    const icon = button.querySelector('.planet-icon');
+    if (!art || !icon) continue;
+    const image = document.createElement('img');
+    image.src = art.mini;
+    image.alt = '';
+    image.width = 64;
+    image.height = 64;
+    image.decoding = 'async';
+    icon.replaceChildren(image);
+  }
+}
+
+function updatePlanetFactButton(name) {
+  const fact = name ? getPlanetFact(name) : undefined;
+  const art = fact ? getWorldArt(fact.id) : undefined;
+  if (!planetFactButton || !planetFactButtonLabel) return;
+  planetFactButton.disabled = !fact;
+  planetFactButton.dataset.planet = fact?.id || '';
+  planetFactButtonLabel.textContent = fact ? fact.name + ' fact' : 'World fact';
+  // Pre-load the card artwork so the dialog opens complete. An empty src would
+  // render a broken-image glyph, so clear the attribute instead.
+  if (planetFactArtwork) {
+    if (art) planetFactArtwork.src = art.full;
+    else planetFactArtwork.removeAttribute('src');
+  }
 }
 
 // ── Tooltips ───────────────────────────────────────────────────────────────
 
 function wireTooltips() {
-  var triggers = document.querySelectorAll('[data-tip]');
+  var triggers = document.querySelectorAll<HTMLElement>('[data-tip]');
   for (var i = 0; i < triggers.length; i++) {
     (function (trigger) {
-      trigger.addEventListener('mouseenter', function (e) {
-        var html = trigger.getAttribute('data-tip');
-        showTooltip(trigger, html);
+      if (trigger.dataset.tipWired) return;
+      trigger.dataset.tipWired = 'true';
+      trigger.setAttribute('aria-describedby', 'tooltip');
+      trigger.setAttribute('aria-expanded', 'false');
+      // Hover shows a transient tooltip that ignores the pointer, so moving
+      // the mouse off the trigger closes it cleanly. Focus or click "pins" it
+      // instead: a pinned tooltip accepts pointer events so long content can
+      // be scrolled, and only closes on blur, Escape or an outside click.
+      trigger.addEventListener('mouseenter', function () {
+        if (activeTooltipAnchor === trigger && tooltipEl.classList.contains('pinned')) return;
+        showTooltip(trigger, trigger.getAttribute('data-tip'), false);
       });
       trigger.addEventListener('mouseleave', function () {
+        if (!tooltipEl.classList.contains('pinned')) hideTooltip();
+      });
+      trigger.addEventListener('focus', function () {
+        showTooltip(trigger, trigger.getAttribute('data-tip'), true);
+      });
+      trigger.addEventListener('blur', function (event: FocusEvent) {
+        // Clicking inside a pinned tooltip (e.g. its scrollbar) moves focus
+        // onto the tooltip itself; that is not a dismissal.
+        if (event.relatedTarget === tooltipEl) return;
         hideTooltip();
+      });
+      trigger.addEventListener('click', function (event) {
+        event.stopPropagation();
+        showTooltip(trigger, trigger.getAttribute('data-tip'), true);
+      });
+      trigger.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') hideTooltip();
       });
     })(triggers[i]);
   }
+  if (!tooltipEl.dataset.wired) {
+    tooltipEl.dataset.wired = 'true';
+    // Focusable (but not tabbable) so a pinned tooltip can take focus when
+    // clicked without the trigger's blur handler dismissing it.
+    tooltipEl.tabIndex = -1;
+    tooltipEl.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') hideTooltip();
+    });
+    document.addEventListener('click', function (event) {
+      if (tooltipEl.contains(event.target as Node)) return;
+      hideTooltip();
+    });
+    document.addEventListener('scroll', function (event) {
+      // Scrolling the tooltip's own overflow must not dismiss it.
+      if (event.target === tooltipEl) return;
+      hideTooltip();
+    }, true);
+    window.addEventListener('resize', hideTooltip);
+  }
 }
 
-function showTooltip(anchor, html) {
+function showTooltip(anchor, html, pinned) {
+  if (activeTooltipAnchor && activeTooltipAnchor !== anchor) activeTooltipAnchor.setAttribute('aria-expanded', 'false');
+  activeTooltipAnchor = anchor;
+  anchor.setAttribute('aria-expanded', 'true');
   tooltipEl.innerHTML = html;
+  tooltipEl.classList.toggle('pinned', !!pinned);
   tooltipEl.style.display = 'block';
 
   // Position near anchor
@@ -347,16 +483,17 @@ function showTooltip(anchor, html) {
   if (left + tipW > window.innerWidth - 10) {
     left = rect.left - tipW - 8;
   }
-  if (top < 5) top = 5;
-  if (top + tipH > window.innerHeight - 5) {
-    top = window.innerHeight - tipH - 5;
-  }
+  left = Math.max(12, Math.min(left, window.innerWidth - tipW - 12));
+  top = Math.max(12, Math.min(top, window.innerHeight - tipH - 12));
 
   tooltipEl.style.left = left + 'px';
   tooltipEl.style.top = top + 'px';
 }
 
 function hideTooltip() {
+  if (activeTooltipAnchor) activeTooltipAnchor.setAttribute('aria-expanded', 'false');
+  activeTooltipAnchor = null;
+  tooltipEl.classList.remove('pinned');
   tooltipEl.style.display = 'none';
 }
 
@@ -488,6 +625,7 @@ function initRocketPanel() {
     var isOpen = !efficiencySection.classList.contains('rocket-efficiency-hidden');
     efficiencySection.classList.toggle('rocket-efficiency-hidden', isOpen);
     efficiencyArrow.classList.toggle('open', !isOpen);
+    effToggle.setAttribute('aria-expanded', String(!isOpen));
   });
 
   // Launch button
@@ -544,7 +682,7 @@ function populatePropellantDropdown() {
     var opt = document.createElement('option');
     opt.value = p.id;
     opt.textContent = p.name;
-    rocketPropSelect.appendChild(opt);
+    group.appendChild(opt);
   }
   // Default to LOX/RP-1
   rocketPropSelect.value = 'LOX_RP1';
@@ -567,7 +705,8 @@ function onPropellantChange() {
   updateRocketSliderDisplay(sliderRocketMR, valRocketMR, '');
 
   // Update info note
-  propellantNote.textContent = prop.notes.join(' ');
+  propellantNote.textContent = 'Illustrative performance model. ' + prop.notes.join(' ') +
+    ' Mixture ratio changes the tank split; chemistry stays fixed for this pair.';
 }
 
 // ── Guidance sub-panel toggling ────────────────────────────────────────────
@@ -620,6 +759,7 @@ function updateRocketSliderDisplay(slider, display, unit) {
 // ── Get rocket values ──────────────────────────────────────────────────────
 
 function getRocketValues() {
+  var environment = resolveEnvironment(currentGravity());
   return {
     propellantId: rocketPropSelect.value,
     MR: parseFloat(sliderRocketMR.value),
@@ -632,7 +772,9 @@ function getRocketValues() {
     guidanceMode: rocketGuidanceSelect.value,
     etaC: parseFloat(sliderRocketEtaC.value),
     etaN: parseFloat(sliderRocketEtaN.value),
-    Pa_Pa: 101325, // sea level default (could be made configurable later)
+    Pa_Pa: environment.surfacePressure,
+    environment: environment,
+    planetRadius: environment.radius,
     // Guidance sub-parameters
     pitchEnd: parseFloat(sliderPitchEnd.value),
     pitchT1: parseFloat(sliderPitchT1.value),
@@ -651,32 +793,12 @@ function getRocketZoomSettings() {
 // ── Live pre-launch readout refresh ────────────────────────────────────────
 
 function refreshPreLaunch() {
-  if (typeof RocketPhysics === 'undefined') return;
   var vals = getRocketValues();
-  var gravity = parseFloat(sliderGravity.value);
+  var gravity = currentGravity();
   var pre: any = RocketPhysics.computePreLaunch(vals, gravity);
 
-  // Predicted full-flight envelope from current settings (pre-launch).
-  if (RocketPhysics.predictTrajectory) {
-    var guidance = RocketPhysics.buildGuidance
-      ? RocketPhysics.buildGuidance(vals)
-      : null;
-    var pred = RocketPhysics.predictTrajectory(vals, gravity, {
-      guidance: guidance,
-      dt: 1 / 30,
-      maxTime: 180,
-      startX: 0,
-      startY: 0
-    });
-    if (pred && !pred.fizzled) {
-      pre.predictedRange = Math.max(0, pred.maxX - pred.launchX);
-      pre.predictedApogee = Math.max(0, pred.maxHeight);
-    } else {
-      pre.predictedRange = 0;
-      pre.predictedApogee = 0;
-    }
-  }
-
+  // Full-run measurements come from the actual recorded flight. In particular,
+  // an arbitrary prediction horizon must never masquerade as a reached apex.
   updatePreLaunchReadouts(pre);
 }
 
@@ -689,10 +811,16 @@ function updatePreLaunchReadouts(pre) {
 
   // T/W with colour coding
   readRocketTW.textContent = pre.tw.toFixed(2);
-  readRocketTW.className = 'readout-value ' + (pre.tw < 1 ? 'rocket-tw-warn' : 'rocket-tw-ok');
+  var canLaunch = pre.canLaunch !== undefined ? pre.canLaunch : pre.tw * Math.sin(getRocketValues().launchAngle * Math.PI / 180) > 1;
+  readRocketTW.className = 'readout-value ' + (!canLaunch ? 'rocket-tw-warn' : 'rocket-tw-ok');
 
   // T/W warning banner & button caution
-  if (pre.tw < 1) {
+  if (!canLaunch) {
+    twWarning.textContent = pre.flowRegime === 'unchoked'
+      ? 'Chamber pressure is too low for choked nozzle flow in this atmosphere. Try higher chamber pressure.'
+      : pre.thrust <= 0
+        ? 'This nozzle cannot produce thrust in this atmosphere. Try higher chamber pressure or a smaller expansion ratio.'
+      : 'Not enough upward thrust for immediate lift-off. Try less mass, more thrust, or a steeper launch.';
     twWarning.classList.remove('tw-warning-hidden');
     btnLaunch.classList.add('caution');
   } else {
@@ -705,18 +833,18 @@ function updatePreLaunchReadouts(pre) {
   if (readRocketPredRange) {
     readRocketPredRange.textContent = (pre.predictedRange !== undefined)
       ? pre.predictedRange.toFixed(1) + ' m'
-      : '---';
+      : 'After launch';
   }
   if (readRocketPredApo) {
     readRocketPredApo.textContent = (pre.predictedApogee !== undefined)
       ? pre.predictedApogee.toFixed(1) + ' m'
-      : '---';
+      : 'After launch';
   }
 }
 
 // ── Rocket flight readouts (live during flight) ────────────────────────────
 
-function updateRocketReadouts(state) {
+function updateRocketReadouts(state, launchX?) {
   if (!state) {
     resetRocketReadouts();
     return;
@@ -724,10 +852,8 @@ function updateRocketReadouts(state) {
   var spd = Math.sqrt(state.vx * state.vx + state.vy * state.vy);
   readRocketVelocity.textContent = spd.toFixed(1) + ' m/s';
   readRocketHeight.textContent = Math.max(0, state.y).toFixed(1) + ' m';
-  readRocketRange.textContent = state.x.toFixed(1) + ' m';
-  var propPct = state.mPropInitial > 0
-    ? ((state.mProp / state.mPropInitial) * 100).toFixed(0)
-    : '0';
+  var origin = Number.isFinite(launchX) ? launchX : 0;
+  readRocketRange.textContent = (state.x - origin).toFixed(1) + ' m';
   readRocketProp.textContent = state.mProp.toFixed(1) + ' / ' + state.mPropInitial.toFixed(1) + ' kg';
   readRocketImpulse.textContent = formatSI(state.totalImpulse) + 'N\u00B7s';
 
@@ -746,10 +872,13 @@ function updateRocketReadouts(state) {
       : '\u2014';
   }
   if (readRocketLiveTW) {
-    // T/W needs gravity — use slider value
-    var g = parseFloat(sliderGravity.value) || 9.81;
+    var surfaceG = currentGravity();
+    var altitude = Math.max(0, state.y);
+    var localG = state.planetRadius > 0
+      ? surfaceG * Math.pow(state.planetRadius / (state.planetRadius + altitude), 2)
+      : surfaceG;
     var tw = state.mass > 0 && state.engineOn
-      ? state.thrustMagnitude / (state.mass * g)
+      ? state.thrustMagnitude / (state.mass * localG)
       : 0;
     readRocketLiveTW.textContent = tw > 0 ? tw.toFixed(2) : '\u2014';
     readRocketLiveTW.className = 'readout-value ' + (tw > 0 && tw < 1 ? 'rocket-tw-warn' : (tw >= 1 ? 'rocket-tw-ok' : ''));
@@ -797,8 +926,8 @@ function resetRocketReadouts() {
 
 function showFizzleMessage(tw) {
   if (!fizzleMessage) return;
-  fizzleMessage.textContent = 'Fizzle! T/W was ' + tw.toFixed(2) +
-    ' \u2014 needed \u2265 1.0 to lift off.';
+  fizzleMessage.textContent = 'Upward thrust / weight was ' + tw.toFixed(2) +
+    '. The upward thrust must exceed the weight for immediate lift-off. Try less mass, more thrust, or a steeper angle.';
   fizzleMessage.classList.remove('fizzle-message-hidden');
 }
 
@@ -811,18 +940,27 @@ function hideFizzleMessage() {
 
 /**
  * Show the post-flight summary panel with computed results.
- * @param {Object} data { range, maxHeight, flightTime, burnTime, dvTsiolkovsky, dvActual }
+ * @param {Object} data { range, maxHeight, flightTime, burnTime, dvTsiolkovsky, dvActual, burnoutSpeed? }
+ *   burnoutSpeed is the speed at motor cut-off; omit it when the rocket never
+ *   burnt out (dvActual is then used as the fallback).
  */
 function showPostFlightSummary(data) {
   if (!postFlightSummary) return;
   readPostRange.textContent = data.range.toFixed(1) + ' m';
   readPostMaxHeight.textContent = data.maxHeight.toFixed(1) + ' m';
   readPostFlightTime.textContent = data.flightTime.toFixed(1) + ' s';
-  readPostBurnTime.textContent = data.burnTime.toFixed(1) + ' s';
-  readPostDvTsiolkovsky.textContent = data.dvTsiolkovsky.toFixed(0) + ' m/s';
-  readPostDvActual.textContent = data.dvActual.toFixed(0) + ' m/s';
-  var gravLoss = data.dvTsiolkovsky - data.dvActual;
-  readPostGravityLoss.textContent = (gravLoss > 0 ? gravLoss.toFixed(0) : '0') + ' m/s';
+  readPostBurnTime.textContent = Number.isFinite(data.burnTime) ? data.burnTime.toFixed(1) + ' s' : 'No burnout';
+  var idealDv = data.dvTsiolkovsky;
+  // A collision while powered is not burnout. Keep the missing measurement
+  // missing instead of fabricating a zero-speed burnout from the impact state.
+  var burnoutSpeed = data.burnoutSpeed !== undefined ? data.burnoutSpeed : data.dvActual;
+  readPostDvTsiolkovsky.textContent = Number.isFinite(idealDv) ? idealDv.toFixed(0) + ' m/s' : '—';
+  readPostDvActual.textContent = Number.isFinite(burnoutSpeed) ? burnoutSpeed.toFixed(0) + ' m/s' : 'No burnout';
+  readPostGravityLoss.textContent = Number.isFinite(idealDv) && Number.isFinite(burnoutSpeed)
+    ? (idealDv - burnoutSpeed).toFixed(0) + ' m/s'
+    : '—';
+  if (readRocketPredRange) readRocketPredRange.textContent = data.range.toFixed(1) + ' m';
+  if (readRocketPredApo) readRocketPredApo.textContent = data.maxHeight.toFixed(1) + ' m';
   postFlightSummary.classList.remove('post-flight-hidden');
 }
 
@@ -847,7 +985,7 @@ function getValues() {
     mass: parseFloat(sliderMass.value),
     force: parseFloat(sliderForce.value),
     barrelLength: parseFloat(sliderBarrel.value),
-    gravity: parseFloat(sliderGravity.value)
+    gravity: currentGravity()
   };
 }
 
@@ -869,7 +1007,7 @@ function updateReadouts(state, energy, maxTME?) {
   var spd = Physics.speed(state);
   readVelocity.textContent = spd.toFixed(1) + ' m/s';
   readHeight.textContent = Math.max(0, state.y).toFixed(1) + ' m';
-  readDistance.textContent = (state.x - (Renderer.CANNON_BASE_X_M || 1.5)).toFixed(1) + ' m';
+  readDistance.textContent = state.x.toFixed(1) + ' m';
 
   if (energy) {
     readKE.textContent = energy.ke.toFixed(0) + ' J';
@@ -887,10 +1025,6 @@ function updateReadouts(state, energy, maxTME?) {
   }
 }
 
-function freezeReadouts() {
-  // Just stop updating — values remain as they are
-}
-
 function resetReadouts() {
   updateReadouts(null, null);
 }
@@ -898,45 +1032,129 @@ function resetReadouts() {
 // ── Flight active state ────────────────────────────────────────────────────
 
 function setFlightActive(active) {
+  if (isFlightActive === active) return;
   isFlightActive = active;
+  // The :disabled pseudo-class carries the styling; no extra class is needed.
   btnFire.disabled = active;
   if (btnLaunch) btnLaunch.disabled = active;
-  if (active) {
-    btnFire.classList.add('disabled');
-    if (btnLaunch) btnLaunch.classList.add('disabled');
-  } else {
-    btnFire.classList.remove('disabled');
-    if (btnLaunch) btnLaunch.classList.remove('disabled');
-  }
   // Disable/enable mode toggle during flight
   for (var i = 0; i < modeButtons.length; i++) {
-    if (active) {
-      modeButtons[i].classList.add('disabled');
-    } else {
-      modeButtons[i].classList.remove('disabled');
-    }
+    modeButtons[i].disabled = active;
   }
+  // A recorded flight has one immutable setup. Changing gravity or engine
+  // controls beneath it would make the labels disagree with the animation.
+  document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>(
+    '.controls-scroll input, .controls-scroll select, .planet-btn, [data-experiment]'
+  ).forEach(function (control) { control.disabled = active; });
+  var note = document.getElementById('flight-lock-note');
+  if (note) note.hidden = !active;
+  if (active) hideTooltip();
+}
+
+// Restore labels as well as values when replaying a saved configuration.
+// These setters notify the same environment/barrel/mode listeners as editing
+// the controls. The main loop can suppress scene transitions during restore.
+function restoreFlightConfig(mode, config) {
+  if (isFlightActive) return;
+  setMode(mode);
+  var cannonFields = { angle: 'angle', mass: 'mass', force: 'force', barrelLength: 'barrel', gravity: 'gravity' };
+  var rocketFields = {
+    MR: 'rocket-mr', Pc_bar: 'rocket-pc', epsilon: 'rocket-eps', throatDia_mm: 'rocket-dt',
+    dryMass: 'rocket-drymass', propMass: 'rocket-propmass', launchAngle: 'rocket-angle',
+    etaC: 'rocket-etac', etaN: 'rocket-etan', pitchEnd: 'rocket-pitch-end',
+    pitchT1: 'rocket-pitch-t1', pitchT2: 'rocket-pitch-t2', progradeVmin: 'rocket-prograde-vmin', gravity: 'gravity'
+  };
+  if (mode === 'rocket' && config.propellantId) {
+    rocketPropSelect.value = config.propellantId;
+    onPropellantChange();
+  }
+  var fields = mode === 'rocket' ? rocketFields : cannonFields;
+  Object.keys(fields).forEach(function (key) {
+    if (!Number.isFinite(config[key])) return;
+    if (key === 'gravity') { setGravity(config[key]); return; }
+    var input = document.getElementById('slider-' + fields[key]) as HTMLInputElement;
+    if (input) input.value = String(config[key]);
+  });
+  if (mode === 'rocket' && config.guidanceMode) rocketGuidanceSelect.value = config.guidanceMode;
+  updateAllDisplays();
+  updateGuidanceSubPanels();
+  var gravity = currentGravity();
+  highlightNearestPlanet(gravity);
+  if (onGravityChange) onGravityChange(gravity);
+  if (mode === 'cannon' && onBarrelChange) onBarrelChange(parseFloat(sliderBarrel.value));
+  refreshPreLaunch();
+}
+
+function updateAllDisplays() {
+  [
+    [sliderAngle, valAngle, '°'], [sliderMass, valMass, ' kg'], [sliderForce, valForce, ' N'],
+    [sliderBarrel, valBarrel, ' m'], [sliderGravity, valGravity, ' m/s²']
+  ].forEach(function ([slider, display, unit]) { updateSliderDisplay(slider, display, unit); });
+  [
+    [sliderRocketMR, valRocketMR, ''], [sliderRocketPc, valRocketPc, ' bar'],
+    [sliderRocketEps, valRocketEps, ''], [sliderRocketDt, valRocketDt, ' mm'],
+    [sliderRocketDryMass, valRocketDryMass, ' kg'], [sliderRocketPropMass, valRocketPropMass, ' kg'],
+    [sliderRocketAngle, valRocketAngle, '°'], [sliderRocketEtaC, valRocketEtaC, ''],
+    [sliderRocketEtaN, valRocketEtaN, ''], [sliderPitchEnd, valPitchEnd, '°'],
+    [sliderPitchT1, valPitchT1, ' s'], [sliderPitchT2, valPitchT2, ' s'],
+    [sliderProgradeVmin, valProgradeVmin, ' m/s'], [sliderRocketZoomMargin, valRocketZoomMargin, ' %'],
+    [sliderRocketZoomDuration, valRocketZoomDuration, ' s']
+  ].forEach(function ([slider, display, unit]) { updateRocketSliderDisplay(slider, display, unit); });
+}
+
+function applyExperiment(id) {
+  if (isFlightActive) return;
+  var question = '';
+  var target = 45;
+  var targetKind = 'range';
+  var config: any;
+  var mode = 'cannon';
+  if (id === 'flag') {
+    config = { angle: 35, mass: 5, force: 500, barrelLength: 2, gravity: 9.81 };
+    question = 'How close can you land to the 45 m flag? Change only the launch angle.';
+  } else if (id === 'high-arc') {
+    config = { angle: 65, mass: 5, force: 500, barrelLength: 2, gravity: 9.81 };
+    target = 35;
+    question = 'Can you reach the 35 m flag with two different arcs? Compare their flight times.';
+  } else if (id === 'other-world') {
+    // Preserve the launcher. Selecting this card changes only the world.
+    config = { ...getValues(), gravity: Math.abs(getValues().gravity - 1.62) < .01 ? 9.81 : 1.62 };
+    question = 'The same shot, another world. What changed: time, height, or range?';
+  } else if (id === 'just-enough') {
+    mode = 'rocket';
+    config = { propellantId: 'LOX_RP1', MR: 2.56, Pc_bar: 100, epsilon: 20, throatDia_mm: 15,
+      dryMass: 100, propMass: 8, launchAngle: 85, guidanceMode: 'fixed', etaC: .95, etaN: .95,
+      pitchEnd: 45, pitchT1: 5, pitchT2: 20, progradeVmin: 10, gravity: 9.81 };
+    target = 1000;
+    targetKind = 'height';
+    question = 'Reach the 1 km marker with as little propellant as you can. What is just enough?';
+  } else {
+    return;
+  }
+  restoreFlightConfig(mode, config);
+  document.querySelectorAll<HTMLButtonElement>('[data-experiment]').forEach(function (button) {
+    button.classList.toggle('active', button.dataset.experiment === id);
+    button.setAttribute('aria-pressed', String(button.dataset.experiment === id));
+  });
+  if (onExperiment) onExperiment({ id: id, target: target, targetKind: targetKind, question: question });
 }
 
 // ── Expose namespace ──────────────────────────────────────────────────────
 export const UI = {
   init: init,
   getValues: getValues,
-  getMode: getMode,
+  restoreFlightConfig: restoreFlightConfig,
   getRocketValues: getRocketValues,
   getRocketZoomSettings: getRocketZoomSettings,
   updateReadouts: updateReadouts,
   updateRocketReadouts: updateRocketReadouts,
-  updatePreLaunchReadouts: updatePreLaunchReadouts,
   resetRocketReadouts: resetRocketReadouts,
   showPostFlightSummary: showPostFlightSummary,
   hidePostFlightSummary: hidePostFlightSummary,
   showFizzleMessage: showFizzleMessage,
   hideFizzleMessage: hideFizzleMessage,
   refreshPreLaunch: refreshPreLaunch,
-  freezeReadouts: freezeReadouts,
   resetReadouts: resetReadouts,
   setFlightActive: setFlightActive,
-  highlightPlanet: highlightPlanet,
   highlightNearestPlanet: highlightNearestPlanet
 };

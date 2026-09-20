@@ -1,7 +1,7 @@
 # Rocket Lab Web App
-## Single Source of Truth: Mechanics + Propellant Reference + Data Schema (No-Atmosphere Flight)
+## Mechanics + Propellant Reference + Future Data Schema
 
-This document is the **canonical specification** for a browser-based “Rocket Lab” sandbox. It defines **exact mechanics** (propulsion + mass + trajectory) and a **propellant performance data model** suitable for fast runtime interpolation (precomputed from NASA CEA / RocketCEA).  
+This document describes the shipped mechanics and the planned propellant-data upgrade for the browser-based “Rocket Lab” sandbox. Runtime truth lives in `src/rocket_physics.ts`, `src/rocket_propellants.ts`, `src/environment.ts`, and `src/flight.ts`. The CEA grid sections remain a future data design rather than a claim about the current placeholder chemistry.
 **Aesthetics are explicitly out of scope.**
 
 ---
@@ -9,13 +9,14 @@ This document is the **canonical specification** for a browser-based “Rocket L
 ## 0) Scope and guiding choices
 
 ### What we simulate
-- **2D point-mass rocket** with position \((x,y)\), velocity \((v_x,v_y)\), and mass \(m(t)\).
+- **2D point-mass rocket** with surface coordinates \((x,y)\), world-space position/velocity for integration, and mass \(m(t)\).
 - **Thrust** acts along a direction \(\hat{\mathbf{t}}(t)\) determined by launch angle or a simple guidance rule.
-- **Uniform constant gravity** downward: \(g\) (default \(9.80665\ \mathrm{m/s^2}\)).
+- **Spherical inverse-square gravity** on a non-rotating world, with \(\mu=g_{surface}R^2\).
 - **No aerodynamic forces**: no drag, no lift, no winds. (We still keep ambient pressure \(p_a\) as a nozzle-performance knob for teaching.)
+- A smooth reference sphere, prescribed attitude, and perfectly inelastic surface contact. Terrain, staging, structural sizing, and engine/tank mass scaling are not simulated.
 
 ### What we compute from propellant + nozzle
-We compute \(c^*\) (characteristic velocity), \(C_F\) (thrust coefficient), \(I_{sp}\), and optionally \(p_e/p_c\), \(T_c\), effective \(\gamma\), etc., via **precomputed tables** derived from NASA CEA (recommended). CEA explicitly provides rocket performance quantities including \(c^*\) and \(I_{sp}\), with equilibrium vs frozen expansion options.
+The shipped teaching model computes \(c^*\), \(C_F\), and \(I_{sp}\) from constant per-pair gas properties, ideal isentropic nozzle equations, a vacuum-Isp calibration point, and a conservative Summerfield separation approximation. Mixture ratio changes tank bookkeeping only. Sections 8–11 describe the recommended future CEA-grid replacement.
 
 ### Canonical decomposition (engine performance)
 \[
@@ -180,47 +181,51 @@ Given \(MR=O/F\):
 
 ---
 
-## 4) Flight dynamics (flat world, no drag)
+## 4) Flight dynamics (spherical world, no drag)
 
-### 4.1 Thrust direction
-Define thrust direction unit vector using \(\theta\) from +x axis:
+### 4.1 Local and world frames
+The UI angle \(\theta\) is measured from the local tangent. At world position
+\(\mathbf r\), define radial unit vector \(\hat{\mathbf r}\) and forward tangent
+\(\hat{\mathbf t}\). The commanded thrust direction is:
 \[
-\hat{\mathbf{t}} = (\cos\theta,\sin\theta)
+\hat{\mathbf d}=\cos\theta\,\hat{\mathbf t}+\sin\theta\,\hat{\mathbf r}
 \]
 
-### 4.2 Forces
+Surface \(x\) is unwrapped arc length; \(y=|\mathbf r|-R\) is altitude.
+
+### 4.2 Forces and gravity
 \[
-\mathbf{F_T}=F\hat{\mathbf{t}},\qquad
-\mathbf{F_g}=(0,-mg)
+\mathbf{F_T}=F\hat{\mathbf d},\qquad
+\mathbf a_g=-\frac{\mu}{|\mathbf r|^3}\mathbf r,\qquad
+\mu=g_{surface}R^2
+\]
+\[
+\mathbf a=\frac{\mathbf{F_T}}{m}+\mathbf a_g
 \]
 
-### 4.3 Acceleration
-\[
-\mathbf{a}=\frac{\mathbf{F_T}+\mathbf{F_g}}{m}
-\]
-Components:
-\[
-a_x=\frac{F}{m}\cos\theta,\qquad
-a_y=\frac{F}{m}\sin\theta - g
-\]
+Planets are intentionally spherical and non-rotating. No surface-rotation
+velocity, Coriolis term, drag, lift, or wind is added.
 
-### 4.4 Numerical integration (recommended)
-Use **semi-implicit Euler**:
-1) \( \mathbf{v}_{n+1}=\mathbf{v}_n+\mathbf{a}_n\Delta t\)
-2) \( \mathbf{r}_{n+1}=\mathbf{r}_n+\mathbf{v}_{n+1}\Delta t\)
-
-Suggested timestep:
-- \(\Delta t = 1/120\ \mathrm{s}\) for smooth animation; decouple render and physics if desired.
-
-### 4.5 Ground contact / impact
-If \(y_{n+1}<0\) while descending, compute impact fraction:
+### 4.3 Powered-segment integration
+The canonical step is \(\Delta t=1/120\ \mathrm{s}\). Fuel depletion and
+pitch-program boundaries split a step exactly. For constant mass flow and
+midpoint thrust direction within one segment, the solver integrates:
 \[
-\alpha=\frac{y_n}{y_n-y_{n+1}}
+\Delta v_T=\frac{F}{\dot m}\ln\left(\frac{m_0}{m_1}\right)
 \]
-\[
-x_{impact}=x_n+\alpha(x_{n+1}-x_n)
-\]
-Stop simulation and report range.
+and uses the corresponding analytical variable-mass displacement. Gravity is
+integrated with start/end acceleration in a velocity-Verlet-style update.
+Ambient pressure and guidance are evaluated at a segment midpoint.
+
+Sparse replay samples are never treated as a new physical model:
+`sampleFlight()` re-runs these canonical steps from the preceding recorded
+state to the requested inspection time.
+
+### 4.4 Ground contact, apex, and cutoff
+The surface is \(|\mathbf r|=R\). A descending crossing is bisected inside the
+step, preserving incoming impact velocity before the terminal state is stopped.
+Radial-velocity zero crossings are similarly refined for apex events. Burnout
+is an exact segment boundary; a powered collision is not mislabeled burnout.
 
 ---
 
@@ -259,7 +264,11 @@ v_e=g_0 I_{sp}
 m_0=m_{dry}+m_{prop,0},\qquad m_f=m_{dry}
 \]
 
-Display alongside the integrated burnout velocity magnitude \(\|\mathbf{v}(t_{cutoff})\|\). Their difference is primarily gravity loss in this drag-free model.
+The pre-launch value uses initial nozzle conditions. During flight the app also
+accumulates scalar ideal thrust delta-v segment by segment as pressure changes.
+Display that value alongside burnout speed \(\|\mathbf{v}(t_{cutoff})\|\).
+Their difference is **not** a pure gravity-loss measurement: gravity, changing
+thrust direction, radial geometry, and initial velocity can all contribute.
 
 ---
 
@@ -474,48 +483,32 @@ I_{tot}\leftarrow I_{tot}+F\Delta t
 
 ---
 
-## 13) Golden-path per-timestep update (the canonical algorithm)
+## 13) Golden-path per-timestep update
 
-At each step \(n \to n+1\):
+For each canonical interval:
 
-1) **Guidance**: compute \(\theta_n\), \(\hat{\mathbf{t}}_n\)  
-2) **Engine** (if on and propellant remains):
-   - lookup/interpolate \(c^*\) and \(C_F\) for (propellant, MR, \(p_c\), \(\varepsilon\), \(p_a\), eq/frozen)
-   - apply efficiencies:
-     \[
-     c^*_{eff}=\eta_c c^*,\quad C_{F,eff}=\eta_n C_F
-     \]
-   - compute:
-     \[
-     \dot m_n = \frac{p_c A_t}{c^*_{eff}},\quad F_n = C_{F,eff} p_c A_t
-     \]
-   - deplete:
-     \[
-     m_{prop}\leftarrow \max(0, m_{prop}-\dot m_n\Delta t)
-     \]
-   - if \(m_{prop}=0\): engine off
-3) **Mass**: \(m = m_{dry}+m_{prop}\)
-4) **Acceleration**:
-   \[
-   a_x=\frac{F}{m}\cos\theta,\quad a_y=\frac{F}{m}\sin\theta-g
-   \]
-5) **Integrate** (semi-implicit Euler):
-   - \(v\leftarrow v+a\Delta t\)
-   - \(r\leftarrow r+v\Delta t\)
-6) **Impulse accumulation**:
-   - \(I_{tot}\leftarrow I_{tot}+F\Delta t\)
-7) **Impact check**:
-   - if \(y\le 0\) while descending: compute \(x_{impact}\) and stop
+1) Split at fuel depletion or a pitch-program boundary.
+2) Resolve local radial/tangent axes and midpoint guidance.
+3) Evaluate ambient pressure and nozzle state. The throat must be choked;
+   strongly over-expanded flow uses the Summerfield effective separation area.
+4) Apply \(\eta_c\) and \(\eta_n\), then compute \(\dot m\), \(F\), \(I_{sp}\),
+   impulse, and scalar ideal delta-v.
+5) Integrate variable-mass thrust analytically and radial gravity with
+   start/end acceleration.
+6) Refine any apex or spherical-surface crossing inside the interval.
+7) Mark fuel depletion as burnout. Mark an earlier powered surface crossing as
+   impact, preserving the remaining propellant and incoming velocity.
 
-**This is the single source of truth for the simulation.** UI and rendering must call into this without altering it.
+UI, recording, prediction, replay inspection, and rendering consume this shared
+solution without adding a second motion model.
 
 ---
 
 ## 14) Extension hooks (future, non-breaking)
 - Add drag by introducing \(\mathbf{F_D}=-\tfrac12\rho C_D A \|\mathbf{v}\|\mathbf{v}\) (then atmosphere matters).
-- Add varying gravity \(g(y)\).
 - Add staging (multiple \(m_{dry}\), \(m_{prop}\), engine sets).
-- Add curved Earth/orbit (switch to inertial frame and central gravity).
+- Replace illustrative propellant constants with versioned CEA interpolation grids.
+- Couple chamber pressure, nozzle dimensions, tanks, and dry mass to a structural model.
 
 ---
 

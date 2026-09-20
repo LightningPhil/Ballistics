@@ -2,6 +2,9 @@
 ## Geometry Specification for Interactive Educational App
 *(Describes what to draw — NOT how to render or implement drawing)*
 
+> **Status:** Design reference for `src/nozzle_render.ts`. Still the intent
+> behind the cutaway; where the two differ, the code is authoritative.
+
 ---
 
 # 1. Concept
