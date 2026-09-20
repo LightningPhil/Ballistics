@@ -3,7 +3,9 @@ export interface WorldArt {
   full: string;
 }
 
-/** Optimised transparent derivatives of the supplied 1254 px cartoon artwork. */
+/** Optimised transparent derivatives (64 px mini, 320 px full) of the 1254 px
+ * cartoon masters in solar-system-cartoon-assets/ at the repo root. The masters
+ * are not part of the build; re-export these by hand if they change. */
 export const WORLD_ART: Readonly<Record<string, WorldArt>> = Object.freeze({
   sun: {
     mini: new URL('./assets/worlds/mini/sun.webp', import.meta.url).href,

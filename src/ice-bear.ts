@@ -1,7 +1,7 @@
 import type { CrewPose } from './crew.ts';
 
 /** A fictional, living ice sculpture. All dimensions use an 80 px/m foot anchor. */
-export interface IceBearPose extends CrewPose {
+interface IceBearPose extends CrewPose {
   upright?: boolean;
   portrait?: boolean;
 }
@@ -252,7 +252,7 @@ function portrait(ctx: CanvasRenderingContext2D) {
 /**
  * Foot-anchored ice bear, facing right before mirroring.
  * Resting quadruped: x -65..86, y -102..5; upright: x -48..61, y -155..5.
- * Startled arms extend to about +/-80. Walking adds at most 13 units of stride/bob.
+ * Startled arms reach to about +/-70. Walking adds at most 13 units of stride/bob.
  * The stable portrait's face centre is (1, -82), with eyes around (-10, -88).
  */
 export function drawIceBear(ctx: CanvasRenderingContext2D, cx: number, footY: number, s: number, char: IceBearPose) {

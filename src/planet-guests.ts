@@ -1,6 +1,4 @@
 import type { CrewPose } from './crew.ts';
-export { drawGiantSquid } from './squid.ts';
-export { drawIceBear } from './ice-bear.ts';
 
 const INK = '#293b43';
 const CREAM = '#fff3d9';

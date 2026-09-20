@@ -6,7 +6,7 @@ import { ROCKY_REMARKS } from '../src/remarks/rocky-worlds.ts';
 import { GIANT_REMARKS } from '../src/remarks/giant-worlds.ts';
 import { GENERIC_REMARKS, EVENT_REMARKS, reactionPool } from '../src/character-remarks.ts';
 import { ENVIRONMENTS } from '../src/environment.ts';
-import { createCloudGuest } from '../src/cloud-guests.ts';
+import { CLOUD_GUEST_SURFACE, createCloudGuest } from '../src/cloud-guests.ts';
 
 const characterTypes = ['golfer', 'alien', 'spaceman', 'robot', 'icerobot', 'newt', 'whale', 'submarine', 'snowman', 'icebear', 'squid'];
 
@@ -166,10 +166,10 @@ test('flattened and submerged world characters retain a recognizable close-up wi
     const normalPortrait = h.calls.slice();
     for (const extra of [{ state: 'squashed' }, { visible: false, state: 'running_away', x: 1e12, y: 1e12 },
       ...(['whale', 'submarine'].includes(type) ? [
-        { state: 'submerged', surfaceAmount: 0 }, { state: 'cruising', surfaceAmount: .34 },
+        { state: 'submerged', surfaceAmount: 0 }, { state: 'cruising', surfaceAmount: CLOUD_GUEST_SURFACE },
         { state: 'surfacing', surfaceAmount: .61 }, { state: 'surfaced', surfaceAmount: 1 },
-        { state: 'diving', surfaceAmount: .55 }, { state: 'rocket_startled', surfaceAmount: .34 },
-        { state: 'diving', surfaceAmount: .34, visible: false, x: 1e12 },
+        { state: 'diving', surfaceAmount: .55 }, { state: 'rocket_startled', surfaceAmount: CLOUD_GUEST_SURFACE },
+        { state: 'diving', surfaceAmount: CLOUD_GUEST_SURFACE, visible: false, x: 1e12 },
       ] : [])]) {
       const worldCharacter = Object.freeze({ ...character, ...extra });
       const original = { ...worldCharacter };

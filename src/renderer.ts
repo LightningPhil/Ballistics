@@ -1,7 +1,10 @@
 import { drawCrew } from './crew.ts';
 import { drawWhale, drawSubmarine } from './aquatic-characters.ts';
-import { drawGiantSquid, drawIceBear, drawNewt, drawSnowman } from './planet-guests.ts';
+import { drawNewt, drawSnowman } from './planet-guests.ts';
+import { drawGiantSquid } from './squid.ts';
+import { drawIceBear } from './ice-bear.ts';
 import { rocketCameraFraming, type RocketCameraRequest } from './camera.ts';
+import { ENVIRONMENTS } from './environment.ts';
 
 /**
  * ============================================================================
@@ -18,8 +21,9 @@ import { rocketCameraFraming, type RocketCameraRequest } from './camera.ts';
  *        Smooth planet-environment crossfade driven by gravity value.
  *
  * Character artwork is split out: crew.ts (barrel crew and the golfer,
- * alien, spaceman and robots), planet-guests.ts (newt, snowman, ice bear and squid) and
- * aquatic-characters.ts (whale, submarine). Nozzle cutaway: nozzle_render.ts.
+ * alien, spaceman and robots), planet-guests.ts (newt, snowman), squid.ts
+ * (Ganymede), ice-bear.ts (Pluto) and aquatic-characters.ts (whale,
+ * submarine). Nozzle cutaway: nozzle_render.ts.
  *
  * The `Renderer` object exported at the bottom is the public surface used by
  * main.ts and the tests; everything else in this file is private.
@@ -27,74 +31,82 @@ import { rocketCameraFraming, type RocketCameraRequest } from './camera.ts';
  */
 
 // ── Planet Data (sorted by gravity) ────────────────────────────────────────
+// Gravity, radius and surface type come from the shared ENVIRONMENTS table so
+// the solver and the scenery can never disagree; only the palette lives here.
+function world(name: string) {
+  const environment = ENVIRONMENTS.find(candidate => candidate.name === name);
+  if (!environment) throw new Error('renderer palette for unknown world ' + name);
+  return { name: name, g: environment.gravity, radius: environment.radius, isGas: environment.isGas };
+}
+
 var PLANETS = [
-  { name:'pluto',   g:.62,   radius:1188300,  isGas:false,
+  { ...world('pluto'),
     skyTop:[5,7,19],        skyMid:[12,14,31],       skyBot:[30,31,49],
     groundTop:[190,181,164], groundBot:[132,121,105],
     subTop:[105,94,82],     subBot:[72,63,57],
     surfEdge:[217,211,197], moundCol:[161,149,132],
     features:'pluto' },
-  { name:'ganymede', g:1.428, radius:2634100, isGas:false,
+  { ...world('ganymede'),
     skyTop:[4,8,20],         skyMid:[10,20,39],       skyBot:[31,50,69],
     groundTop:[186,216,220], groundBot:[112,158,170],
     subTop:[75,125,143],     subBot:[40,78,104],
     surfEdge:[224,241,239],  moundCol:[140,181,190],
     features:'ganymede' },
-  { name:'moon',    g:1.62,  radius:1737400,  isGas:false,
+  { ...world('moon'),
     skyTop:[5,5,15],       skyMid:[10,10,25],      skyBot:[25,25,45],
     groundTop:[150,148,142], groundBot:[115,113,108],
     subTop:[90,88,83],     subBot:[70,68,63],
     surfEdge:[165,163,158], moundCol:[135,133,128],
     features:'moon' },
-  { name:'mercury', g:3.7,   radius:2439700,  isGas:false,
+  { ...world('mercury'),
     skyTop:[8,6,18],       skyMid:[18,14,32],      skyBot:[35,30,48],
     groundTop:[145,130,115], groundBot:[115,100,85],
     subTop:[88,78,63],     subBot:[68,58,48],
     surfEdge:[160,145,130], moundCol:[135,120,105],
     features:'mercury' },
-  { name:'mars',    g:3.72,  radius:3389500,  isGas:false,
+  { ...world('mars'),
     skyTop:[165,105,75],   skyMid:[195,135,100],   skyBot:[215,165,135],
     groundTop:[190,110,68], groundBot:[160,88,52],
     subTop:[130,68,38],    subBot:[100,52,28],
     surfEdge:[205,128,78], moundCol:[180,105,62],
     features:'mars' },
-  { name:'venus',   g:8.87,  radius:6051800,  isGas:false,
+  { ...world('venus'),
     skyTop:[195,155,55],   skyMid:[205,170,75],    skyBot:[218,185,100],
     groundTop:[180,128,48], groundBot:[150,105,38],
     subTop:[125,82,28],    subBot:[100,62,20],
     surfEdge:[200,148,58], moundCol:[170,120,42],
     features:'venus' },
-  { name:'uranus',  g:9.01,  radius:25362000, isGas:true,
+  { ...world('uranus'),
     skyTop:[85,165,190],   skyMid:[105,190,215],   skyBot:[135,205,225],
     groundTop:[75,155,185], groundBot:[55,125,160],
     subTop:[45,105,140],   subBot:[35,85,120],
     surfEdge:[90,170,200], moundCol:[70,150,180],
     features:'icegas' },
-  { name:'earth',   g:9.81,  radius:6371000,  isGas:false,
+  { ...world('earth'),
     skyTop:[130,176,190],  skyMid:[176,206,211],  skyBot:[228,231,208],
     groundTop:[126,153,110], groundBot:[89,120,86],
     subTop:[126,104,73],   subBot:[83,77,58],
     surfEdge:[167,179,126], moundCol:[116,144,99],
     features:'earth' },
-  { name:'saturn',  g:11.19, radius:58232000, isGas:true,
+  { ...world('saturn'),
     skyTop:[195,175,115],  skyMid:[210,195,145],   skyBot:[220,205,160],
     groundTop:[190,170,110], groundBot:[170,150,90],
     subTop:[150,130,75],   subBot:[130,110,58],
     surfEdge:[200,180,125], moundCol:[180,160,100],
     features:'saturn' },
-  { name:'neptune', g:11.27, radius:24622000, isGas:true,
+  { ...world('neptune'),
     skyTop:[18,35,105],    skyMid:[28,55,140],     skyBot:[45,75,165],
     groundTop:[28,48,130], groundBot:[20,38,110],
     subTop:[15,28,90],     subBot:[10,20,68],
     surfEdge:[38,58,140],  moundCol:[25,42,118],
     features:'deepgas' },
-  { name:'jupiter', g:25.92, radius:69911000, isGas:true,
+  { ...world('jupiter'),
     skyTop:[200,150,100],  skyMid:[215,170,118],   skyBot:[225,185,140],
     groundTop:[180,128,78], groundBot:[160,108,58],
     subTop:[140,88,42],    subBot:[118,68,28],
     surfEdge:[190,138,88], moundCol:[170,118,68],
     features:'jupiter' },
-  { name:'sun',     g:274,   radius:695700000, isGas:true,
+  { ...world('sun'),
     skyTop:[58,5,8],        skyMid:[164,38,14],      skyBot:[246,128,28],
     groundTop:[255,207,70], groundBot:[210,67,17],
     subTop:[183,48,18],     subBot:[92,13,18],
@@ -1381,7 +1393,12 @@ function drawGanymedeIce() {
 function drawSolarProminences() {
   ctx.save();
   ctx.lineCap = 'round';
-  if (curveActive && planetViewFrac > .25 && curveRadiusPx > 10) {
+  // Crossfade between the horizon prominences and the rim loops as the view
+  // pulls back, so neither pops in or out when curvature first activates.
+  var rimAlpha = curveActive && curveRadiusPx > 10 ? Math.min(1, Math.max(0, (planetViewFrac - .1) / .3)) : 0;
+  var flatAlpha = 1 - Math.min(1, Math.max(0, planetViewFrac / .3));
+  if (rimAlpha > 0) {
+    ctx.globalAlpha = rimAlpha;
     for (var i = 0; i < 6; i++) {
       var angle = -Math.PI * .92 + i * Math.PI * .37 + Math.sin(worldTime * .11 + i) * .03;
       var x = curveCentreX + Math.cos(angle) * curveRadiusPx;
@@ -1398,7 +1415,9 @@ function drawSolarProminences() {
       ctx.stroke();
       ctx.restore();
     }
-  } else if (!curveActive) {
+  }
+  if (flatAlpha > 0) {
+    ctx.globalAlpha = flatAlpha;
     var glow = ctx.createLinearGradient(0, groundY - 105, 0, groundY);
     glow.addColorStop(0, 'rgba(255,188,54,0)');
     glow.addColorStop(1, 'rgba(255,211,91,.35)');

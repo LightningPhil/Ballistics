@@ -1,8 +1,9 @@
 import { Physics } from './physics.ts';
 import { RocketPropellants } from './rocket_propellants.ts';
 import { RocketPhysics } from './rocket_physics.ts';
-import { resolveEnvironment } from './environment.ts';
+import { ENVIRONMENTS, resolveEnvironment } from './environment.ts';
 import { getPlanetFact } from './planet-facts.ts';
+import { clampGravity, gravityFromSliderPosition, sliderPositionForGravity } from './gravity-scale.ts';
 import { getWorldArt } from './world-art.ts';
 
 /**
@@ -32,6 +33,11 @@ var readKE, readPE, readTME;
 var energyBarKE, energyBarPE;
 var tooltipEl;
 var planetFactButton, planetFactButtonLabel, planetFactDialog, planetFactCard, planetFactArtwork;
+
+// Surface gravity in m/s². The slider holds a logarithmic position (see
+// gravity-scale.ts), so the authoritative value lives here and presets keep
+// their exact figures (e.g. Ganymede's 1.428).
+var gravityValue = 9.81;
 
 // Mode state
 var currentMode = 'cannon'; // 'cannon' | 'rocket'
@@ -149,7 +155,7 @@ function init(callbacks) {
   updateSliderDisplay(sliderMass, valMass, ' kg');
   updateSliderDisplay(sliderForce, valForce, ' N');
   updateSliderDisplay(sliderBarrel, valBarrel, ' m');
-  updateSliderDisplay(sliderGravity, valGravity, ' m/s²');
+  setGravity(gravityValue);
 
   // Fire button
   btnFire.addEventListener('click', function () {
@@ -167,8 +173,7 @@ function init(callbacks) {
       btn.addEventListener('click', function () {
         if (isFlightActive) return;
         var g = parseFloat(btn.getAttribute('data-gravity'));
-        sliderGravity.value = g;
-        updateSliderDisplay(sliderGravity, valGravity, ' m/s²');
+        setGravity(g);
         highlightPlanet(btn.getAttribute('data-planet'));
         if (onGravityChange) onGravityChange(g);
         refreshPreLaunch();
@@ -240,14 +245,17 @@ function setMode(newMode) {
 
 function wireSlider(slider, display, unit) {
   slider.addEventListener('input', function () {
-    updateSliderDisplay(slider, display, unit);
-    // If gravity slider changes, check planet match
+    // The gravity slider is logarithmic; convert its position and check the
+    // planet match. setGravity() refreshes its readout.
     if (slider === sliderGravity) {
-      var g = parseFloat(slider.value);
+      var g = gravityFromSliderPosition(parseFloat(slider.value));
+      setGravity(g);
       highlightNearestPlanet(g);
       if (onGravityChange) onGravityChange(g);
       refreshPreLaunch();
+      return;
     }
+    updateSliderDisplay(slider, display, unit);
     // If barrel slider changes, trigger barrel animation
     if (slider === sliderBarrel) {
       if (onBarrelChange) onBarrelChange(parseFloat(slider.value));
@@ -255,13 +263,25 @@ function wireSlider(slider, display, unit) {
   });
 }
 
+/** Set the surface gravity (m/s²), moving the slider thumb to match. */
+function setGravity(g) {
+  gravityValue = clampGravity(g);
+  sliderGravity.value = String(sliderPositionForGravity(gravityValue));
+  var text = gravityValue.toFixed(2) + ' m/s²';
+  valGravity.textContent = text;
+  sliderGravity.setAttribute('aria-valuetext', text);
+}
+
+function currentGravity() {
+  return gravityValue;
+}
+
 function updateSliderDisplay(slider, display, unit) {
+  if (slider === sliderGravity) { setGravity(gravityValue); return; }
   var v = parseFloat(slider.value);
   // Format nicely
   if (unit === '°') {
     display.textContent = v.toFixed(0) + unit;
-  } else if (unit === ' m/s²') {
-    display.textContent = v.toFixed(2) + unit;
   } else if (unit === ' N') {
     display.textContent = v.toFixed(0) + unit;
   } else {
@@ -269,20 +289,12 @@ function updateSliderDisplay(slider, display, unit) {
   }
 }
 
-var PLANET_GRAVITY_MAP = [
-  { name: 'pluto',   g: .62 },
-  { name: 'ganymede', g: 1.428 },
-  { name: 'moon',    g: 1.62 },
-  { name: 'mercury', g: 3.7 },
-  { name: 'mars',    g: 3.72 },
-  { name: 'venus',   g: 8.87 },
-  { name: 'uranus',  g: 9.01 },
-  { name: 'earth',   g: 9.81 },
-  { name: 'saturn',  g: 11.19 },
-  { name: 'neptune', g: 11.27 },
-  { name: 'jupiter', g: 25.92 },
-  { name: 'sun',     g: 274 }
-];
+// Preset gravities come from the shared ENVIRONMENTS table (single source of
+// truth with the solver and renderer); index.html's data-gravity attributes are
+// checked against it in tests/worlds.test.mjs.
+var PLANET_GRAVITY_MAP = ENVIRONMENTS.map(function (environment) {
+  return { name: environment.name, g: environment.gravity };
+});
 
 function findClosestPlanetName(g) {
   var best = PLANET_GRAVITY_MAP[0], bd = Math.abs(g - best.g);
@@ -309,10 +321,12 @@ function highlightPlanet(name) {
       btn.classList.remove('active');
     }
   }
-  var env = resolveEnvironment(parseFloat(sliderGravity.value));
+  var env = resolveEnvironment(currentGravity());
   var label = document.getElementById('environment-label');
   if (label) label.textContent = (env.interpolated ? 'Custom world' : env.name[0].toUpperCase() + env.name.slice(1)) + ' · ' + env.gravity.toFixed(2) + ' m/s²';
-  updatePlanetFactButton(name);
+  // A custom (interpolated) world has no fact card; the nearest preset stays
+  // highlighted in the grid, but its facts would be misleading here.
+  updatePlanetFactButton(env.interpolated ? null : env.name);
 }
 
 function initPlanetFacts() {
@@ -375,15 +389,17 @@ function initWorldArtwork() {
 }
 
 function updatePlanetFactButton(name) {
-  const fact = getPlanetFact(name);
+  const fact = name ? getPlanetFact(name) : undefined;
   const art = fact ? getWorldArt(fact.id) : undefined;
   if (!planetFactButton || !planetFactButtonLabel) return;
   planetFactButton.disabled = !fact;
   planetFactButton.dataset.planet = fact?.id || '';
   planetFactButtonLabel.textContent = fact ? fact.name + ' fact' : 'World fact';
+  // Pre-load the card artwork so the dialog opens complete. An empty src would
+  // render a broken-image glyph, so clear the attribute instead.
   if (planetFactArtwork) {
-    planetFactArtwork.src = art?.full || '';
-    planetFactArtwork.alt = '';
+    if (art) planetFactArtwork.src = art.full;
+    else planetFactArtwork.removeAttribute('src');
   }
 }
 
@@ -743,7 +759,7 @@ function updateRocketSliderDisplay(slider, display, unit) {
 // ── Get rocket values ──────────────────────────────────────────────────────
 
 function getRocketValues() {
-  var environment = resolveEnvironment(parseFloat(sliderGravity.value));
+  var environment = resolveEnvironment(currentGravity());
   return {
     propellantId: rocketPropSelect.value,
     MR: parseFloat(sliderRocketMR.value),
@@ -778,7 +794,7 @@ function getRocketZoomSettings() {
 
 function refreshPreLaunch() {
   var vals = getRocketValues();
-  var gravity = parseFloat(sliderGravity.value);
+  var gravity = currentGravity();
   var pre: any = RocketPhysics.computePreLaunch(vals, gravity);
 
   // Full-run measurements come from the actual recorded flight. In particular,
@@ -856,7 +872,7 @@ function updateRocketReadouts(state, launchX?) {
       : '\u2014';
   }
   if (readRocketLiveTW) {
-    var surfaceG = parseFloat(sliderGravity.value) || 9.81;
+    var surfaceG = currentGravity();
     var altitude = Math.max(0, state.y);
     var localG = state.planetRadius > 0
       ? surfaceG * Math.pow(state.planetRadius / (state.planetRadius + altitude), 2)
@@ -969,7 +985,7 @@ function getValues() {
     mass: parseFloat(sliderMass.value),
     force: parseFloat(sliderForce.value),
     barrelLength: parseFloat(sliderBarrel.value),
-    gravity: parseFloat(sliderGravity.value)
+    gravity: currentGravity()
   };
 }
 
@@ -1055,13 +1071,14 @@ function restoreFlightConfig(mode, config) {
   var fields = mode === 'rocket' ? rocketFields : cannonFields;
   Object.keys(fields).forEach(function (key) {
     if (!Number.isFinite(config[key])) return;
+    if (key === 'gravity') { setGravity(config[key]); return; }
     var input = document.getElementById('slider-' + fields[key]) as HTMLInputElement;
     if (input) input.value = String(config[key]);
   });
   if (mode === 'rocket' && config.guidanceMode) rocketGuidanceSelect.value = config.guidanceMode;
   updateAllDisplays();
   updateGuidanceSubPanels();
-  var gravity = parseFloat(sliderGravity.value);
+  var gravity = currentGravity();
   highlightNearestPlanet(gravity);
   if (onGravityChange) onGravityChange(gravity);
   if (mode === 'cannon' && onBarrelChange) onBarrelChange(parseFloat(sliderBarrel.value));

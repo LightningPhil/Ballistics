@@ -1,4 +1,5 @@
 import type { CrewPose } from './crew.ts';
+import { CLOUD_GUEST_SURFACE } from './cloud-guests.ts';
 
 interface AquaticPose extends CrewPose {
   surfaceAmount?: number;
@@ -83,12 +84,15 @@ function cloudBank(ctx: CanvasRenderingContext2D, surface: number, t: number,
  * Its eye is (45,-53); a portrait can crop the tail while retaining the face.
  * surfaceAmount gently lowers it into a feathered cloud bank, never clipping
  * the sprite at a hard horizon or hiding it completely during its idle cycle.
+ * Recognised states: 'spouting' (surfaced blow), 'breathing', 'startled' /
+ * 'rocket_startled' (tail thrash), 'squashed', plus the generic swimming
+ * states from main.ts; `fleeing` adds the dive-away pose to any of them.
  */
 export function drawWhale(ctx: CanvasRenderingContext2D, cx: number, footY: number, s: number, char: AquaticPose) {
   const t = char.reducedMotion ? 0 : finite(char.stateTimer);
   const state = char.portrait ? 'idle' : char.state || 'spouting';
   const direction = char.direction === -1 ? -1 : 1;
-  const surface = char.portrait ? 1 : Math.max(.46, Math.min(1, finite(char.surfaceAmount, 1)));
+  const surface = char.portrait ? 1 : Math.max(CLOUD_GUEST_SURFACE, Math.min(1, finite(char.surfaceAmount, 1)));
   const startled = state === 'startled' || state === 'rocket_startled';
   const breathing = state === 'breathing';
   const fleeing = !!char.fleeing || startled;
@@ -246,11 +250,14 @@ export function drawWhale(ctx: CanvasRenderingContext2D, cx: number, footY: numb
 /**
  * At s=80, vessel bounds are about x=-82…68, y=-89…-2, before ±2px bob.
  * Its captain's large round window is centred at (26,-36).
+ * Recognised states: 'hatch_peek' (surfaced captain), 'startled' /
+ * 'rocket_startled' (crash dive, fast screw), 'running_away', 'squashed',
+ * plus the generic swimming states; `fleeing` spins the screw up too.
  */
 export function drawSubmarine(ctx: CanvasRenderingContext2D, cx: number, footY: number, s: number, char: AquaticPose) {
   const t = char.reducedMotion ? 0 : finite(char.stateTimer);
   const state = char.portrait ? 'idle' : char.state || 'idle';
-  const surface = char.portrait ? 1 : Math.max(.46, Math.min(1, finite(char.surfaceAmount, 1)));
+  const surface = char.portrait ? 1 : Math.max(CLOUD_GUEST_SURFACE, Math.min(1, finite(char.surfaceAmount, 1)));
   const direction = char.direction === -1 ? -1 : 1;
   const startled = state === 'startled' || state === 'rocket_startled';
   const hatchPeek = state === 'hatch_peek';

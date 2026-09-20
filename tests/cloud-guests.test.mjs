@@ -120,7 +120,7 @@ test('cloud sprites remain painted beneath soft world-scale wisps, while portrai
   for (const [type, draw] of [['whale', drawWhale], ['submarine', drawSubmarine]]) {
     for (const scale of [.1, 40, 80]) {
       const world = canvasSpy();
-      draw(world.ctx, 20, 30, scale, { type, surfaceAmount: .34, state: 'submerged', reducedMotion: true });
+      draw(world.ctx, 20, 30, scale, { type, surfaceAmount: CLOUD_GUEST_SURFACE, state: 'submerged', reducedMotion: true });
       assert.ok(world.calls.some(([name]) => name === 'gradient'), 'The field guest swims amongst feathered clouds');
       assert.ok(world.calls.some(([name]) => name === 'stroke'), 'A submerged state must still paint the recognizable creature');
       assert.ok(!world.calls.some(([name]) => name === 'rect'), 'There must be no rectangular horizon clip');

@@ -60,7 +60,11 @@ The build creates the web bundle in `dist/` and a portable, self-contained `dist
 - `src/renderer.ts`, `src/crew.ts`, `src/aquatic-characters.ts`, `src/planet-guests.ts`, `src/cloud-guests.ts`, `src/nozzle_render.ts`: scene and camera, illustrated characters, cloud-guest motion and the engine cutaway.
 - `src/squid.ts`, `src/ice-bear.ts`: Ganymede's curling, ten-limbed squid and Pluto's sculpted ice bear, with dedicated close-up framing and separate walking poses.
 - `src/character-remarks.ts`, `src/remarks/`: the quip pools and shuffled-round selection for every world and flight event.
-- `src/ui.ts`, `src/world-art.ts`, `index.html`, stylesheets: accessible experiment controls, optimised world artwork and responsive layout.
+- `src/ui.ts`, `src/world-art.ts`, `src/planet-facts.ts`, `src/world-characters.ts`, `src/gravity-scale.ts`, `index.html`, stylesheets: accessible experiment controls, optimised world artwork, the fact cards, the world → character mapping, the logarithmic custom-gravity slider and responsive layout.
+
+The gravity/radius/atmosphere presets live once, in `ENVIRONMENTS` (`src/environment.ts`); the renderer palette and the picker read from it, and `tests/worlds.test.mjs` checks that `index.html`, the fact cards and the artwork cover exactly that set. Add a world there first.
+
+`solar-system-cartoon-assets/` holds the 1254 px PNG masters of the world artwork. Nothing in the build reads them; `src/assets/worlds/{mini,full}/*.webp` are hand-exported derivatives (64 px and 320 px, transparent) that Vite inlines into the single-file build as data URLs.
 
 Conventions: `strict` is off in `tsconfig.json` because the older presentation modules are loosely typed, but `noUnusedLocals` is on so dead code fails the build. Modules that touch the DOM or canvas export a single namespace object (`Renderer`, `UI`, `NozzleRender`); the model modules export plain functions.
 

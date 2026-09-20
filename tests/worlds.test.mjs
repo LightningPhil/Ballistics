@@ -6,6 +6,8 @@ import { ENVIRONMENTS, resolveEnvironment } from '../src/environment.ts';
 import { PLANET_FACTS } from '../src/planet-facts.ts';
 import { WORLD_CHARACTERS, characterForWorld, nextIceBearGait } from '../src/world-characters.ts';
 import { WORLD_ART } from '../src/world-art.ts';
+import { GRAVITY_MIN, GRAVITY_MAX, GRAVITY_SLIDER_STEPS, clampGravity,
+  gravityFromSliderPosition, sliderPositionForGravity } from '../src/gravity-scale.ts';
 
 test('every selectable world has a complete compact fact card', () => {
   const worlds = ENVIRONMENTS.map(environment => environment.name).sort();
@@ -81,8 +83,6 @@ test('world picker replaces the old note with the fact dialog controls', async (
   assert.match(html, /data-planet="sun" data-gravity="274"/);
   assert.match(html, /data-planet="ganymede" data-gravity="1\.428"/);
   assert.match(html, /data-planet="pluto" data-gravity="0\.62"/);
-  assert.match(html, /id="slider-gravity"[^>]*step="0\.001"/,
-    'the custom-gravity slider must preserve Ganymede’s 1.428 m/s² preset');
   for (const id of ['gravity', 'day', 'year', 'tilt']) {
     assert.match(html, new RegExp(`id="planet-fact-${id}"`));
   }
@@ -91,4 +91,41 @@ test('world picker replaces the old note with the fact dialog controls', async (
   const pickerPositions = orderedWorlds.map(world => html.indexOf(`data-planet="${world}"`));
   assert.ok(pickerPositions.every((position, index) =>
     position >= 0 && (index === 0 || position > pickerPositions[index - 1])));
+});
+
+test('picker buttons carry exactly the preset gravities of the shared environment table', async () => {
+  const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
+  const buttons = [...html.matchAll(/data-planet="([a-z]+)" data-gravity="([\d.]+)"/g)]
+    .map(([, name, gravity]) => ({ name, gravity: Number(gravity) }));
+  const presets = ENVIRONMENTS.map(({ name, gravity }) => ({ name, gravity }));
+  assert.deepEqual(
+    buttons.sort((a, b) => a.name.localeCompare(b.name)),
+    presets.sort((a, b) => a.name.localeCompare(b.name)));
+  for (const { name, gravity } of presets) {
+    assert.ok(gravity >= GRAVITY_MIN && gravity <= GRAVITY_MAX, `${name} preset is within the slider range`);
+  }
+  const [, max, initial] = html.match(/id="slider-gravity" min="0" max="(\d+)" value="(\d+)" step="1"/);
+  assert.equal(Number(max), GRAVITY_SLIDER_STEPS);
+  assert.equal(Number(initial), sliderPositionForGravity(9.81), 'the slider starts on Earth');
+});
+
+test('the custom-gravity slider is logarithmic so rocky worlds are not crushed into a few pixels', () => {
+  assert.equal(gravityFromSliderPosition(0), GRAVITY_MIN);
+  assert.equal(gravityFromSliderPosition(GRAVITY_SLIDER_STEPS), GRAVITY_MAX);
+  const position = name => sliderPositionForGravity(ENVIRONMENTS.find(e => e.name === name).gravity);
+  // Moon → Mars spans about as much travel as Jupiter → Sun.
+  const rocky = position('mars') - position('moon');
+  const giant = position('sun') - position('jupiter');
+  assert.ok(rocky > GRAVITY_SLIDER_STEPS * .1, `Moon→Mars covers ${rocky} steps`);
+  assert.ok(giant > GRAVITY_SLIDER_STEPS * .1, `Jupiter→Sun covers ${giant} steps`);
+  // Every preset lands within one slider step of itself after a round trip,
+  // and each step is a small, uniform ratio.
+  for (const { name, gravity } of ENVIRONMENTS) {
+    const back = gravityFromSliderPosition(sliderPositionForGravity(gravity));
+    assert.ok(Math.abs(back / gravity - 1) < .005, `${name}: ${gravity} → ${back}`);
+  }
+  for (let p = 0; p < GRAVITY_SLIDER_STEPS; p++) {
+    assert.ok(gravityFromSliderPosition(p + 1) >= gravityFromSliderPosition(p), 'monotonic');
+  }
+  assert.ok(clampGravity(1e9) === GRAVITY_MAX && clampGravity(-1) === GRAVITY_MIN);
 });

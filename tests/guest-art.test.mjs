@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { drawWhale, drawSubmarine } from '../src/aquatic-characters.ts';
-import { drawGiantSquid, drawIceBear, drawNewt, drawSnowman } from '../src/planet-guests.ts';
+import { drawNewt, drawSnowman } from '../src/planet-guests.ts';
+import { drawGiantSquid } from '../src/squid.ts';
+import { drawIceBear } from '../src/ice-bear.ts';
 
 const artists = { whale: drawWhale, submarine: drawSubmarine, newt: drawNewt, snowman: drawSnowman,
   icebear: drawIceBear, squid: drawGiantSquid };
