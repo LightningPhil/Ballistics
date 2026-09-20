@@ -35,7 +35,7 @@ p, h1, h2, h3 { margin: 0; }
 button { touch-action: manipulation; }
 .skip-link { position: fixed; top: -70px; left: 16px; background: var(--accent); color: #fff; padding: 12px 16px; z-index: 2000; border-radius: 8px; }
 .skip-link:focus { top: 10px; }
-.app-container { display: grid; grid-template-columns: 342px minmax(0, 1fr); width: 100%; height: 100dvh; }
+.app-container { display: grid; grid-template-columns: 359px minmax(0, 1fr); width: 100%; height: 100dvh; }
 .control-panel { min-width: 0; height: 100dvh; display: flex; flex-direction: column; background: var(--bg-panel); border-right: 1px solid #d4dac5; box-shadow: 3px 0 18px #223d2f08; z-index: 2; }
 .controls-scroll { min-height: 0; flex: 1; overflow: auto; overscroll-behavior: contain; padding: 18px 22px 24px; scrollbar-width: thin; scrollbar-color: #bac6b6 transparent; }
 .canvas-area { min-width: 0; position: relative; height: 100dvh; overflow: hidden; background: #c8dfd5; }
@@ -65,9 +65,9 @@ button { touch-action: manipulation; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
 .section-header { font-size: 13px; line-height: 1.4; font-weight: 750; color: #436152; }
 .world-caption { font-size: 9px; font-variant-numeric: tabular-nums; color: #7c8b77; text-align: right; }
-.planet-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.planet-btn { border: 1px solid #e1e3d6; border-radius: 9px; background: #f7f5ea; color: #556958; padding: 8px 6px; min-height: 48px; display: grid; grid-template-columns: 25px minmax(0, 1fr); align-items: center; column-gap: 5px; text-align: left; font-size: 10px; transition: border-color .15s, background .15s; }
-.planet-btn small { grid-column: 2; font: 8px/1.1 var(--font-mono); color: #7c8a74; }
+.planet-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.planet-btn { border: 1px solid #e1e3d6; border-radius: 9px; background: #f7f5ea; color: #556958; padding: 8px 7px; min-height: 48px; display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; column-gap: 4px; text-align: left; font-size: 9px; transition: border-color .15s, background .15s; }
+.planet-btn small { grid-column: 2; font: 7.2px/1.1 var(--font-mono); color: #7c8a74; }
 .planet-icon { width: 24px; height: 24px; grid-row: span 2; display: grid; place-items: center; }
 .planet-icon img { display: block; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 1px 1px #23342b35); }
 .planet-btn:hover:not(:disabled) { border-color: #93ab94; background: #f0f2e4; }
@@ -160,7 +160,7 @@ input[type='range']::-moz-range-thumb { width: 15px; height: 15px; border: 3px s
 .experiment-card small { display: block; color: #6f7d63; font-size: 11px; line-height: 1.5; margin-top: 4px; }
 .lab-footer { text-align: center; color: #a0a58b; font-size: 11px; font-family: var(--font-serif); font-style: italic; padding-top: 26px; }
 .lab-footer span { display: block; margin-top: 5px; font-family: 'Segoe UI', system-ui, sans-serif; font-style: normal; font-size: 9px; color: #a2ac94; }
-@media (max-width: 1050px) and (min-width: 761px) { .app-container { grid-template-columns: 302px minmax(0, 1fr); } .lab-brand { padding: 18px 15px 15px; } .mode-toggle { margin: 0 15px 12px; } .launch-actions { padding: 0 15px 15px; } .controls-scroll { padding: 18px 15px 22px; } .edition-mark { display: none; } }
+@media (max-width: 1050px) and (min-width: 761px) { .app-container { grid-template-columns: 317px minmax(0, 1fr); } .lab-brand { padding: 18px 15px 15px; } .mode-toggle { margin: 0 15px 12px; } .launch-actions { padding: 0 15px 15px; } .controls-scroll { padding: 18px 15px 22px; } .edition-mark { display: none; } }
 @media (max-width: 760px) {
   body { overflow: auto; }
   .app-container { display: flex; flex-direction: column; height: auto; min-height: 100dvh; }
@@ -170,7 +170,7 @@ input[type='range']::-moz-range-thumb { width: 15px; height: 15px; border: 3px s
   .lab-brand { padding-top: 20px; }
   .launch-actions { position: sticky; top: 0; z-index: 5; padding-top: 10px; }
   .planet-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .planet-btn { min-height: 49px; font-size: 12px; padding: 9px 12px; column-gap: 8px; }
+  .planet-btn { min-height: 49px; font-size: 10.8px; padding: 9px 13px; column-gap: 8px; }
   .planet-fact-dialog { height: min(650px, calc(100dvh - 20px)); }
   .planet-fact-hero { min-height: 128px; grid-template-columns: 94px minmax(0, 1fr) 32px; gap: 7px; padding: 6px 12px; }
   .planet-fact-artwork { width: 92px; height: 92px; }
