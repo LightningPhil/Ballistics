@@ -3,7 +3,7 @@ import { FlightDeck } from './flight-deck.ts';
 import { recordFlight, sampleFlight, compatibleRuns, type FlightRecord } from './flight.ts';
 import { resolveEnvironment } from './environment.ts';
 import { CharacterRemarks } from './character-remarks.ts';
-import { createCloudGuest, updateCloudGuest, diveCloudGuest } from './cloud-guests.ts';
+import { cloudGuestActivity, createCloudGuest, updateCloudGuest, diveCloudGuest } from './cloud-guests.ts';
 import { cannonSetupZoom } from './camera.ts';
 import { Physics } from './physics.ts';
 import { RocketPropellants } from './rocket_propellants.ts';
@@ -11,6 +11,7 @@ import { RocketPhysics } from './rocket_physics.ts';
 import { NozzleRender } from './nozzle_render.ts';
 import { Renderer } from './renderer.ts';
 import { UI } from './ui.ts';
+import { characterForWorld, nextIceBearGait } from './world-characters.ts';
 
 /**
  * ============================================================================
@@ -117,6 +118,17 @@ var clangCooldown     = 0;
 var activeCharacter = null;
 var lastCharacterPlanet = null; // track planet to detect changes
 
+function nearbyGuestTarget(awayFrom?) {
+  const fieldWidth = Renderer.getWidth() / Renderer.DEFAULT_PPM;
+  const left = Math.min(3.8, Math.max(2.8, fieldWidth * .48));
+  const right = Math.max(left + .5, Math.min(7.2, fieldWidth - 1.15));
+  const target = left + Math.random() * (right - left);
+  if (Number.isFinite(awayFrom) && Math.abs(target - awayFrom) < Math.min(.75, (right - left) * .4)) {
+    return awayFrom < (left + right) / 2 ? right : left;
+  }
+  return target;
+}
+
 function createCharacter(type) {
   // Spawn off screen to the right, walk in
   var spawnX = toPhysX(Renderer.getWidth()) * 0.7 + Math.random() * 5;
@@ -135,11 +147,30 @@ function createCharacter(type) {
     thoughtCooldown: 1.5
   };
   if (type === 'whale' || type === 'submarine') {
-    // Keep the guest inside the initial field, then drift gently around it.
-    const fieldX = Math.max(1.5, Math.min(12, toPhysX(Renderer.getWidth()) * .62));
+    // Anchor against the normal field scale, not the transient post-flight
+    // camera zoom; otherwise changing worlds after a long shot can spawn an
+    // aquatic guest far outside the restored close view.
+    const visibleMetres = Renderer.getWidth() / Renderer.DEFAULT_PPM;
+    const fieldX = Math.max(2.8, Math.min(7.5, visibleMetres * .68));
     ch.cloudMotion = createCloudGuest(fieldX, { reducedMotion: reducedMotion() });
     Object.assign(ch, { x: ch.cloudMotion.x, y: ch.cloudMotion.y,
       surfaceAmount: ch.cloudMotion.surfaceAmount, state: 'cruising', direction: 1 });
+  }
+  if (type === 'icebear') {
+    ch.x = nearbyGuestTarget();
+    ch.walkTarget = ch.x;
+    ch.state = 'idle';
+    ch.speed = .55;
+    ch.iceBearGait = 'four';
+    ch.upright = false;
+    ch.silent = true;
+    ch.banter = false;
+  }
+  if (type === 'squid') {
+    ch.x = nearbyGuestTarget();
+    ch.walkTarget = ch.x;
+    ch.state = 'idle';
+    ch.speed = .45;
   }
   return ch;
 }
@@ -149,7 +180,12 @@ function startleCharacter(isRocket?) {
   if (!activeCharacter.visible) return;
   if (activeCharacter.state === 'squashed') return;
   if (activeCharacter.cloudMotion) {
-    activeCharacter.cloudMotion = diveCloudGuest(activeCharacter.cloudMotion, isRocket ? 18 : 12);
+    const sourceX = isRocket ? (Renderer.TOWER_BASE_X_M || 1.5) : Renderer.CANNON_BASE_X_M;
+    activeCharacter.cloudMotion = diveCloudGuest(activeCharacter.cloudMotion, isRocket ? 18 : 12, sourceX);
+    activeCharacter.state = 'startled';
+    activeCharacter.stateTimer = 0;
+    activeCharacter.fleeing = true;
+    activeCharacter.bubbleText = null;
     return;
   }
   if (isRocket) {
@@ -181,7 +217,7 @@ function updateCharacter(dt, captionDt = dt) {
 
   // Keep remarks readable at any flight rate, including reduced motion.
   // The portrait stays visible; only its caption takes a quiet break.
-  if (!deck?.banter) {
+  if (!deck?.banter || ch.silent) {
     ch.bubbleText = null;
     ch.bubbleTimer = 0;
     ch.thoughtCooldown = 1.5;
@@ -192,7 +228,7 @@ function updateCharacter(dt, captionDt = dt) {
   }
   // The close-up can talk while the field character is away or submerged,
   // and during long flights instead of falling silent until landing.
-  if (!ch.bubbleText && deck?.banter) {
+  if (!ch.bubbleText && deck?.banter && ch.banter !== false) {
     ch.thoughtCooldown -= captionDt;
     if (ch.thoughtCooldown <= 0) {
       sayCharacter(characterRemarks.next(resolveEnvironment(currentGravity)), 5);
@@ -203,9 +239,13 @@ function updateCharacter(dt, captionDt = dt) {
     // Cloud swimming uses presentation time, independent of fast flight playback.
     ch.cloudMotion = updateCloudGuest(ch.cloudMotion, captionDt, { reducedMotion: reducedMotion() });
     const motion = ch.cloudMotion;
+    const state = cloudGuestActivity(ch.type, motion);
+    const direction = motion.fleeing
+      ? motion.fleeDirection
+      : (Math.cos(motion.age * .15) >= 0 ? 1 : -1);
     Object.assign(ch, { x: motion.x, y: motion.y, surfaceAmount: motion.surfaceAmount,
       stateTimer: motion.age, reducedMotion: reducedMotion(),
-      state: motion.phase === 'surfaced' ? (ch.type === 'whale' ? 'spouting' : 'idle') : motion.phase });
+      state, direction, fleeing: motion.fleeing });
     return;
   }
 
@@ -223,9 +263,15 @@ function updateCharacter(dt, captionDt = dt) {
 
     case 'idle':
       // Stay idle for a while, then pick a new walk target
-      if (ch.stateTimer > 4 + Math.random() * 4) {
-        ch.walkTarget = 6 + Math.random() * 20;
+      if (ch.stateTimer > (ch.type === 'icebear' ? 8 : ch.type === 'squid' ? 5 : 4) + Math.random() * 4) {
+        const staysNearby = ch.type === 'icebear' || ch.type === 'squid';
+        ch.walkTarget = staysNearby ? nearbyGuestTarget(ch.x) : 6 + Math.random() * 20;
         ch.direction = (ch.walkTarget > ch.x) ? 1 : -1;
+        if (ch.type === 'icebear') {
+          ch.iceBearGait = nextIceBearGait(ch.iceBearGait);
+          ch.upright = ch.iceBearGait === 'two';
+          ch.speed = ch.upright ? .42 : .58;
+        }
         ch.state = 'walking';
         ch.stateTimer = 0;
       }
@@ -271,8 +317,13 @@ function updateCharacter(dt, captionDt = dt) {
           ? -1
           : toPhysX(Renderer.getWidth()) + 2;
         ch.direction = -ch.direction;
-        ch.walkTarget = 8 + Math.random() * 15;
-        ch.speed = 1.5 + Math.random() * 1.0;
+        const returnsNearby = ch.type === 'icebear' || ch.type === 'squid';
+        ch.walkTarget = returnsNearby ? nearbyGuestTarget() : 8 + Math.random() * 15;
+        ch.speed = ch.type === 'icebear' ? .7 : ch.type === 'squid' ? .6 : 1.5 + Math.random() * 1.0;
+        if (ch.type === 'icebear') {
+          ch.iceBearGait = 'four';
+          ch.upright = false;
+        }
       }
       break;
 
@@ -307,16 +358,7 @@ function syncCharacterToPlanet() {
   if (key === lastCharacterPlanet) return;
   lastCharacterPlanet = key;
 
-  var type = null;
-  if      (name === 'earth')   type = 'golfer';
-  else if (name === 'mars')    type = 'alien';
-  else if (name === 'moon')    type = 'spaceman';
-  else if (name === 'mercury') type = 'robot';
-  else if (name === 'venus')   type = 'newt';
-  else if (name === 'jupiter') type = 'whale';
-  else if (name === 'neptune') type = 'snowman';
-  else if (name === 'saturn')  type = 'submarine';
-  else if (name === 'uranus')  type = 'icerobot';
+  var type = characterForWorld(name);
   activeCharacter = type ? createCharacter(type) : null;
 }
 
@@ -1159,7 +1201,7 @@ function resetCrewReaction() {
 }
 
 function sayCharacter(text: string, seconds = 4) {
-  if (!activeCharacter || !deck?.banter) return;
+  if (!activeCharacter || !deck?.banter || activeCharacter.banter === false) return;
   activeCharacter.bubbleText = text;
   activeCharacter.bubbleTimer = seconds;
   activeCharacter.thoughtCooldown = 4 + Math.random() * 3;
@@ -1330,7 +1372,7 @@ function loop(timestamp) {
   updateParticles(dt);
   if (reducedMotion()) particles = [];
   updateImpactAnimations(dt);
-  if (activeCharacter) activeCharacter.banter = deck.banter;
+  if (activeCharacter) activeCharacter.banter = deck.banter && !activeCharacter.silent;
   updateCharacter(reducedMotion() ? 0 : dt, elapsed);
   syncCharacterToPlanet();
 

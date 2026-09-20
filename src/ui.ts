@@ -2,6 +2,7 @@ import { Physics } from './physics.ts';
 import { RocketPropellants } from './rocket_propellants.ts';
 import { RocketPhysics } from './rocket_physics.ts';
 import { resolveEnvironment } from './environment.ts';
+import { getPlanetFact } from './planet-facts.ts';
 
 /**
  * ============================================================================
@@ -29,6 +30,7 @@ var readVelocity, readHeight, readDistance;
 var readKE, readPE, readTME;
 var energyBarKE, energyBarPE;
 var tooltipEl;
+var planetFactButton, planetFactButtonLabel, planetFactDialog, planetFactCard;
 
 // Mode state
 var currentMode = 'cannon'; // 'cannon' | 'rocket'
@@ -116,6 +118,7 @@ function init(callbacks) {
 
   // Planet buttons
   planetButtons = document.querySelectorAll('.planet-btn');
+  initPlanetFacts();
 
   // Telemetry
   readVelocity = document.getElementById('read-velocity');
@@ -265,6 +268,8 @@ function updateSliderDisplay(slider, display, unit) {
 }
 
 var PLANET_GRAVITY_MAP = [
+  { name: 'pluto',   g: .62 },
+  { name: 'ganymede', g: 1.428 },
   { name: 'moon',    g: 1.62 },
   { name: 'mercury', g: 3.7 },
   { name: 'mars',    g: 3.72 },
@@ -273,7 +278,8 @@ var PLANET_GRAVITY_MAP = [
   { name: 'earth',   g: 9.81 },
   { name: 'saturn',  g: 11.19 },
   { name: 'neptune', g: 11.27 },
-  { name: 'jupiter', g: 25.92 }
+  { name: 'jupiter', g: 25.92 },
+  { name: 'sun',     g: 274 }
 ];
 
 function findClosestPlanetName(g) {
@@ -304,12 +310,55 @@ function highlightPlanet(name) {
   var env = resolveEnvironment(parseFloat(sliderGravity.value));
   var label = document.getElementById('environment-label');
   if (label) label.textContent = (env.interpolated ? 'Custom world' : env.name[0].toUpperCase() + env.name.slice(1)) + ' · ' + env.gravity.toFixed(2) + ' m/s²';
-  var note = document.getElementById('environment-note');
-  if (note) note.textContent = env.isGas
-    ? 'An imaginary platform on a non-rotating planet. No air drag; nozzle pressure uses a simplified atmosphere.'
-    : env.surfacePressure === 0
-      ? 'Vacuum outside the engine. Gravity points towards the centre of a non-rotating planet.'
-      : 'No air drag. Gravity is radial on a non-rotating planet; a simplified atmosphere affects nozzle thrust.';
+  updatePlanetFactButton(name);
+}
+
+function initPlanetFacts() {
+  planetFactButton = document.getElementById('planet-fact-button');
+  planetFactButtonLabel = document.getElementById('planet-fact-button-label');
+  planetFactDialog = document.getElementById('planet-fact-dialog');
+  planetFactCard = document.getElementById('planet-fact-card');
+  planetFactButton.addEventListener('click', function () {
+    const fact = getPlanetFact(planetFactButton.dataset.planet);
+    if (!fact) return;
+    hideTooltip();
+    planetFactCard.dataset.world = fact.id;
+    planetFactCard.style.setProperty('--fact-accent', fact.accent);
+    const fields = {
+      'planet-fact-kind': fact.kind,
+      'planet-fact-title': fact.name,
+      'planet-fact-tagline': fact.tagline,
+      'planet-fact-mass': fact.mass,
+      'planet-fact-diameter': fact.diameter,
+      'planet-fact-distance': fact.distance,
+      'planet-fact-gravity': fact.gravity,
+      'planet-fact-day': fact.dayLength,
+      'planet-fact-year': fact.yearLength,
+      'planet-fact-tilt': fact.axialTilt,
+      'planet-fact-temp-average': fact.averageTemp,
+      'planet-fact-temp-min': fact.minTemp,
+      'planet-fact-temp-max': fact.maxTemp,
+      'planet-fact-atmosphere': fact.atmosphere,
+      'planet-fact-exploration': fact.exploration,
+      'planet-fact-temperature-note': fact.temperatureNote,
+    };
+    Object.entries(fields).forEach(function ([id, text]) {
+      const element = document.getElementById(id);
+      if (element) element.textContent = text;
+    });
+    planetFactDialog.showModal();
+  });
+  planetFactDialog.addEventListener('click', function (event) {
+    if (event.target === planetFactDialog) planetFactDialog.close();
+  });
+}
+
+function updatePlanetFactButton(name) {
+  const fact = getPlanetFact(name);
+  if (!planetFactButton || !planetFactButtonLabel) return;
+  planetFactButton.disabled = !fact;
+  planetFactButton.dataset.planet = fact?.id || '';
+  planetFactButtonLabel.textContent = fact ? fact.name + ' fact' : 'World fact';
 }
 
 // ── Tooltips ───────────────────────────────────────────────────────────────

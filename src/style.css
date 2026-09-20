@@ -74,7 +74,41 @@ button { touch-action: manipulation; }
 .planet-btn:hover:not(:disabled) { border-color: #93ab94; background: #f0f2e4; }
 .planet-btn.active { background: #e9efdf; border-color: #7ca18b; box-shadow: inset 0 0 0 .5px #7ca18b; }
 .planet-btn.active span:not(.planet-icon) { color: #265d49; font-weight: 700; }
-.world-section > .field-note { margin: 10px 0; }
+.planet-btn[data-planet='sun'] .planet-icon { border-color: #d98532; box-shadow: 0 0 7px #f1a844aa, inset -3px -1px 0 #b9591933; }
+.planet-btn[data-planet='pluto'] .planet-icon { background: radial-gradient(circle at 35% 35%, #ebe4d5 0 18%, #b5a999 20% 55%, #887967 58% 64%, #c8bca8 66%); }
+.planet-btn[data-planet='ganymede'] .planet-icon { background: repeating-linear-gradient(155deg, #d8edf0 0 3px, #83aeb8 3px 5px, #bfd8dc 5px 8px); }
+.planet-fact-button { width: 100%; min-height: 38px; margin-top: 9px; padding: 8px 11px; display: flex; align-items: center; justify-content: space-between; border: 1px solid #d2ddca; border-radius: 9px; color: #315f4c; background: #f1f4e8; font-size: 11px; font-weight: 700; }
+.planet-fact-button:hover { border-color: #88a78c; background: #e7eedc; }
+.planet-fact-button span:last-child { font-size: 16px; font-weight: 400; }
+.planet-fact-dialog { width: min(700px, calc(100vw - 28px)); height: min(570px, calc(100dvh - 28px)); max-width: none; max-height: none; margin: auto; padding: 0; overflow: hidden; border: 0; border-radius: 21px; color: #2c403b; background: #fffaf0; box-shadow: 0 24px 80px #13251d66; }
+.planet-fact-dialog::backdrop { background: #16251fcc; backdrop-filter: blur(5px); }
+.planet-fact-card { --fact-accent: #4f9682; height: 100%; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; overflow: hidden; background: linear-gradient(145deg, color-mix(in srgb, var(--fact-accent) 12%, #fffaf0) 0 118px, #fffaf0 118px); }
+.planet-fact-hero { min-height: 128px; display: grid; grid-template-columns: 82px minmax(0, 1fr) 34px; gap: 17px; align-items: center; padding: 20px 22px 16px; border-bottom: 1px solid color-mix(in srgb, var(--fact-accent) 30%, #e0dccd); }
+.planet-fact-orb { width: 76px; height: 76px; position: relative; border-radius: 50%; background: radial-gradient(circle at 32% 27%, #ffffff99 0 8%, var(--fact-accent) 13% 58%, color-mix(in srgb, var(--fact-accent) 68%, #283b3b) 100%); box-shadow: inset -10px -6px 0 #17251d18, 0 9px 18px #263b2b1f; }
+.planet-fact-orb::before { content: ''; position: absolute; width: 12px; height: 9px; left: 18px; top: 45px; border-radius: 50%; border: 2px solid #ffffff40; transform: rotate(-18deg); }
+.planet-fact-card[data-world='saturn'] .planet-fact-orb::after { content: ''; position: absolute; width: 106px; height: 25px; left: -16px; top: 26px; border: 5px solid #ba9659; border-left-color: #e3cb8e; border-right-color: #85673f; border-radius: 50%; transform: rotate(-18deg); }
+.planet-fact-card[data-world='sun'] .planet-fact-orb { box-shadow: 0 0 0 7px #efaf4550, 0 0 28px #ee8c38aa, inset -8px -5px 0 #d8592233; }
+.planet-fact-card[data-world='pluto'] .planet-fact-orb { background: radial-gradient(circle at 37% 34%, #f4ecdb 0 16%, #ad9d86 17% 44%, #77695d 45% 51%, #c8b9a1 53% 67%, #91816e 69%); }
+.planet-fact-kind, .planet-fact-section-label { color: color-mix(in srgb, var(--fact-accent) 72%, #354b44); font: 700 10px/1.3 var(--font-mono); letter-spacing: 1.25px; }
+.planet-fact-heading h2 { margin: 2px 0 4px; color: #243c35; font: 700 34px/1.05 var(--font-serif); letter-spacing: -.7px; }
+.planet-fact-heading > p:last-child { max-width: 470px; color: #53665e; font-size: 13px; line-height: 1.4; }
+.planet-fact-close { width: 34px; height: 34px; align-self: start; padding: 0 0 3px; border: 1px solid #bdc9b8; border-radius: 50%; background: #fffaf0cc; color: #52675e; font-size: 25px; line-height: 1; }
+.planet-fact-close:hover { background: #fff; color: #9d503a; }
+.planet-fact-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-bottom: 1px solid #e4e0d3; }
+.planet-fact-stats > div { min-width: 0; padding: 12px 15px; border-right: 1px solid #e4e0d3; border-bottom: 1px solid #e4e0d3; }
+.planet-fact-stats > div:nth-child(5n) { border-right: 0; }
+.planet-fact-stats > div:nth-child(n+6) { border-bottom: 0; }
+.planet-fact-stats span { display: block; color: #7a867d; font-size: 9px; line-height: 1.2; text-transform: uppercase; letter-spacing: .55px; }
+.planet-fact-stats strong { display: block; margin-top: 4px; overflow-wrap: anywhere; color: #304d43; font: 700 12px/1.2 var(--font-mono); }
+.planet-fact-details { min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 22px; padding: 18px 22px 15px; }
+.planet-fact-details section { min-width: 0; padding: 14px 15px; border: 1px solid #e1e3d5; border-radius: 12px; background: #ffffff99; }
+.planet-fact-details h3 { margin: 3px 0 8px; color: #354f45; font: 700 17px/1.2 var(--font-serif); }
+.planet-fact-details section > p:last-child { color: #586960; font-size: 12px; line-height: 1.48; }
+.planet-fact-footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 48px; padding: 10px 22px; border-top: 1px solid #e4e0d3; background: #f4f0e4; }
+.planet-fact-footer p { color: #758078; font-size: 10px; line-height: 1.35; }
+.planet-fact-tilt-note::before { content: ' · '; }
+.planet-fact-footer a { flex: 0 0 auto; color: #41715f; font-size: 10px; font-weight: 700; text-decoration: none; }
+.planet-fact-footer a:hover { text-decoration: underline; }
 .field-note, .propellant-note { color: #62725e; font-size: 12px; line-height: 1.55; }
 .cannon-panel, .rocket-panel { display: flex; flex-direction: column; gap: 15px; margin-top: 20px; }
 .slider-group { display: flex; flex-direction: column; gap: 20px; }
@@ -144,6 +178,25 @@ input[type='range']::-moz-range-thumb { width: 15px; height: 15px; border: 3px s
   .launch-actions { position: sticky; top: 0; z-index: 5; padding-top: 10px; }
   .planet-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .planet-btn { min-height: 49px; font-size: 12px; padding: 9px 12px; column-gap: 8px; }
+  .planet-fact-dialog { height: min(650px, calc(100dvh - 20px)); }
+  .planet-fact-hero { min-height: 112px; grid-template-columns: 66px minmax(0, 1fr) 32px; gap: 12px; padding: 15px; }
+  .planet-fact-orb { width: 62px; height: 62px; }
+  .planet-fact-card[data-world='saturn'] .planet-fact-orb::after { width: 87px; height: 21px; left: -13px; top: 21px; border-width: 4px; }
+  .planet-fact-heading h2 { font-size: 28px; }
+  .planet-fact-heading > p:last-child { font-size: 11px; }
+  .planet-fact-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .planet-fact-stats > div { padding: 7px 9px; }
+  .planet-fact-stats > div:nth-child(5n) { border-right: 1px solid #e4e0d3; }
+  .planet-fact-stats > div:nth-child(2n) { border-right: 0; }
+  .planet-fact-stats > div:nth-child(n+6) { border-bottom: 1px solid #e4e0d3; }
+  .planet-fact-stats > div:nth-child(n+9) { border-bottom: 0; }
+  .planet-fact-stats strong { font-size: 10px; }
+  .planet-fact-details { gap: 9px; padding: 11px; }
+  .planet-fact-details section { padding: 10px; }
+  .planet-fact-details h3 { margin-bottom: 5px; font-size: 15px; }
+  .planet-fact-details section > p:last-child { font-size: 10.5px; line-height: 1.38; }
+  .planet-fact-footer { min-height: 43px; padding: 8px 12px; gap: 10px; }
+  .planet-fact-footer p, .planet-fact-footer a { font-size: 8.5px; }
   .world-caption { font-size: 11px; }
   .slider-label, .slider-row > label { font-size: 13px; }
   .field-note, .propellant-note { font-size: 12px; }

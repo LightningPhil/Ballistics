@@ -23,11 +23,13 @@ function checkRounds(draw, expected, rounds = 4) {
   }
 }
 
-test('every real-world character has 50 bespoke short lines, heard in full before repeating', () => {
+test('every speaking world character has 50 bespoke short lines, heard in full before repeating', () => {
   assert.equal(GENERIC_REMARKS.length, 50);
-  assert.deepEqual(Object.keys(PLANET_REMARKS).sort(), ENVIRONMENTS.map(e => e.name).sort());
+  const speakingWorlds = ENVIRONMENTS.filter(environment =>
+    Object.prototype.hasOwnProperty.call(PLANET_REMARKS, environment.name));
+  assert.deepEqual(Object.keys(PLANET_REMARKS).sort(), speakingWorlds.map(e => e.name).sort());
   const all = [...GENERIC_REMARKS];
-  for (const environment of ENVIRONMENTS) {
+  for (const environment of speakingWorlds) {
     const expected = PLANET_REMARKS[environment.name];
     assert.equal(expected.length, 50, environment.name);
     assert.ok(Object.isFrozen(expected));
@@ -35,7 +37,7 @@ test('every real-world character has 50 bespoke short lines, heard in full befor
     checkRounds(() => remarks.next(environment), expected);
     all.push(...expected);
   }
-  assert.equal(new Set(all).size, 500, 'World voices do not reuse generic or other-world filler');
+  assert.equal(new Set(all).size, all.length, 'World voices do not reuse generic or other-world filler');
   for (const line of all) assert.ok(line.length <= 43, 'Too long for the portrait: ' + line);
 });
 
@@ -71,6 +73,7 @@ test('sound and missing-ground jokes stay in environments where they make sense'
   const missingGround = /\b(depths?|deeper|solid ground|clouds below|parking on clouds)\b/i;
   for (const environment of ENVIRONMENTS) {
     const lines = PLANET_REMARKS[environment.name];
+    if (!lines) continue;
     if (environment.surfacePressure === 0) assert.ok(lines.every(line => !sound.test(line)), environment.name);
     if (!environment.isGas) assert.ok(lines.every(line => !missingGround.test(line)), environment.name);
   }

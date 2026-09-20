@@ -1,6 +1,6 @@
 import { drawCrew } from './crew.ts';
 import { drawWhale, drawSubmarine } from './aquatic-characters.ts';
-import { drawNewt, drawSnowman } from './planet-guests.ts';
+import { drawGiantSquid, drawIceBear, drawNewt, drawSnowman } from './planet-guests.ts';
 import { rocketCameraFraming, type RocketCameraRequest } from './camera.ts';
 
 /**
@@ -18,7 +18,7 @@ import { rocketCameraFraming, type RocketCameraRequest } from './camera.ts';
  *        Smooth planet-environment crossfade driven by gravity value.
  *
  * Character artwork is split out: crew.ts (barrel crew and the golfer,
- * alien, spaceman and robots), planet-guests.ts (newt, snowman) and
+ * alien, spaceman and robots), planet-guests.ts (newt, snowman, ice bear and squid) and
  * aquatic-characters.ts (whale, submarine). Nozzle cutaway: nozzle_render.ts.
  *
  * The `Renderer` object exported at the bottom is the public surface used by
@@ -28,6 +28,18 @@ import { rocketCameraFraming, type RocketCameraRequest } from './camera.ts';
 
 // ── Planet Data (sorted by gravity) ────────────────────────────────────────
 var PLANETS = [
+  { name:'pluto',   g:.62,   radius:1188300,  isGas:false,
+    skyTop:[5,7,19],        skyMid:[12,14,31],       skyBot:[30,31,49],
+    groundTop:[190,181,164], groundBot:[132,121,105],
+    subTop:[105,94,82],     subBot:[72,63,57],
+    surfEdge:[217,211,197], moundCol:[161,149,132],
+    features:'pluto' },
+  { name:'ganymede', g:1.428, radius:2634100, isGas:false,
+    skyTop:[4,8,20],         skyMid:[10,20,39],       skyBot:[31,50,69],
+    groundTop:[186,216,220], groundBot:[112,158,170],
+    subTop:[75,125,143],     subBot:[40,78,104],
+    surfEdge:[224,241,239],  moundCol:[140,181,190],
+    features:'ganymede' },
   { name:'moon',    g:1.62,  radius:1737400,  isGas:false,
     skyTop:[5,5,15],       skyMid:[10,10,25],      skyBot:[25,25,45],
     groundTop:[150,148,142], groundBot:[115,113,108],
@@ -81,7 +93,13 @@ var PLANETS = [
     groundTop:[180,128,78], groundBot:[160,108,58],
     subTop:[140,88,42],    subBot:[118,68,28],
     surfEdge:[190,138,88], moundCol:[170,118,68],
-    features:'jupiter' }
+    features:'jupiter' },
+  { name:'sun',     g:274,   radius:695700000, isGas:true,
+    skyTop:[58,5,8],        skyMid:[164,38,14],      skyBot:[246,128,28],
+    groundTop:[255,207,70], groundBot:[210,67,17],
+    subTop:[183,48,18],     subBot:[92,13,18],
+    surfEdge:[255,232,119], moundCol:[239,139,33],
+    features:'sun' }
 ];
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -118,6 +136,7 @@ var rocketCamera: RocketCameraRequest | null = null;
 var displayedGravity = 9.81;
 var targetGravity    = 9.81;
 var worldTime = 0;
+var EARTH_PLANET = PLANETS.find(planet => planet.name === 'earth') || PLANETS[0];
 
 // ── Curvature state (Phase 2) ──────────────────────────────────────────────
 // When the viewport is wide enough relative to the planet that the ground arc's
@@ -144,9 +163,9 @@ var env = {
   subTop:[107,68,35], subBot:[74,47,21],
   surfEdge:[106,173,122], moundCol:[90,140,100],
   solidness: 1, isGas: false,
-  lowerPlanet: PLANETS[5], upperPlanet: PLANETS[5],
+  lowerPlanet: EARTH_PLANET, upperPlanet: EARTH_PLANET,
   lowerAlpha: 1, upperAlpha: 0,
-  nearestPlanet: PLANETS[5]
+  nearestPlanet: EARTH_PLANET
 };
 
 // Pre-generated feature data
@@ -764,6 +783,8 @@ function drawPlanetFeatures(planet, alpha) {
   var skipSurface = planetViewFrac > 0.5;
 
   switch (planet.features) {
+    case 'pluto':   drawStars(); drawPlutoFeatures(planet, skipSurface); break;
+    case 'ganymede': drawStars(); drawGanymedeJupiter(); if (!skipSurface) drawGanymedeIce(); break;
     case 'moon':    drawStars(); if (!skipSurface) drawCraterFieldFeature(); break;
     case 'mercury': drawStars(); if (!skipSurface) drawCraterFieldFeature(); break;
     case 'mars':    drawStars(); drawCelestialBodies('mars'); if (!skipSurface) drawMountains(planet); drawPhobosShadow(); break;
@@ -773,6 +794,7 @@ function drawPlanetFeatures(planet, alpha) {
     case 'icegas':  break;
     case 'deepgas': break;
     case 'jupiter': break;
+    case 'sun':     drawSolarProminences(); break;
   }
   ctx.globalAlpha = 1;
 }
@@ -1262,6 +1284,138 @@ function drawCraterFieldFeature() {
     ctx.ellipse(cx, groundY+1, c.r*0.7, c.r*0.22, 0, 0, Math.PI*2);
     ctx.fill();
   }
+}
+
+function drawPlutoFeatures(planet, skipSurface) {
+  if (!skipSurface) {
+    drawMountains(planet);
+    drawCraterFieldFeature();
+    return;
+  }
+  if (!curveActive || curveRadiusPx < 18) return;
+  // A small, soft Tombaugh Regio gives the distant disc Pluto's recognisable heart.
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(curveCentreX, curveCentreY, curveRadiusPx, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.translate(curveCentreX - curveRadiusPx * .18, curveCentreY - curveRadiusPx * .22);
+  ctx.rotate(-.24);
+  var size = curveRadiusPx * .26;
+  ctx.beginPath();
+  ctx.moveTo(0, size * .3);
+  ctx.bezierCurveTo(-size * 1.15, -size * .42, -size * .65, -size * 1.25, 0, -size * .62);
+  ctx.bezierCurveTo(size * .65, -size * 1.25, size * 1.15, -size * .42, 0, size * .3);
+  ctx.fillStyle = 'rgba(237,229,209,.5)';
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawGanymedeJupiter() {
+  var r = clamp(Math.min(W, baseGroundY) * .085, 28, 72);
+  var offset = parallaxOffset(PARALLAX_STARS);
+  var x = W * .79 - offset;
+  var y = baseGroundY * .2 + parallaxOffsetY(PARALLAX_STARS);
+  ctx.save();
+  ctx.shadowColor = 'rgba(225,190,135,.2)';
+  ctx.shadowBlur = r * .55;
+  ctx.fillStyle = '#cfa783';
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.save();
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.clip();
+  var bands: [number, number, string][] = [
+    [-.72, .19, '#e3c7a1'], [-.43, .15, '#a86f58'], [-.2, .19, '#e8d1ad'],
+    [.05, .14, '#bd8063'], [.28, .18, '#efd9b5'], [.55, .13, '#9f6857']
+  ];
+  for (var i = 0; i < bands.length; i++) {
+    var band = bands[i];
+    ctx.fillStyle = band[2];
+    ctx.fillRect(x - r, y + band[0] * r, r * 2, band[1] * r);
+  }
+  ctx.fillStyle = '#a85845';
+  ctx.beginPath(); ctx.ellipse(x + r * .34, y + r * .28, r * .22, r * .095, -.08, 0, Math.PI * 2); ctx.fill();
+  var shade = ctx.createLinearGradient(x - r, y, x + r, y);
+  shade.addColorStop(0, 'rgba(255,255,255,.18)');
+  shade.addColorStop(.55, 'rgba(0,0,0,0)');
+  shade.addColorStop(1, 'rgba(20,18,28,.35)');
+  ctx.fillStyle = shade;
+  ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(244,224,191,.48)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+}
+
+function drawGanymedeIce() {
+  var offset = parallaxOffset(PARALLAX_GROUND);
+  ctx.save();
+  ctx.strokeStyle = 'rgba(163,217,226,.5)';
+  ctx.fillStyle = 'rgba(205,235,236,.38)';
+  ctx.lineWidth = 2;
+  for (var i = 0; i < 11; i++) {
+    var x = wrapX(i * W / 10 - offset, 35);
+    var height = 8 + (i * 7 % 18);
+    ctx.beginPath();
+    ctx.moveTo(x - 25, groundY + 1);
+    ctx.lineTo(x - 10, groundY - height * .35);
+    ctx.lineTo(x, groundY - height);
+    ctx.lineTo(x + 9, groundY - height * .42);
+    ctx.lineTo(x + 25, groundY + 1);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(101,166,182,.55)';
+  ctx.lineWidth = 1.4;
+  for (var j = 0; j < 8; j++) {
+    var crackX = wrapX(j * W / 7 + 31 - offset, 25);
+    ctx.beginPath();
+    ctx.moveTo(crackX, groundY - 1);
+    ctx.lineTo(crackX + 7, groundY - 9);
+    ctx.lineTo(crackX + 3, groundY - 16);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawSolarProminences() {
+  ctx.save();
+  ctx.lineCap = 'round';
+  if (curveActive && planetViewFrac > .25 && curveRadiusPx > 10) {
+    for (var i = 0; i < 6; i++) {
+      var angle = -Math.PI * .92 + i * Math.PI * .37 + Math.sin(worldTime * .11 + i) * .03;
+      var x = curveCentreX + Math.cos(angle) * curveRadiusPx;
+      var y = curveCentreY + Math.sin(angle) * curveRadiusPx;
+      var loop = Math.max(4, curveRadiusPx * (.08 + (i % 3) * .018));
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle + Math.PI / 2);
+      ctx.strokeStyle = 'rgba(255,193,68,.48)';
+      ctx.lineWidth = Math.max(1.5, curveRadiusPx * .012);
+      ctx.beginPath();
+      ctx.bezierCurveTo(-loop, -loop * .15, -loop * .72, -loop * 1.45, 0, -loop * 1.2);
+      ctx.bezierCurveTo(loop * .72, -loop * 1.45, loop, -loop * .15, 0, 0);
+      ctx.stroke();
+      ctx.restore();
+    }
+  } else if (!curveActive) {
+    var glow = ctx.createLinearGradient(0, groundY - 105, 0, groundY);
+    glow.addColorStop(0, 'rgba(255,188,54,0)');
+    glow.addColorStop(1, 'rgba(255,211,91,.35)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, Math.max(0, groundY - 105), W, 105);
+    for (var j = 0; j < 5; j++) {
+      var baseX = ((j + .35) / 5) * W;
+      var height = 21 + (j % 3) * 13 + Math.sin(worldTime * 1.4 + j) * 4;
+      ctx.strokeStyle = 'rgba(255,224,116,.45)';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(baseX - 15, groundY + 2);
+      ctx.bezierCurveTo(baseX - 18, groundY - height, baseX + 18, groundY - height, baseX + 15, groundY + 2);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
 }
 
 // ── Ground Drawing ─────────────────────────────────────────────────────────
@@ -1804,6 +1958,8 @@ function drawCharacterSprite(cx, cy, s, char) {
     // Guest rigs share the same foot anchor and shrink naturally with the world.
     switch (drawChar.type) {
       case 'newt':      drawNewt(ctx, cx, cy, s, drawChar); break;
+      case 'icebear':   drawIceBear(ctx, cx, cy, s, drawChar); break;
+      case 'squid':     drawGiantSquid(ctx, cx, cy, s, drawChar); break;
       case 'whale':     drawWhale(ctx, cx, cy, s, drawChar); break;
       case 'snowman':   drawSnowman(ctx, cx, cy, s, drawChar); break;
       case 'submarine': drawSubmarine(ctx, cx, cy, s, drawChar); break;
@@ -1823,13 +1979,16 @@ function drawCharacterAside(char) {
   // Frame faces rather than shrinking wide bodies into the little round window.
   var framing = char.type === 'newt' ? { scale: 68, x: -26.35, footY: 122.3 }
     : char.type === 'snowman' ? { scale: 54, x: 0, footY: 147 }
+    : char.type === 'icebear' ? { scale: 58, x: -13, footY: 130 }
+    : char.type === 'squid' ? { scale: 48, x: 0, footY: 145 }
     : char.type === 'whale' ? { scale: 54, x: -27.7, footY: 124.4 }
     : char.type === 'submarine' ? { scale: 65, x: -21.1, footY: 119.3 }
     : { scale: 43, x: 0, footY: 120 };
   // Keep their face visible even while the world sprite is flattened or out of view.
   var portrait = { ...char, portrait: true,
     state: !char.visible || char.state === 'squashed' ? 'idle' : char.state };
-  if (['newt', 'whale', 'submarine'].includes(char.type)) portrait.direction = 1;
+  if (['newt', 'icebear', 'squid', 'whale', 'submarine'].includes(char.type)) portrait.direction = 1;
+  if (char.type === 'icebear') portrait.upright = false;
   if (['whale', 'submarine'].includes(char.type)) portrait.surfaceAmount = 1;
   drawCharacterSprite(W-52+framing.x,framing.footY,framing.scale,portrait);
   ctx.restore();

@@ -48,6 +48,24 @@
 <span class="world-caption" id="environment-label">Earth · 9.81 m/s²</span>
 </div>
 <div class="planet-grid">
+<button type="button" class="planet-btn" data-planet="sun" data-gravity="274" aria-pressed="false">
+<span class="planet-icon" style="--planet-colour:#f1a844" aria-hidden="true">
+</span>
+<span>Sun</span>
+<small>274.00</small>
+</button>
+<button type="button" class="planet-btn" data-planet="mercury" data-gravity="3.7" aria-pressed="false">
+<span class="planet-icon" style="--planet-colour:#a89b88" aria-hidden="true">
+</span>
+<span>Mercury</span>
+<small>3.70</small>
+</button>
+<button type="button" class="planet-btn" data-planet="venus" data-gravity="8.87" aria-pressed="false">
+<span class="planet-icon" style="--planet-colour:#d8b976" aria-hidden="true">
+</span>
+<span>Venus</span>
+<small>8.87</small>
+</button>
 <button type="button" class="planet-btn active" data-planet="earth" data-gravity="9.81" aria-pressed="true">
 <span class="planet-icon" style="--planet-colour:#70a893" aria-hidden="true">
 </span>
@@ -66,23 +84,17 @@
 <span>Mars</span>
 <small>3.72</small>
 </button>
-<button type="button" class="planet-btn" data-planet="mercury" data-gravity="3.7" aria-pressed="false">
-<span class="planet-icon" style="--planet-colour:#a89b88" aria-hidden="true">
-</span>
-<span>Mercury</span>
-<small>3.70</small>
-</button>
-<button type="button" class="planet-btn" data-planet="venus" data-gravity="8.87" aria-pressed="false">
-<span class="planet-icon" style="--planet-colour:#d8b976" aria-hidden="true">
-</span>
-<span>Venus</span>
-<small>8.87</small>
-</button>
 <button type="button" class="planet-btn" data-planet="jupiter" data-gravity="25.92" aria-pressed="false">
 <span class="planet-icon" style="--planet-colour:#c89a81" aria-hidden="true">
 </span>
 <span>Jupiter</span>
 <small>25.92</small>
+</button>
+<button type="button" class="planet-btn" data-planet="ganymede" data-gravity="1.428" aria-pressed="false">
+<span class="planet-icon" style="--planet-colour:#a7c8cf" aria-hidden="true">
+</span>
+<span>Ganymede</span>
+<small>1.43</small>
 </button>
 <button type="button" class="planet-btn" data-planet="saturn" data-gravity="11.19" aria-pressed="false">
 <span class="planet-icon" style="--planet-colour:#d1b885" aria-hidden="true">
@@ -102,8 +114,16 @@
 <span>Neptune</span>
 <small>11.27</small>
 </button>
+<button type="button" class="planet-btn" data-planet="pluto" data-gravity="0.62" aria-pressed="false">
+<span class="planet-icon" style="--planet-colour:#b5a999" aria-hidden="true">
+</span>
+<span>Pluto</span>
+<small>0.62</small>
+</button>
 </div>
-<p class="field-note" id="environment-note">No air drag. Gravity points towards the centre of a non-rotating planet.</p>
+<button type="button" class="planet-fact-button" id="planet-fact-button" aria-haspopup="dialog" aria-controls="planet-fact-dialog">
+<span id="planet-fact-button-label">Earth fact</span><span aria-hidden="true">↗</span>
+</button>
 <details class="lab-details">
 <summary>Custom gravity</summary>
 <div class="details-content">
@@ -111,11 +131,11 @@
 <div class="slider-label-row">
 <span class="slider-label">
 <label for="slider-gravity">Surface gravity</label>
-<button type="button" class="tooltip-trigger" aria-label="About Surface gravity" data-tip="Gravity decreases with altitude and points towards the planet centre. Between preset values, the world properties interpolate. Gas giants use an imaginary launch platform at their reference radius.">?</button>
+<button type="button" class="tooltip-trigger" aria-label="About Surface gravity" data-tip="Gravity decreases with altitude and points towards the world centre. Between preset values, the world properties interpolate. Worlds without a solid surface use an imaginary launch level.">?</button>
 </span>
 <output class="slider-value" id="val-gravity" for="slider-gravity">9.81 m/s²</output>
 </div>
-<input type="range" id="slider-gravity" min="0.5" max="30" value="9.81" step="0.01" aria-label="Surface gravity">
+<input type="range" id="slider-gravity" min="0.5" max="300" value="9.81" step="0.001" aria-label="Surface gravity">
 </div>
 </div>
 </details>
@@ -528,6 +548,49 @@
 </canvas>
 </section>
 </main>
+<dialog class="planet-fact-dialog" id="planet-fact-dialog" aria-labelledby="planet-fact-title">
+<article class="planet-fact-card" id="planet-fact-card">
+<header class="planet-fact-hero">
+<div class="planet-fact-orb" id="planet-fact-orb" aria-hidden="true"></div>
+<div class="planet-fact-heading">
+<p class="planet-fact-kind" id="planet-fact-kind">ROCKY PLANET · HOME</p>
+<h2 id="planet-fact-title">Earth</h2>
+<p id="planet-fact-tagline">The only world known to have oceans and life.</p>
+</div>
+<form method="dialog">
+<button class="planet-fact-close" value="close" aria-label="Close planet fact">×</button>
+</form>
+</header>
+<section class="planet-fact-stats" aria-label="Top facts">
+<div><span>Mass</span><strong id="planet-fact-mass">—</strong></div>
+<div><span>Diameter</span><strong id="planet-fact-diameter">—</strong></div>
+<div><span>Distance from Sun</span><strong id="planet-fact-distance">—</strong></div>
+<div><span>Gravity</span><strong id="planet-fact-gravity">—</strong></div>
+<div><span title="How far the spin axis leans from upright">Axial tilt</span><strong id="planet-fact-tilt">—</strong></div>
+<div><span>Day length</span><strong id="planet-fact-day">—</strong></div>
+<div><span>Year / orbit</span><strong id="planet-fact-year">—</strong></div>
+<div><span>Average temp</span><strong id="planet-fact-temp-average">—</strong></div>
+<div><span>Minimum temp</span><strong id="planet-fact-temp-min">—</strong></div>
+<div><span>Maximum temp</span><strong id="planet-fact-temp-max">—</strong></div>
+</section>
+<div class="planet-fact-details">
+<section>
+<p class="planet-fact-section-label">ATMOSPHERE</p>
+<h3>What surrounds it?</h3>
+<p id="planet-fact-atmosphere"></p>
+</section>
+<section>
+<p class="planet-fact-section-label">EXPLORATION</p>
+<h3>Our visits</h3>
+<p id="planet-fact-exploration"></p>
+</section>
+</div>
+<footer class="planet-fact-footer">
+<p><span id="planet-fact-temperature-note"></span> <span class="planet-fact-tilt-note">Axial tilt is the lean of the spin axis; Earth’s lean drives our seasons.</span></p>
+<a href="https://nssdc.gsfc.nasa.gov/planetary/factsheet/" target="_blank" rel="noreferrer">Rounded NASA / JPL data ↗</a>
+</footer>
+</article>
+</dialog>
 <script type="module" src="/src/main.ts">
 </script>
 </body>

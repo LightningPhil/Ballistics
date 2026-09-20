@@ -1,7 +1,9 @@
 # Launch Lab — New Planet Characters Plan
 
 > **Status:** Implemented. Historical design plan, kept for the character
-> concepts and state-machine rationale. All nine characters exist; the
+> concepts and state-machine rationale. Eleven characters now exist across the
+> twelve selectable worlds; Pluto's quiet ice bear and Ganymede's giant squid
+> were added later, while the Sun deliberately has no character. The
 > shipped rigs live in `src/crew.ts`, `src/planet-guests.ts` and
 > `src/aquatic-characters.ts`, cloud-guest motion in `src/cloud-guests.ts`,
 > and the state machine in `src/main.ts`. File names below (`main.js`,
@@ -17,6 +19,8 @@
 
 | Planet   | Gravity | `isGas` | `features`  | Existing Character | New Character             |
 |----------|---------|---------|-------------|-------------------|---------------------------|
+| Pluto    | 0.62    | false   | `pluto`     | —                 | 🐻‍❄️ Crystalline ice bear   |
+| Ganymede | 1.428   | false   | `ganymede`  | —                 | 🦑 Giant squid             |
 | Moon     | 1.62    | false   | `moon`      | ✅ Spaceman        | —                         |
 | Mercury  | 3.70    | false   | `mercury`   | —                 | 🤖 Robot                  |
 | Mars     | 3.72    | false   | `mars`      | ✅ Alien           | —                         |
@@ -26,6 +30,7 @@
 | Saturn   | 11.19   | true    | `saturn`    | —                 | 🛥️ Submarine              |
 | Neptune  | 11.27   | true    | `deepgas`   | —                 | ⛄ Snowman                |
 | Jupiter  | 25.92   | true    | `jupiter`   | —                 | 🐋 Whale                  |
+| Sun      | 274.00  | true    | `sun`       | —                 | None by design            |
 
 ---
 

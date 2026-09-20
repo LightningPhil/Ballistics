@@ -3,6 +3,7 @@ import type { CrewPose } from './crew.ts';
 interface AquaticPose extends CrewPose {
   surfaceAmount?: number;
   portrait?: boolean;
+  fleeing?: boolean;
   spoutParticles?: { ox: number; oy: number; life: number }[];
 }
 
@@ -87,8 +88,10 @@ export function drawWhale(ctx: CanvasRenderingContext2D, cx: number, footY: numb
   const t = char.reducedMotion ? 0 : finite(char.stateTimer);
   const state = char.portrait ? 'idle' : char.state || 'spouting';
   const direction = char.direction === -1 ? -1 : 1;
-  const surface = char.portrait ? 1 : Math.max(.34, Math.min(1, finite(char.surfaceAmount, 1)));
+  const surface = char.portrait ? 1 : Math.max(.46, Math.min(1, finite(char.surfaceAmount, 1)));
   const startled = state === 'startled' || state === 'rocket_startled';
+  const breathing = state === 'breathing';
+  const fleeing = !!char.fleeing || startled;
   const blinking = !char.reducedMotion && t > 0 && t % 4.7 > 4.53;
 
   ctx.save();
@@ -115,7 +118,7 @@ export function drawWhale(ctx: CanvasRenderingContext2D, cx: number, footY: numb
   // An upswept peduncle and two broad flukes make a whale even in silhouette.
   ctx.save();
   ctx.translate(-57, -36);
-  ctx.rotate(Math.sin(t * 1.6) * .045);
+  ctx.rotate(Math.sin(t * (fleeing ? 7.5 : 1.6)) * (fleeing ? .16 : .045));
   shape(ctx, BLUE_DARK, () => {
     ctx.moveTo(13, 18);
     ctx.bezierCurveTo(-12, 13, -31, -2, -33, -35);
@@ -178,7 +181,7 @@ export function drawWhale(ctx: CanvasRenderingContext2D, cx: number, footY: numb
 
   // The near flipper sweeps down, and gives an occasional unhurried wave.
   ctx.save(); ctx.translate(-7,-29);
-  ctx.rotate(char.reaction === 'escape' ? -.58 : Math.sin(t * 1.8) * .06);
+  ctx.rotate(fleeing || char.reaction === 'escape' ? -.58 : Math.sin(t * 1.8) * .06);
   shape(ctx, BLUE_DARK, () => {
     ctx.moveTo(-10,-3); ctx.bezierCurveTo(-7,11,12,27,22,24);
     ctx.bezierCurveTo(23,10,8,-2,2,-7);
@@ -198,6 +201,17 @@ export function drawWhale(ctx: CanvasRenderingContext2D, cx: number, footY: numb
   stroke(ctx, () => { ctx.moveTo(38,-68); ctx.quadraticCurveTo(44,-72,51,-67); }, BLUE_DARK, 2.4);
   if (startled) {
     oval(ctx,60,-34,4.5,6.5,INK,false);
+  } else if (breathing && surface > .8) {
+    const opening = 1 + Math.sin(t * 4) * .08;
+    ctx.save(); ctx.translate(58,-34); ctx.scale(opening,opening);
+    oval(ctx,0,0,10,7,INK);
+    oval(ctx,-1,2,5.8,2.7,'#cc7f6e',false);
+    ctx.restore();
+    // Two soft inward curls make the open mouth read as a comic gulp of air.
+    stroke(ctx, () => {
+      ctx.moveTo(83,-42); ctx.bezierCurveTo(74,-47,72,-38,66,-37);
+      ctx.moveTo(87,-29); ctx.bezierCurveTo(78,-24,73,-29,67,-31);
+    }, '#d8ece4', 2.4);
   } else {
     stroke(ctx, () => {
       ctx.moveTo(28,-36); ctx.bezierCurveTo(40,-25,58,-25,65,-40);
@@ -236,10 +250,12 @@ export function drawWhale(ctx: CanvasRenderingContext2D, cx: number, footY: numb
 export function drawSubmarine(ctx: CanvasRenderingContext2D, cx: number, footY: number, s: number, char: AquaticPose) {
   const t = char.reducedMotion ? 0 : finite(char.stateTimer);
   const state = char.portrait ? 'idle' : char.state || 'idle';
-  const surface = char.portrait ? 1 : Math.max(.34, Math.min(1, finite(char.surfaceAmount, 1)));
+  const surface = char.portrait ? 1 : Math.max(.46, Math.min(1, finite(char.surfaceAmount, 1)));
   const direction = char.direction === -1 ? -1 : 1;
   const startled = state === 'startled' || state === 'rocket_startled';
-  const swimming = ['walking','returning','running_away'].includes(state);
+  const hatchPeek = state === 'hatch_peek';
+  const fleeing = !!char.fleeing || startled;
+  const swimming = ['walking','returning','running_away','cruising','surfacing','diving','startled'].includes(state);
   const bob = char.portrait ? 0 : Math.sin(t * 1.8) * 1.8;
 
   ctx.save(); ctx.translate(cx,footY); ctx.scale(s / 80,s / 80); ink(ctx);
@@ -261,7 +277,7 @@ export function drawSubmarine(ctx: CanvasRenderingContext2D, cx: number, footY: 
   });
   stroke(ctx, () => { ctx.moveTo(-49,-29); ctx.lineTo(-74,-29); }, INK, 5);
   stroke(ctx, () => { ctx.moveTo(-53,-29); ctx.lineTo(-75,-29); }, BRASS, 2.5);
-  const propeller = t * (state === 'running_away' ? 12 : swimming ? 7 : 2);
+  const propeller = t * (fleeing || state === 'running_away' ? 12 : swimming ? 7 : 2);
   const bladeSpan = 8 + Math.abs(Math.cos(propeller)) * 5;
   oval(ctx,-75,-29-bladeSpan*.6,4,bladeSpan,BRASS);
   oval(ctx,-75,-29+bladeSpan*.6,4,bladeSpan,'#e9bd72');
@@ -278,10 +294,39 @@ export function drawSubmarine(ctx: CanvasRenderingContext2D, cx: number, footY: 
   box(ctx,14,-89+retract,10,13,4,INK);
   box(ctx,19,-86+retract,5,7,2,'#adcdd1');
   stroke(ctx, () => { ctx.moveTo(1,-78+retract); ctx.lineTo(1,-67); }, '#c6d3cd', 1.7);
+  if (hatchPeek) {
+    const look = Math.sin(t * 1.7);
+    // A curious deckhand rises behind the conning tower and scans the horizon.
+    shape(ctx,'#3f6674',() => {
+      ctx.moveTo(-20,-61); ctx.quadraticCurveTo(-18,-72,-8,-73);
+      ctx.quadraticCurveTo(3,-72,5,-61);
+    });
+    oval(ctx,-8,-80,9,10,'#e8b780');
+    oval(ctx,-17,-80,2.2,3,'#e8b780',false);
+    oval(ctx,1,-80,2.2,3,'#e8b780',false);
+    shape(ctx,'#fff3d9',() => {
+      ctx.moveTo(-18,-86); ctx.quadraticCurveTo(-16,-94,-7,-94);
+      ctx.quadraticCurveTo(2,-94,3,-86); ctx.lineTo(0,-84); ctx.lineTo(-16,-84);
+    });
+    box(ctx,-17,-87,19,4,2,INK);
+    oval(ctx,-11+look*1.2,-80,1.4,2,INK,false);
+    oval(ctx,-4+look*1.2,-80,1.4,2,INK,false);
+    stroke(ctx,() => { ctx.moveTo(-12,-75); ctx.quadraticCurveTo(-8,-72,-4,-75); },INK,1.4);
+    stroke(ctx,() => {
+      ctx.moveTo(-17,-67); ctx.quadraticCurveTo(-24,-76,-17,-82);
+      ctx.lineTo(-12,-84);
+    },'#3f6674',3);
+  }
   box(ctx,-18,-65,37,23,8,'#d9b471');
   box(ctx,-13,-68,28,7,3,CREAM);
   box(ctx,-9,-60,10,9,3,'#587983');
   stroke(ctx, () => { ctx.moveTo(6,-59); ctx.lineTo(12,-59); ctx.moveTo(6,-55); ctx.lineTo(12,-55); }, '#917344', 1.5);
+  if (hatchPeek) {
+    oval(ctx,-8,-67,11,3,INK,false);
+    stroke(ctx,() => { ctx.moveTo(-18,-69); ctx.lineTo(-25,-80); ctx.lineTo(-17,-83); },BRASS,3.2);
+  } else {
+    oval(ctx,-8,-68,10,2.2,'#9f7b48');
+  }
 
   const hullPath = () => {
     ctx.moveTo(-52,-42);

@@ -8,6 +8,7 @@ export type FlightRecord = {
   maxHeight: number; minX: number; maxX: number; launchX: number;
 };
 export const PHYSICS_STEP = 1 / 120;
+export const MIN_CANNON_PATH_POINTS = 20;
 export const MAX_RECORD_TIME = 21600;
 let nextId = 1;
 
@@ -106,6 +107,15 @@ export async function recordFlight(mode: FlightRecord['mode'], config: any, init
   // The final state wins equal timestamps, especially a rejected ignition at t=0.
   run.samples = [...new Map(run.samples.map(sample => [sample.time, sample])).values()]
     .sort((a, b) => a.time - b.time);
+  if (mode === 'cannon' && run.duration > 0 && run.samples.length < MIN_CANNON_PATH_POINTS) {
+    // Very high gravity can make a complete flight shorter than the normal
+    // 0.1 s recording interval. Re-evaluate the canonical solution at evenly
+    // spaced inspection times so the plotted arc still has a useful shape.
+    const plotSamples = Array.from({ length: MIN_CANNON_PATH_POINTS }, (_, index) =>
+      sampleFlight(run, run.duration * index / (MIN_CANNON_PATH_POINTS - 1)));
+    run.samples = [...new Map([...plotSamples, ...run.samples].map(sample => [sample.time, sample])).values()]
+      .sort((a, b) => a.time - b.time);
+  }
   for (const event of run.events) {
     if (event.kind === 'apex' && event.time !== state.apexTime) event.label = 'Local high point';
   }

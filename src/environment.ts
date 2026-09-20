@@ -1,6 +1,7 @@
 /** Shared environment for the solver, preview and planet renderer.
  * Pressure is a deliberately simple exponential atmosphere; drag is not modelled.
- * Gas giants use a fictional launch platform at the one-bar reference level.
+ * Worlds without a solid surface use a fictional launch platform at the
+ * stated reference level.
  * Approximate pressure/scale-height data: NASA NSSDCA planetary fact sheets,
  * https://nssdc.gsfc.nasa.gov/planetary/factsheet/ (accessed September 2026).
  * The radius/gravity pairs retain the app's existing spherical planet model.
@@ -16,6 +17,8 @@ export interface Environment {
 }
 
 export const ENVIRONMENTS: readonly Environment[] = Object.freeze([
+  { name: 'pluto', gravity: 0.62, radius: 1188300, surfacePressure: 1, scaleHeight: 50000, isGas: false, interpolated: false },
+  { name: 'ganymede', gravity: 1.428, radius: 2634100, surfacePressure: 0, scaleHeight: 1, isGas: false, interpolated: false },
   { name: 'moon', gravity: 1.62, radius: 1737400, surfacePressure: 0, scaleHeight: 1, isGas: false, interpolated: false },
   { name: 'mercury', gravity: 3.7, radius: 2439700, surfacePressure: 0, scaleHeight: 1, isGas: false, interpolated: false },
   { name: 'mars', gravity: 3.72, radius: 3389500, surfacePressure: 636, scaleHeight: 11000, isGas: false, interpolated: false },
@@ -25,6 +28,7 @@ export const ENVIRONMENTS: readonly Environment[] = Object.freeze([
   { name: 'saturn', gravity: 11.19, radius: 58232000, surfacePressure: 100000, scaleHeight: 59500, isGas: true, interpolated: false },
   { name: 'neptune', gravity: 11.27, radius: 24622000, surfacePressure: 100000, scaleHeight: 19700, isGas: true, interpolated: false },
   { name: 'jupiter', gravity: 25.92, radius: 69911000, surfacePressure: 100000, scaleHeight: 27000, isGas: true, interpolated: false },
+  { name: 'sun', gravity: 274, radius: 695700000, surfacePressure: 12500, scaleHeight: 150000, isGas: true, interpolated: false },
 ].map(environment => Object.freeze(environment)));
 
 /** Radius interpolation exactly matches the historical renderer. Intermediate
@@ -47,7 +51,7 @@ export function resolveEnvironment(gravity: number): Environment {
       surfacePressure: lo.surfacePressure + (hi.surfacePressure - lo.surfacePressure) * t,
       scaleHeight: lo.scaleHeight + (hi.scaleHeight - lo.scaleHeight) * t };
   }
-  return { ...ENVIRONMENTS[5], gravity: g };
+  return { ...ENVIRONMENTS.find(environment => environment.name === 'earth')!, gravity: g };
 }
 
 export function pressureAtAltitude(environment: Pick<Environment, 'surfacePressure' | 'scaleHeight'>, altitude: number): number {

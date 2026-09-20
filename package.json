@@ -23,7 +23,7 @@
     "url": "https://github.com/LightningPhil/Ballistics/issues"
   },
   "homepage": "https://github.com/LightningPhil/Ballistics#readme",
-  "description": "Launch Lab: a playful cannon and rocket physics sandbox with recorded, inspectable flights on nine worlds.",
+  "description": "Launch Lab: a playful cannon and rocket physics sandbox with recorded, inspectable flights on twelve worlds.",
   "devDependencies": {
     "typescript": "^5.9.3",
     "vite": "^7.3.1",

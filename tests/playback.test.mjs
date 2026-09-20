@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PlaybackClock, automaticRate } from '../src/playback.ts';
-import { PHYSICS_STEP, recordFlight, sampleFlight, compatibleRuns } from '../src/flight.ts';
+import { MIN_CANNON_PATH_POINTS, PHYSICS_STEP, recordFlight, sampleFlight, compatibleRuns } from '../src/flight.ts';
 import { Physics } from '../src/physics.ts';
 import { RocketPhysics } from '../src/rocket_physics.ts';
 import { resolveEnvironment } from '../src/environment.ts';
@@ -65,6 +65,20 @@ test('recorded cannon path, event seeking and replay share one physics solution'
   assert.equal(run.config.gravity, 9.81);
   assert.equal(compatibleRuns(run, {...run,config}),false);
 });
+
+test('short Sun cannon flights retain at least twenty plotted path points', async () => {
+  const environment = resolveEnvironment(274);
+  const config = { gravity: environment.gravity, environment, planetRadius: environment.radius,
+    angle: 45, mass: 5, force: 500, barrelLength: 2 };
+  const initial = Physics.createProjectile(2, 2, 20, 45, 5, environment.radius);
+  const run = await recordFlight('cannon', config, initial);
+  assert.equal(run.outcome, 'impact');
+  assert.ok(run.duration < .5, 'the regression case is a genuinely short high-gravity flight');
+  assert.ok(run.samples.length >= MIN_CANNON_PATH_POINTS);
+  assert.equal(new Set(run.samples.map(sample => sample.time)).size, run.samples.length);
+  assert.deepEqual(run.samples.at(-1), sampleFlight(run, run.duration));
+});
+
 test('failed launch finishes immediately and retains fuel; long recording is cancellable', async () => {
   const environment = resolveEnvironment(9.81);
   const config = {gravity:9.81,environment,planetRadius:environment.radius,propellantId:'LOX_RP1',
