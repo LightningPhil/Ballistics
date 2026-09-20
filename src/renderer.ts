@@ -1576,18 +1576,18 @@ function drawBall(physX, physY, squashX, squashY) {
   ctx.translate(cx, cy);
   ctx.scale(sx, sy);
 
-  ctx.fillStyle = 'rgba(0,0,0,0.2)';
-  ctx.beginPath(); ctx.arc(2,2,r,0,Math.PI*2); ctx.fill();
-
-  var grad = ctx.createRadialGradient(-1,-1,1, 0,0,r);
-  grad.addColorStop(0, '#666');
-  grad.addColorStop(0.6, '#333');
-  grad.addColorStop(1, '#1a1a1a');
+  var grad = ctx.createRadialGradient(-r*.3,-r*.35,r*.08,0,0,r);
+  grad.addColorStop(0, '#a5b7b7');
+  grad.addColorStop(0.45, '#486573');
+  grad.addColorStop(1, '#203846');
   ctx.fillStyle = grad;
   ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.fill();
+  var skyLum = env.skyMid[0]*.299+env.skyMid[1]*.587+env.skyMid[2]*.114;
+  ctx.strokeStyle = skyLum < 100 || planetViewFrac > .35 ? '#f2d693' : '#263e49';
+  ctx.lineWidth = Math.max(1,r*.12);ctx.stroke();
 
-  ctx.fillStyle = 'rgba(255,255,255,0.3)';
-  ctx.beginPath(); ctx.arc(-r*0.25,-r*0.35,r*0.35,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,250,229,.65)';
+  ctx.beginPath();ctx.arc(-r*.3,-r*.35,r*.18,0,Math.PI*2);ctx.fill();
 
   ctx.restore();
 }
@@ -1623,36 +1623,36 @@ function drawTrajectoryDot(physX, physY) {
 
 // ── Flags ──────────────────────────────────────────────────────────────────
 function drawFlag(physX, shotNumber, springProgress) {
-  var baseX = toCanvasX(physX), baseY = groundYAtPhysX(physX);
-  var sp = (typeof springProgress === 'number') ? springProgress : 1;
+  var position = toCanvas(physX,0);
+  var sp = (typeof springProgress === 'number') ? clamp(springProgress,0,1) : 1;
   var maxH = Math.max(22, 0.65*currentPPM);
   var flagH = maxH * sp;
   if (sp < 1) flagH = maxH*(1 - Math.pow(1-sp,3)*Math.cos(sp*Math.PI*3));
 
-  ctx.strokeStyle = '#ccc';
+  ctx.save();ctx.translate(position.x,position.y);ctx.rotate(surfaceNormalAngle(physX));
+  ctx.lineCap='round';ctx.lineJoin='round';
+  ctx.strokeStyle = '#354d50';
   ctx.lineWidth = Math.max(1.5, currentPPM*0.02);
-  ctx.beginPath();
-  ctx.moveTo(baseX, baseY);
-  ctx.lineTo(baseX, baseY-flagH);
-  ctx.stroke();
+  ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,-flagH);ctx.stroke();
 
   if (flagH > 8) {
-    var pW = Math.max(12, 0.3*currentPPM);
-    ctx.fillStyle = '#e63946';
-    ctx.beginPath();
-    ctx.moveTo(baseX, baseY-flagH);
-    ctx.lineTo(baseX+pW, baseY-flagH+pW*0.3);
-    ctx.lineTo(baseX, baseY-flagH+pW*0.6);
-    ctx.closePath();
-    ctx.fill();
-
-    if (flagH > 18 && currentPPM > 8) {
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold '+Math.max(7, Math.round(currentPPM*0.11))+'px Courier New,monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText(shotNumber, baseX+pW*0.5, baseY-flagH+pW*0.45);
+    var pW = Math.max(16, 0.3*currentPPM);
+    var pH = Math.max(12,pW*.62);
+    ctx.fillStyle = '#b9674d';
+    ctx.beginPath();ctx.moveTo(1,-flagH);
+    ctx.lineTo(pW,-flagH+pH*.1);ctx.lineTo(pW*.8,-flagH+pH*.5);
+    ctx.lineTo(pW,-flagH+pH*.9);ctx.lineTo(1,-flagH+pH);ctx.closePath();
+    ctx.fill();ctx.lineWidth=1;ctx.stroke();
+    ctx.strokeStyle='rgba(255,237,198,.45)';
+    ctx.beginPath();ctx.moveTo(3,-flagH+2);ctx.lineTo(pW-3,-flagH+pH*.1+2);ctx.stroke();
+    if (flagH > 18) {
+      ctx.fillStyle = '#fff5d9';
+      ctx.font = '600 '+Math.max(8,Math.min(12,currentPPM*.11))+'px system-ui, sans-serif';
+      ctx.textAlign = 'center';ctx.textBaseline='middle';
+      ctx.fillText(String(shotNumber),pW*.4,-flagH+pH*.52,pW*.62);
     }
   }
+  ctx.restore();
 }
 
 // ── Craters (solid planets) ────────────────────────────────────────────────
@@ -2533,11 +2533,16 @@ function getRocketPadPosition(angleDeg, epsilon = 20) {
  *        flame trench, and guide rail.
  */
 function drawLaunchTower(angleDeg) {
-  var s = Math.max(currentPPM, 18);
+  var s = currentPPM;
   var _tw = toCanvas(TOWER_BASE_X_M, 0);
   var baseX = _tw.x;
   var baseY = _tw.y;            // ground level
   var rad = angleDeg * Math.PI / 180;
+
+  if (s < 3) {
+    ctx.save();ctx.fillStyle='#e5bd6f';ctx.beginPath();
+    ctx.arc(baseX,baseY,2.5,0,Math.PI*2);ctx.fill();ctx.restore();return;
+  }
 
   // Surface-normal tilt for curved ground
   var tilt = surfaceNormalAngle(TOWER_BASE_X_M);
@@ -2550,20 +2555,20 @@ function drawLaunchTower(angleDeg) {
 
   // ── Launch Pad ──
   var padW = PAD_WIDTH_M * s;
-  var padH = Math.max(4, PAD_HEIGHT_M * s);
+  var padH = PAD_HEIGHT_M * s;
   var padGrad = ctx.createLinearGradient(0, baseY - padH, 0, baseY);
-  padGrad.addColorStop(0, '#888');
-  padGrad.addColorStop(1, '#666');
+  padGrad.addColorStop(0, '#8f9e96');
+  padGrad.addColorStop(1, '#536864');
   ctx.fillStyle = padGrad;
   ctx.fillRect(baseX - padW / 2, baseY - padH, padW, padH);
   // Pad edge highlight
-  ctx.strokeStyle = '#999';
+  ctx.strokeStyle = '#b0b9a3';
   ctx.lineWidth = 1;
   ctx.strokeRect(baseX - padW / 2, baseY - padH, padW, padH);
 
   // Bolt details on pad
-  ctx.fillStyle = '#555';
-  var boltR = Math.max(1.5, s * 0.02);
+  ctx.fillStyle = '#d6b979';
+  var boltR = s * 0.02;
   var boltY = baseY - padH / 2;
   for (var b = 0; b < 5; b++) {
     var boltX = baseX - padW * 0.4 + (padW * 0.8) * (b / 4);
@@ -2573,8 +2578,8 @@ function drawLaunchTower(angleDeg) {
   }
 
   // ── Flame Trench ──
-  var trenchW = Math.max(10, 0.6 * s);
-  var trenchD = Math.max(4, 0.12 * s);
+  var trenchW = 0.6 * s;
+  var trenchD = 0.12 * s;
   ctx.fillStyle = 'rgba(20,18,15,0.7)';
   ctx.beginPath();
   ctx.ellipse(baseX, baseY + 1, trenchW / 2, trenchD, 0, 0, Math.PI);
@@ -2596,7 +2601,7 @@ function drawLaunchTower(angleDeg) {
   var towerOff = railW * 1.2;
 
   // Two side rails (offset to the right)
-  ctx.strokeStyle = '#c04020';  // industrial orange-red
+  ctx.strokeStyle = '#b16b4c';
   ctx.lineWidth = Math.max(2, s * 0.035);
   // Left rail (near the guide rail)
   ctx.beginPath();
@@ -2610,7 +2615,7 @@ function drawLaunchTower(angleDeg) {
   ctx.stroke();
 
   // Cross-braces (diagonal lattice, also offset)
-  ctx.strokeStyle = '#a03818';
+  ctx.strokeStyle = '#815c48';
   ctx.lineWidth = Math.max(1, s * 0.018);
   var numBraces = Math.max(4, Math.round(towerH / 25));
   for (var i = 0; i < numBraces; i++) {
@@ -2643,7 +2648,7 @@ function drawLaunchTower(angleDeg) {
   }
 
   // ── Guide Rail (stays centred for the rocket to sit on) ──
-  ctx.strokeStyle = '#ddd';
+  ctx.strokeStyle = '#e9dfc2';
   ctx.lineWidth = Math.max(1.5, s * 0.025);
   ctx.beginPath();
   ctx.moveTo(0, 0);

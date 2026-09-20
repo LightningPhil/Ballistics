@@ -30,22 +30,23 @@ export class FlightDeck {
     const el = document.createElement('section');
     el.className = 'flight-deck'; el.setAttribute('aria-label', 'Flight clock and notebook');
     el.innerHTML = `<div class="chronograph" aria-hidden="true"><svg viewBox="0 0 100 100">
+      <circle class="clock-bezel" cx="50" cy="50" r="48"/>
       <circle class="clock-face" cx="50" cy="50" r="45"/>
-      ${Array.from({length: 60}, (_, i) => `<line class="clock-tick" transform="rotate(${i * 6} 50 50)" x1="50" y1="${i % 5 ? 8 : 7}" x2="50" y2="${i % 5 ? 10 : 14}"/>`).join('')}
+      ${Array.from({length: 60}, (_, i) => `<line class="clock-tick${i % 5 ? '' : ' clock-tick-major'}" transform="rotate(${i * 6} 50 50)" x1="50" y1="${i % 5 ? 8 : 7}" x2="50" y2="${i % 5 ? 10 : 14}"/>`).join('')}
       <text x="50" y="25" text-anchor="middle">60</text><text x="78" y="54" text-anchor="middle">15</text>
       <text x="50" y="85" text-anchor="middle">30</text><text x="22" y="54" text-anchor="middle">45</text>
       <circle class="minute-face" cx="50" cy="64" r="11"/><line id="clock-minute" x1="50" y1="64" x2="50" y2="56"/>
       <line id="clock-hand" x1="50" y1="56" x2="50" y2="16"/><circle class="clock-pin" cx="50" cy="50" r="3"/>
-      </svg></div>
+      </svg><span class="clock-legend">sec · 30 min</span></div>
       <div class="flight-instruments"><div class="clock-heading"><span class="eyebrow">FLIGHT TIME</span>
       <output id="flight-time">00:00.0</output><output id="flight-rate">Auto · 1.0×</output></div>
       <div class="flight-controls"><button id="flight-pause" type="button" disabled>Pause</button>
       <button id="flight-replay" type="button" disabled>Replay</button><button id="flight-next" type="button" disabled>Next moment</button>
       <label class="rate-choice">Time <select id="flight-speed" aria-label="Time speed"><option value="auto">Auto</option>
       <option value="1">1×</option><option value="4">4×</option><option value="16">16×</option><option value="64">64×</option></select></label></div>
-      <label class="timeline-label" for="flight-timeline">Inspect flight <span id="flight-duration">Ready to launch</span></label>
+      <div class="flight-timeline"><label class="timeline-label" for="flight-timeline">Inspect flight <span id="flight-duration">Ready to launch</span></label>
       <input id="flight-timeline" type="range" min="0" max="1" step="0.01" value="0" disabled aria-label="Inspect recorded flight time">
-      </div>
+      </div></div>
       <div class="flight-notebook"><p id="flight-status" role="status" aria-live="polite">Pick a launch. Make a prediction. See what happens.</p>
       <div class="notebook-tools"><label>Target <input id="flight-target" type="number" value="45" min="0" max="100000000" step="1" aria-label="Target distance in metres"> m</label>
       <button id="flight-pin" type="button" disabled aria-pressed="false">Pin this flight</button>

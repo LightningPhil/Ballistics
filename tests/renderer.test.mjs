@@ -121,9 +121,10 @@ test('initial recorded rocket and prelaunch sprite share the same centre and noz
 
 test('all crew reactions and annotations render finite geometry at close and planet scales', () => {
   const { context } = harness();
-  for (const ppm of [80, .00003, 1e-8]) {
+  for (const ppm of [80, 10, .00003, 1e-8]) {
     Renderer.setZoomImmediate(ppm); Renderer.updateWorld(0);
     Renderer.clear(); Renderer.drawWorld(); Renderer.drawCannon(45, 0);
+    Renderer.drawBall(10, 4, 1, 1); Renderer.drawFlag(20, 1, 1); Renderer.drawLaunchTower(85);
     Renderer.drawGhost([{ x: 1, y: 1 }, { x: 100, y: 10 }, { x: 200, y: 0 }]);
     Renderer.drawTarget(20, 'cannon'); Renderer.drawTarget(100, 'rocket');
     for (const type of ['golfer', 'alien', 'spaceman', 'robot', 'icerobot', 'newt', 'whale', 'submarine', 'snowman']) {

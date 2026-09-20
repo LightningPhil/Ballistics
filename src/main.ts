@@ -2,6 +2,7 @@ import './style.css';
 import { FlightDeck } from './flight-deck.ts';
 import { recordFlight, sampleFlight, compatibleRuns, type FlightRecord } from './flight.ts';
 import { resolveEnvironment } from './environment.ts';
+import { cannonSetupZoom } from './camera.ts';
 import { Physics } from './physics.ts';
 import { RocketPropellants } from './rocket_propellants.ts';
 import { RocketPhysics } from './rocket_physics.ts';
@@ -772,6 +773,23 @@ function clamp(v, lo, hi) {
 }
 
 // ── Zoom computation ───────────────────────────────────────────────────────
+function frameCannonSetup() {
+  if (currentMode !== 'cannon' || viewActive || deck.busy) return;
+  const values = UI.getValues();
+  const rebuilding = barrelAnimState !== 'idle';
+  Renderer.setTargetZoom(cannonSetupZoom({
+    width: Renderer.getWidth(), height: Renderer.getHeight(),
+    lengths: rebuilding
+      ? [values.barrelLength, barrelDisplayedLen, barrelOldLen, barrelTargetLen]
+      : [values.barrelLength],
+    angles: rebuilding
+      ? [values.angle, barrelDisplayedAngle, barrelOldAngle, barrelTargetAngle]
+      : [values.angle],
+    rebuilding, defaultPPM: Renderer.DEFAULT_PPM,
+    baseX: Renderer.CANNON_BASE_X_M, baseY: Renderer.CANNON_BASE_Y_M,
+  }));
+}
+
 function computeNeededZoom(rangeMetres, maxHeightMetres, marginFraction?) {
   var cW = Renderer.getWidth();
   var gY = Renderer.getGroundY();
@@ -1381,6 +1399,9 @@ function loop(timestamp) {
   const sceneLaunch = document.getElementById('scene-launch') as HTMLButtonElement;
   if (sceneLaunch) sceneLaunch.disabled = deck.busy || viewActive && !deck.clock.paused;
 
+  // Anticipate the complete setup/rebuild envelope before smoothly easing the
+  // idle camera. Recorded flights retain their existing framing policy.
+  frameCannonSetup();
   // Update renderer world (environment blend + zoom animation)
   Renderer.updateWorld(dt);
 
