@@ -61,7 +61,7 @@ test('DPR and changing playback toolbar height preserve CSS coordinates', () => 
   assert.equal(h.canvas.height, 410);
 });
 
-test('target dragging inverts flat and spherical projection, including planet view', () => {
+test('screen coordinates invert flat and spherical projection, including planet view', () => {
   harness();
   for (const ppm of [80, .00003, 1e-8]) {
     Renderer.setZoomImmediate(ppm); Renderer.updateWorld(0);
@@ -135,7 +135,7 @@ test('character close-up stays visible when silent, muted, or outside the world 
     for (const ppm of [80, 1e-8]) {
       Renderer.setZoomImmediate(ppm); Renderer.updateWorld(0);
       h.calls.length = 0;
-      Renderer.drawSceneNotes(NaN, 'cannon', character);
+      Renderer.drawSceneNotes('cannon', character);
       const silentPortrait = h.calls.slice();
       assert.ok(silentPortrait.some(call => call.name === 'arc' &&
         call.args[0] === width - 52 && call.args[1] === 90 && call.args[2] === 36), 'Portrait keeps its top-right screen anchor');
@@ -147,14 +147,28 @@ test('character close-up stays visible when silent, muted, or outside the world 
         { visible: false, x: 1e12 },
       ]) {
         h.calls.length = 0;
-        Renderer.drawSceneNotes(NaN, 'cannon', { ...character, ...extra });
+        Renderer.drawSceneNotes('cannon', { ...character, ...extra });
         assert.deepEqual(h.calls, silentPortrait, 'World visibility and speech settings do not remove or alter the portrait');
       }
     }
   }
   h.calls.length = 0;
-  Renderer.drawSceneNotes(NaN, 'cannon', null);
+  Renderer.drawSceneNotes('cannon', null);
   assert.equal(h.calls.length, 0, 'No character means no portrait');
+});
+
+test('watching close-ups aim from their screen position while leaving the ground bearing intact', () => {
+  const h = harness();
+  for (const x of [0, 20]) {
+    const target = Object.freeze({ x, y: 3 });
+    const expected = Renderer.toCanvas(x, 3).x < h.bounds.width - 52 ? -1 : 1;
+    const character = Object.freeze({ type: 'golfer', visible: true, x: 8, state: 'watching', stateTimer: 1,
+      watchTarget: target, watchAim: Object.freeze({ yaw: -expected, elevation: .6 }) });
+    h.calls.length = 0;
+    Renderer.drawSceneNotes('rocket', character);
+    assert.ok(h.calls.some(call => call.name === 'scale' && call.args[0] === expected && call.args[1] === 1));
+    assert.equal(character.watchAim.yaw, -expected);
+  }
 });
 
 test('flattened and submerged world characters retain a recognizable close-up without changing world state', () => {
@@ -162,7 +176,7 @@ test('flattened and submerged world characters retain a recognizable close-up wi
   for (const type of characterTypes) {
     const character = { type, visible: true, x: 5, state: 'idle', stateTimer: 1, direction: 1, surfaceAmount: 1 };
     h.calls.length = 0;
-    Renderer.drawSceneNotes(NaN, 'cannon', character);
+    Renderer.drawSceneNotes('cannon', character);
     const normalPortrait = h.calls.slice();
     for (const extra of [{ state: 'squashed' }, { visible: false, state: 'running_away', x: 1e12, y: 1e12 },
       ...(['whale', 'submarine'].includes(type) ? [
@@ -174,40 +188,33 @@ test('flattened and submerged world characters retain a recognizable close-up wi
       const worldCharacter = Object.freeze({ ...character, ...extra });
       const original = { ...worldCharacter };
       h.calls.length = 0;
-      Renderer.drawSceneNotes(NaN, 'cannon', worldCharacter);
-      assert.deepEqual(h.calls, normalPortrait, `${type} remains recognizable`);
+      Renderer.drawSceneNotes('cannon', worldCharacter);
+      assert.ok(h.calls.some(({ name }) => name === 'fill'), `${type} remains painted`);
+      if (extra.state === 'squashed' || extra.state === 'running_away') assert.notDeepEqual(h.calls, normalPortrait, `${type} retains its activity`);
       assert.deepEqual(worldCharacter, original, 'Drawing the close-up does not mutate the world character');
     }
   }
 });
 
-test('ice bear and squid close-ups keep their framing through world movement, gait changes and flight zoom', () => {
+test('all close-ups follow activity independently of world location, visibility and flight zoom', () => {
   const h = harness();
   for (const width of [320, 960]) {
     h.bounds.width = width; h.resizeLayout();
-    for (const type of ['icebear', 'squid']) {
-      const character = { type, visible: true, x: 5, y: 0, state: 'idle', stateTimer: 0, direction: 1, upright: false };
-      h.calls.length = 0;
-      Renderer.drawSceneNotes(NaN, 'cannon', character);
-      const portrait = h.calls.slice();
-      const transforms = calls => calls.filter(({ name }) => ['translate', 'rotate', 'scale', 'transform', 'setTransform'].includes(name));
-      assert.ok(portrait.some(({ name, args }) => name === 'arc' &&
-        args[0] === width - 52 && args[1] === 90 && args[2] === 36), 'Portrait stays in its top-right frame');
-      for (const ppm of [80, 1e-8]) {
-        Renderer.setZoomImmediate(ppm); Renderer.updateWorld(0);
-        for (const state of ['walking', 'returning', 'running_away', 'startled', 'rocket_startled', 'squashed', 'off_screen']) {
-          for (const upright of [false, true]) {
-            const moving = Object.freeze({ ...character, state, upright, direction: -1,
-              x: 1e12, y: 1e8, stateTimer: 8.3, banter: false, visible: state !== 'off_screen' });
-            const original = { ...moving };
-            h.calls.length = 0;
-            Renderer.drawSceneNotes(NaN, 'cannon', moving);
-            assert.deepEqual(transforms(h.calls), transforms(portrait), `${type}/${state} keeps its portrait framing at ${ppm} PPM`);
-            if (!['startled', 'rocket_startled'].includes(state)) {
-              assert.deepEqual(h.calls, portrait, `${type}/${state} has a steady, visible portrait independently of the world`);
-            }
-            assert.deepEqual(moving, original, 'Portrait drawing leaves the world animation unchanged');
-          }
+    for (const type of characterTypes) {
+      for (const state of ['idle', 'walking', 'running_away', 'startled', 'squashed', 'diving', 'submerged', 'breaking', 'emerging', 'hatch_peek']) {
+        const character = { type, visible: true, x: 5, y: 0, state, stateTimer: .3, direction: -1, surfaceAmount: .6 };
+        h.calls.length = 0;
+        Renderer.drawSceneNotes('cannon', character);
+        const expected = h.calls.slice();
+        assert.ok(expected.some(({ name, args }) => name === 'arc' && args[0] === width - 52 && args[1] === 90 && args[2] === 36));
+        for (const ppm of [80, 1e-8]) {
+          Renderer.setZoomImmediate(ppm); Renderer.updateWorld(0);
+          const moving = Object.freeze({ ...character, x: 1e12, y: 1e8, visible: false });
+          const original = { ...moving };
+          h.calls.length = 0;
+          Renderer.drawSceneNotes('cannon', moving);
+          assert.deepEqual(h.calls, expected, type + '/' + state + ' keeps its pose when outside the world camera');
+          assert.deepEqual(moving, original);
         }
       }
     }
@@ -239,7 +246,7 @@ test('close-up speech only appears when enabled and remains inside the mobile sc
     bubbleText: 'My calculations need a snack.' };
   for (const banter of [undefined, true, false]) {
     h.calls.length = 0;
-    Renderer.drawSceneNotes(NaN, 'cannon', { ...character, banter });
+    Renderer.drawSceneNotes('cannon', { ...character, banter });
     const text = h.calls.filter(call => call.name === 'fillText');
     assert.equal(text.length > 0, banter !== false, 'Remarks can be muted independently of the portrait');
     if (text.length) assert.equal(text.map(call => call.args[0]).join(' '), character.bubbleText);
@@ -258,7 +265,7 @@ test('every planet, generic and event remark fits beside the portrait on a narro
     h.bounds.width = width; h.resizeLayout();
     for (const speech of remarks) {
       h.calls.length = 0;
-      Renderer.drawSceneNotes(NaN, 'cannon', {
+      Renderer.drawSceneNotes('cannon', {
         type: 'golfer', state: 'idle', reducedMotion: true, visible: false, bubbleText: speech,
       });
       const text = h.calls.filter(call => call.name === 'fillText');
@@ -281,13 +288,13 @@ test('all character reactions and annotations render finite geometry at close an
     Renderer.clear(); Renderer.drawWorld(); Renderer.drawCannon(45, 0);
     Renderer.drawBall(10, 4, 1, 1); Renderer.drawFlag(20, 1, 1); Renderer.drawLaunchTower(85);
     Renderer.drawGhost([{ x: 1, y: 1 }, { x: 100, y: 10 }, { x: 200, y: 0 }]);
-    Renderer.drawTarget(20, 'cannon'); Renderer.drawTarget(100, 'rocket');
+    Renderer.drawGolfFlag();
     for (const type of characterTypes) {
       for (const reaction of [undefined, 'coast', 'apex', 'impact', 'escape', 'fizzle']) {
         const character = { type, visible: true, x: 5, state: 'idle', stateTimer: 1, direction: 1,
           reaction, bubbleText: 'Now that is a very long way to walk.', surfaceAmount: 1 };
         Renderer.drawCharacter(character);
-        Renderer.drawSceneNotes(20, 'cannon', character);
+        Renderer.drawSceneNotes('cannon', character);
       }
     }
     for (const pose of ['running', 'carrying', 'screwing', 'panicked', 'celebrating']) {

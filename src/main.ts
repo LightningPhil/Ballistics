@@ -11,7 +11,13 @@ import { RocketPhysics } from './rocket_physics.ts';
 import { NozzleRender } from './nozzle_render.ts';
 import { Renderer } from './renderer.ts';
 import { UI } from './ui.ts';
-import { characterForWorld, nextIceBearGait } from './world-characters.ts';
+import { characterForWorld } from './world-characters.ts';
+import { chooseIdleLook, clearRocketWatch, rocketWatchAim } from './crew-watch.ts';
+import { cancelBusiness, createBusinessClock, updateBusiness } from './character-business.ts';
+import { beginCrewFlight, clearCrewFlight, inspectLanding, isWalkingGuest, updateCrewFlight } from './crew-flight.ts';
+import { rocketDisplay } from './rocket-presentation.ts';
+import { beginSquidBreakout, headForSquidHole, enterSquidHole, releaseSquidTarget, squidUnderIce, updateSquidHoles } from './squid-life.ts';
+import { installWiki, isWikiOpen } from './wiki/wiki.ts';
 
 /**
  * ============================================================================
@@ -33,6 +39,7 @@ import { characterForWorld, nextIceBearGait } from './world-characters.ts';
 
 let deck: FlightDeck;
 let flightBuild: AbortController | null = null;
+let displayedFlightState:any=null;
 let viewActive = false;
 let endDelivered = false;
 let restoring = false;
@@ -41,6 +48,7 @@ let lastCrewRemark = -30;
 let crewReactionUntil = 0;
 const remarkCounts = new Map<string, number>();
 const characterRemarks = new CharacterRemarks();
+const businessClock = createBusinessClock();
 const reducedMotionQuery = matchMedia('(prefers-reduced-motion: reduce)');
 const reducedMotion = () => reducedMotionQuery.matches;
 
@@ -121,12 +129,55 @@ var lastCharacterPlanet = null; // track planet to detect changes
 function nearbyGuestTarget(awayFrom?) {
   const fieldWidth = Renderer.getWidth() / Renderer.DEFAULT_PPM;
   const left = Math.min(3.8, Math.max(2.8, fieldWidth * .48));
-  const right = Math.max(left + .5, Math.min(7.2, fieldWidth - 1.15));
+  const right = Math.max(left + .5, Math.min(7.2, fieldWidth * .6));
   const target = left + Math.random() * (right - left);
   if (Number.isFinite(awayFrom) && Math.abs(target - awayFrom) < Math.min(.75, (right - left) * .4)) {
     return awayFrom < (left + right) / 2 ? right : left;
   }
   return target;
+}
+
+function crewRetreatBounds() {
+  const margin = Math.min(100, Renderer.getWidth() * .15);
+  return { left: toPhysX(margin), right: toPhysX(Renderer.getWidth() - margin) };
+}
+
+function ensureCrewFlight() {
+  const run = deck?.run;
+  if (!run || !viewActive || run.outcome === 'no-liftoff' || deck.clock.time >= run.duration || !activeCharacter) return;
+  if (activeCharacter.flightReaction?.stage === 'flight') return;
+  clearCrewFlight(activeCharacter, true);
+  beginCrewFlight(activeCharacter, run.launchX, run.mode, crewRetreatBounds(), deck.clock.time > 0, run.duration);
+}
+
+function currentRocketDisplay() {
+  const run = viewActive && deck?.run?.mode === 'rocket' ? deck.run : null;
+  const config = run?.config || UI.getRocketValues();
+  return rocketDisplay(run ? displayedFlightState : null, { propMass: config.propMass, MR: config.MR },
+    run?.outcome, run?.events.find(event => event.kind === 'burnout')?.time);
+}
+
+/** Clear ice for a new hole: past the cannon and launch pad, away from landed
+ * shots, a crashed rocket, the other holes and, where it can, the squid. */
+function freshHoleSpot(ch, avoidSquid = true, preferredDirection = 0) {
+  const fieldWidth = Renderer.getWidth() / Renderer.DEFAULT_PPM;
+  const left = Math.max(Renderer.CANNON_BASE_X_M, Renderer.TOWER_BASE_X_M || 0) + 1.9;
+  const right = Math.max(left + 1.5, fieldWidth - .8);
+  const keepClear = [
+    ...ch.holes.map(hole => ({ x: hole.x, gap: 1.4 })),
+    ...shots.filter(shot => !shot.isGas).map(shot => ({ x: shot.x, gap: .9 })),
+    ...(landedRocket ? [{ x: landedRocket.x, gap: 1.6 }] : []),
+    ...(avoidSquid ? [{ x: ch.x, gap: 1.2 }] : []),
+  ];
+  let best = left + Math.random() * (right - left), bestScore = -Infinity;
+  for (let tries = 0; tries < 16; tries++) {
+    const x = left + Math.random() * (right - left);
+    const score = Math.min(0, ...keepClear.map(spot => Math.abs(spot.x - x) - spot.gap))
+      - (preferredDirection && (x - ch.x) * preferredDirection < .5 ? 6 : 0);
+    if (score > bestScore) { best = x; bestScore = score; }
+    if (score >= 0) break;
+  }
+  return best;
 }
 
 function createCharacter(type) {
@@ -141,7 +192,7 @@ function createCharacter(type) {
     direction: -1,              // walking left initially (toward cannon)
     visible: true,
     walkTarget: 8 + Math.random() * 15, // target x in metres (somewhere in the field)
-    speed: 1.5 + Math.random() * 1.0,   // metres per second
+    speed: .95 + Math.random() * .35,   // metres per second: an unhurried stroll
     bubbleText: null,
     bubbleTimer: 0,
     thoughtCooldown: 1.5
@@ -152,7 +203,7 @@ function createCharacter(type) {
     // aquatic guest far outside the restored close view.
     const visibleMetres = Renderer.getWidth() / Renderer.DEFAULT_PPM;
     const fieldX = Math.max(2.8, Math.min(7.5, visibleMetres * .68));
-    ch.cloudMotion = createCloudGuest(fieldX, { reducedMotion: reducedMotion() });
+    ch.cloudMotion = createCloudGuest(fieldX, { kind: type, reducedMotion: reducedMotion() });
     Object.assign(ch, { x: ch.cloudMotion.x, y: ch.cloudMotion.y,
       surfaceAmount: ch.cloudMotion.surfaceAmount, state: 'cruising', direction: 1 });
   }
@@ -160,25 +211,35 @@ function createCharacter(type) {
     ch.x = nearbyGuestTarget();
     ch.walkTarget = ch.x;
     ch.state = 'idle';
-    ch.speed = .55;
-    ch.iceBearGait = 'four';
-    ch.upright = false;
+    ch.speed = 1.05;
     ch.silent = true;
     ch.banter = false;
   }
+  if(isWalkingGuest(type)&&type!=='icebear') {
+    ch.x=nearbyGuestTarget();ch.walkTarget=ch.x;ch.state='idle';
+  }
   if (type === 'squid') {
-    ch.x = nearbyGuestTarget();
+    ch.holes = [];
+    ch.holeTarget = null;
+    ch.hole = null;
+    ch.x = freshHoleSpot(ch, false);
     ch.walkTarget = ch.x;
-    ch.state = 'idle';
     ch.speed = .45;
+    beginSquidBreakout(ch);
   }
   return ch;
 }
 
 function startleCharacter(isRocket?) {
   if (!activeCharacter) return;
+  if (isWalkingGuest(activeCharacter.type)) {
+    beginCrewFlight(activeCharacter,isRocket ? Renderer.TOWER_BASE_X_M : Renderer.CANNON_BASE_X_M,
+      isRocket?'rocket':'cannon',crewRetreatBounds(),false,deck?.run?.duration);
+    return;
+  }
   if (!activeCharacter.visible) return;
   if (activeCharacter.state === 'squashed') return;
+  if (squidUnderIce(activeCharacter)) return;
   if (activeCharacter.cloudMotion) {
     const sourceX = isRocket ? (Renderer.TOWER_BASE_X_M || 1.5) : Renderer.CANNON_BASE_X_M;
     activeCharacter.cloudMotion = diveCloudGuest(activeCharacter.cloudMotion, isRocket ? 18 : 12, sourceX);
@@ -188,6 +249,7 @@ function startleCharacter(isRocket?) {
     activeCharacter.bubbleText = null;
     return;
   }
+  if (activeCharacter.holes) releaseSquidTarget(activeCharacter);
   if (isRocket) {
     // Rocket launches are more dramatic; the launch remark comes from the recording.
     activeCharacter.state = 'rocket_startled';
@@ -205,6 +267,7 @@ function squashCharacter() {
     activeCharacter.cloudMotion = diveCloudGuest(activeCharacter.cloudMotion);
     return;
   }
+  if (activeCharacter.holes) releaseSquidTarget(activeCharacter);
   activeCharacter.state = 'squashed';
   activeCharacter.stateTimer = 0;
   activeCharacter.bubbleText = null;
@@ -213,7 +276,10 @@ function squashCharacter() {
 function updateCharacter(dt, captionDt = dt) {
   if (!activeCharacter) return;
   var ch = activeCharacter;
+  ch.reducedMotion = reducedMotion();
   ch.stateTimer += dt;
+  if(ch.state==='idle'&&isWalkingGuest(ch.type)&&!ch.wasIdle)ch.idleLook=chooseIdleLook();
+  ch.wasIdle=ch.state==='idle';
 
   // Keep remarks readable at any flight rate, including reduced motion.
   // The portrait stays visible; only its caption takes a quiet break.
@@ -235,19 +301,34 @@ function updateCharacter(dt, captionDt = dt) {
     }
   }
 
+  if (ch.business) { ch.stateTimer=ch.business.elapsed; return; }
+  if (updateCrewFlight(ch, captionDt,
+    viewActive ? activeRocket?.phase === 'flight' ? activeRocket : activeBall : null,
+    currentPlanetRadius, !!deck?.run && deck.clock.paused && deck.clock.time < deck.run.duration, reducedMotion())) return;
+
   if (ch.cloudMotion) {
     // Cloud swimming uses presentation time, independent of fast flight playback.
-    ch.cloudMotion = updateCloudGuest(ch.cloudMotion, captionDt, { reducedMotion: reducedMotion() });
+    const vehicle = viewActive ? activeRocket?.phase === 'flight' ? activeRocket : activeBall : null;
+    const watching = ch.type === 'submarine' && !!vehicle;
+    const swimDt = viewActive && deck?.run && deck.clock.paused && deck.clock.time < deck.run.duration ? 0 : captionDt;
+    ch.cloudMotion = updateCloudGuest(ch.cloudMotion, swimDt, { watching, reducedMotion: reducedMotion() });
     const motion = ch.cloudMotion;
-    const state = cloudGuestActivity(ch.type, motion);
+    const state = watching && motion.phase === 'surfaced' ? 'watching' : cloudGuestActivity(ch.type, motion);
+    ch.watchAim = state === 'watching' ? rocketWatchAim(motion.x, vehicle!, currentPlanetRadius) : undefined;
+    ch.watchTarget = state === 'watching' ? { x: vehicle!.x, y: vehicle!.y } : undefined;
     const direction = motion.fleeing
       ? motion.fleeDirection
       : (Math.cos(motion.age * .15) >= 0 ? 1 : -1);
+    // Turn about over roughly two-thirds of a second instead of snapping round.
+    const turn = Number.isFinite(ch.turn) && !reducedMotion()
+      ? ch.turn + Math.max(-3 * swimDt, Math.min(3 * swimDt, direction - ch.turn))
+      : direction;
     Object.assign(ch, { x: motion.x, y: motion.y, surfaceAmount: motion.surfaceAmount,
-      stateTimer: motion.age, reducedMotion: reducedMotion(),
-      state, direction, fleeing: motion.fleeing });
+      stateTimer: motion.age, activityTimer: motion.elapsed, reducedMotion: reducedMotion(),
+      state, direction: turn < 0 ? -1 : 1, turn, fleeing: motion.fleeing });
     return;
   }
+  if (updateSquidHoles(ch, dt, freshHoleSpot)) return;
 
   switch (ch.state) {
     case 'walking':
@@ -255,6 +336,7 @@ function updateCharacter(dt, captionDt = dt) {
       // Arrived at target?
       if ((ch.direction < 0 && ch.x <= ch.walkTarget) ||
           (ch.direction > 0 && ch.x >= ch.walkTarget)) {
+        if (ch.holes && ch.holeTarget != null) { enterSquidHole(ch); break; }
         ch.state = 'idle';
         ch.stateTimer = 0;
         ch.direction = (ch.x > 10) ? -1 : 1; // face toward centre
@@ -263,15 +345,15 @@ function updateCharacter(dt, captionDt = dt) {
 
     case 'idle':
       // Stay idle for a while, then pick a new walk target
-      if (ch.stateTimer > (ch.type === 'icebear' ? 8 : ch.type === 'squid' ? 5 : 4) + Math.random() * 4) {
-        const staysNearby = ch.type === 'icebear' || ch.type === 'squid';
+      if (ch.stateTimer > (ch.idleLook?.duration ?? (ch.type === 'squid' ? 5 : 4) + Math.random() * 4)) {
+        if (ch.holes) {
+          headForSquidHole(ch, freshHoleSpot(ch));
+          break;
+        }
+        const staysNearby = isWalkingGuest(ch.type) || ch.type === 'squid';
         ch.walkTarget = staysNearby ? nearbyGuestTarget(ch.x) : 6 + Math.random() * 20;
         ch.direction = (ch.walkTarget > ch.x) ? 1 : -1;
-        if (ch.type === 'icebear') {
-          ch.iceBearGait = nextIceBearGait(ch.iceBearGait);
-          ch.upright = ch.iceBearGait === 'two';
-          ch.speed = ch.upright ? .42 : .58;
-        }
+        if (ch.type === 'icebear') ch.speed = 1.05;
         ch.state = 'walking';
         ch.stateTimer = 0;
       }
@@ -280,24 +362,32 @@ function updateCharacter(dt, captionDt = dt) {
     case 'startled':
       // Hold startled pose, then start running away
       if (ch.stateTimer > 0.6) {
+        // Run AWAY from cannon (which is at x≈1.5)
+        const away = (ch.x > Renderer.CANNON_BASE_X_M) ? 1 : -1;
+        if (ch.holes) { headForSquidHole(ch, freshHoleSpot(ch, true, away), 'running_away'); break; }
         ch.state = 'running_away';
         ch.stateTimer = 0;
-        // Run AWAY from cannon (which is at x≈1.5)
-        ch.direction = (ch.x > Renderer.CANNON_BASE_X_M) ? 1 : -1;
+        ch.direction = away;
       }
       break;
 
     case 'rocket_startled':
       // Rocket launch: longer startled hold with dramatic shaking
       if (ch.stateTimer > 1.8) {
+        const away = (ch.x > (Renderer.TOWER_BASE_X_M || 1.5)) ? 1 : -1;
+        if (ch.holes) { headForSquidHole(ch, freshHoleSpot(ch, true, away), 'running_away'); break; }
         ch.state = 'running_away';
         ch.stateTimer = 0;
-        ch.direction = (ch.x > (Renderer.TOWER_BASE_X_M || 1.5)) ? 1 : -1;
+        ch.direction = away;
       }
       break;
 
     case 'running_away':
       ch.x += ch.direction * ch.speed * 3.5 * dt;
+      if (ch.holes && ch.holeTarget != null) {
+        if ((ch.walkTarget - ch.x) * ch.direction <= 0) enterSquidHole(ch);
+        break;
+      }
       // Off screen?
       if (ch.x < -2 || ch.x > toPhysX(Renderer.getWidth()) + 5) {
         ch.state = 'off_screen';
@@ -319,11 +409,7 @@ function updateCharacter(dt, captionDt = dt) {
         const returnsNearby = ch.type === 'icebear' || ch.type === 'squid';
         ch.walkTarget = returnsNearby ? nearbyGuestTarget() : 8 + Math.random() * 15;
         ch.direction = ch.walkTarget >= ch.x ? 1 : -1;
-        ch.speed = ch.type === 'icebear' ? .7 : ch.type === 'squid' ? .6 : 1.5 + Math.random() * 1.0;
-        if (ch.type === 'icebear') {
-          ch.iceBearGait = 'four';
-          ch.upright = false;
-        }
+        ch.speed = ch.type === 'icebear' ? 1.2 : ch.type === 'squid' ? .6 : 1.05 + Math.random() * .35;
       }
       break;
 
@@ -336,15 +422,20 @@ function updateCharacter(dt, captionDt = dt) {
       }
       break;
 
-    case 'squashed':
-      // Stay squashed for a while, then go "off_screen" and return
-      if (ch.stateTimer > 3) {
+    case 'squashed': {
+      // Stay squashed for a while, then go "off_screen" and return.
+      // A flattened squid scuttles off to recover beneath the ice.
+      const refuge = ch.stateTimer > 3 && ch.holes ? freshHoleSpot(ch) : null;
+      if (refuge) {
+        headForSquidHole(ch, refuge, 'running_away');
+      } else if (ch.stateTimer > 3) {
         ch.state = 'off_screen';
         ch.stateTimer = 0;
         ch.visible = false;
         ch.direction = 1;
       }
       break;
+    }
   }
 }
 
@@ -364,7 +455,7 @@ function syncCharacterToPlanet() {
 
 // ── Audio: Cannon boom synthesiser ─────────────────────────────────────────
 function playCannonBoom() {
-  if (!deck?.sound) return;
+  if (!deck?.sound || isWikiOpen()) return;
   try {
     if (!audioCtx) {
       audioCtx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
@@ -394,7 +485,7 @@ function playCannonBoom() {
 
 // ── Audio: Metallic clang for barrel modification ──────────────────────────
 function playClangSound() {
-  if (!deck?.sound) return;
+  if (!deck?.sound || isWikiOpen()) return;
   try {
     if (!audioCtx) {
       audioCtx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
@@ -827,7 +918,8 @@ function handleLanding(ball) {
   // Check if ball landed on the character
   if (activeCharacter && activeCharacter.visible &&
       activeCharacter.state !== 'squashed' &&
-      activeCharacter.state !== 'off_screen') {
+      activeCharacter.state !== 'off_screen' &&
+      !squidUnderIce(activeCharacter)) {
     var charHalfW = 1.0; // ~1 metre hit zone
     if (Math.abs(landX - activeCharacter.x) < charHalfW) {
       squashCharacter();
@@ -933,49 +1025,9 @@ function handleRocketLanding(state) {
   activeRocket = null; stopEngineLoop(); UI.setFlightActive(false);
 }
 
-// ── Audio: Rocket ignition rumble ──────────────────────────────────────────
-function playIgnitionRumble(volume) {
-  if (!deck?.sound) return;
-  try {
-    if (!audioCtx) {
-      audioCtx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
-    }
-    var duration = 2.0;
-    var sr = audioCtx.sampleRate;
-    var len = Math.floor(sr * duration);
-    var buf = audioCtx.createBuffer(1, len, sr);
-    var data = buf.getChannelData(0);
-
-    // Deep rumble: filtered noise + low sine
-    for (var i = 0; i < len; i++) {
-      var t = i / sr;
-      var noise = (Math.random() * 2 - 1);
-      var sine = Math.sin(t * 80 * Math.PI * 2) * 0.4;
-      var sine2 = Math.sin(t * 120 * Math.PI * 2) * 0.2;
-      // Envelope: attack 0.1s, sustain, decay
-      var env = Math.min(1, t / 0.1) * Math.exp(-t / 1.5);
-      data[i] = (noise * 0.5 + sine + sine2) * env;
-    }
-
-    var src = audioCtx.createBufferSource();
-    src.buffer = buf;
-    var filter = audioCtx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = 200;
-    filter.Q.value = 0.7;
-    var gain = audioCtx.createGain();
-    gain.gain.setValueAtTime(volume * 0.5, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
-    src.connect(filter);
-    filter.connect(gain);
-    gain.connect(audioCtx.destination);
-    src.start();
-  } catch (e) { /* silent fail */ }
-}
-
 // ── Audio: Engine running loop ─────────────────────────────────────────────
 function startEngineLoop() {
-  if (!deck?.sound) return;
+  if (!deck?.sound || isWikiOpen()) return;
   try {
     if (!audioCtx) {
       audioCtx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
@@ -999,9 +1051,9 @@ function startEngineLoop() {
     src.loop = true;
     var filter = audioCtx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.value = 180;
+    filter.frequency.value = 850;
     var gain = audioCtx.createGain();
-    gain.gain.value = 0.12;
+    gain.gain.value = 0;
     src.connect(filter);
     filter.connect(gain);
     gain.connect(audioCtx.destination);
@@ -1028,7 +1080,7 @@ function stopEngineLoop() {
 }
 
 function playBurnoutSound() {
-  if (!deck?.sound) return;
+  if (!deck?.sound || isWikiOpen()) return;
   try {
     if (!audioCtx) return;
     var duration = 0.4;
@@ -1053,7 +1105,7 @@ function playBurnoutSound() {
 
 // ── Audio: Sad trombone for fizzle end ─────────────────────────────────────
 function playSadTrombone() {
-  if (!deck?.sound) return;
+  if (!deck?.sound || isWikiOpen()) return;
   try {
     if (!audioCtx) {
       audioCtx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
@@ -1106,6 +1158,7 @@ function createFizzleSmoke(px, py) {
 
 // ── Animation loop ─────────────────────────────────────────────────────────
 async function beginFlight(mode: 'cannon' | 'rocket', config: any, initial: any) {
+  cancelBusiness(businessClock);
   flightBuild?.abort();
   resetCrewReaction();
   const controller = new AbortController(); flightBuild = controller;
@@ -1115,6 +1168,7 @@ async function beginFlight(mode: 'cannon' | 'rocket', config: any, initial: any)
     const run = await recordFlight(mode, config, initial, controller.signal);
     if (controller.signal.aborted) return;
     flightBuild = null; deck.load(run);
+    if (isWikiOpen()) deck.clock.paused = true;
     currentGravity = config.gravity; currentPlanetRadius = config.planetRadius;
     launchTME = Physics.computeEnergy(initial, config.gravity).tme;
     rocketMaxThrust = initial.thrustMagnitude || 0;
@@ -1131,7 +1185,7 @@ async function beginFlight(mode: 'cannon' | 'rocket', config: any, initial: any)
     } else if (mode === 'cannon') {
       recoilPhase = 1; recoilTimer = 0; flashProgress = 0; flashTimer = 0;
       playCannonBoom(); createSmokeParticles(initial.x, initial.y, config.angle); startleCharacter();
-    } else { playIgnitionRumble(1); startleCharacter(true); }
+    } else { startleCharacter(true); }
     updateRecordedFlight(0); syncEngineAudio();
   } catch (error) {
     if (controller.signal.aborted) return;
@@ -1181,19 +1235,26 @@ function restoreRun() {
     rocketFizzleDuration = 0;
   }
   fitRun(run); updateRecordedFlight(0);
+  ensureCrewFlight();
 }
 
 function syncEngineAudio() {
-  const shouldPlay = deck?.sound && viewActive && !deck.clock.paused && activeRocket?.engineOn;
+  const shouldPlay = deck?.sound && !isWikiOpen() && viewActive && !deck.clock.paused && activeRocket?.engineOn;
   if (shouldPlay && !rocketEngineAudio) startEngineLoop();
   else if (!shouldPlay) stopEngineLoop();
+  if (shouldPlay && rocketEngineAudio) rocketEngineAudio.gain.gain.setTargetAtTime(.12 * currentRocketDisplay().output, audioCtx.currentTime, .04);
 }
 
 function resetCrewReaction() {
+  cancelBusiness(businessClock);
   crewReactionUntil = 0;
   lastCrewRemark = -30;
   remarkCounts.clear();
   if (!activeCharacter) return;
+  clearRocketWatch(activeCharacter);
+  clearCrewFlight(activeCharacter, true);
+  delete activeCharacter.watchAim;
+  delete activeCharacter.watchTarget;
   activeCharacter.reaction = null;
   activeCharacter.bubbleText = null;
   activeCharacter.bubbleTimer = 0;
@@ -1228,6 +1289,7 @@ function updateRecordedFlight(dt: number) {
   deck.clock.advance(dt, run);
   const time = deck.clock.time;
   const state = sampleFlight(run, time);
+  displayedFlightState = state;
   const stride = Math.max(1, Math.ceil(run.samples.length / 2500));
   trajectoryDots = run.samples.filter((s, i) => s.time <= time && i % stride === 0);
   if (currentMode === 'cannon') {
@@ -1272,15 +1334,17 @@ function updateRecordedFlight(dt: number) {
       if (run.outcome === 'impact') {
         if (currentMode === 'cannon') handleLanding(state); else handleRocketLanding(state);
         crewReaction('impact');
+        inspectLanding(activeCharacter, { x: state.x, y: 0 }, run.mode, currentPlanetRadius);
       }
       stopEngineLoop();
       UI.setFlightActive(false); deck.showResult();
     }
     if (run.outcome === 'impact') { activeBall = null; activeRocket = null; }
   } else {
-    if (endDelivered) clearLandingPresentation();
+    if (endDelivered) { clearLandingPresentation(); clearCrewFlight(activeCharacter, true); }
     endDelivered = false;
     UI.setFlightActive(true);
+    ensureCrewFlight();
   }
   syncEngineAudio(); deck.update();
 }
@@ -1316,24 +1380,7 @@ function installSceneControls() {
   launch.onclick = () => { if (currentMode === 'cannon') fire(); else rocketLaunch(); };
   const reset = document.createElement('button'); reset.textContent = 'Reset'; reset.onclick = clearRange;
   controls.prepend(launch, reset);
-  let dragging = false;
-  canvas.setAttribute('aria-label', 'Physics experiment scene. Drag the target flag or use the target number field.');
-  canvas.addEventListener('pointerdown', event => {
-    const rect = canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left, y = event.clientY - rect.top;
-    const target = Renderer.toCanvas(currentMode === 'cannon' ? deck.target : 0, currentMode === 'rocket' ? deck.target : 0);
-    const near = currentMode === 'cannon' ? Math.abs(x - target.x) < 26 && Math.abs(y - target.y) < 65 : Math.abs((Renderer.screenToSurface(x, y).y - deck.target) * Renderer.getCurrentPPM()) < 22;
-    if (near) { dragging = true; canvas.setPointerCapture(event.pointerId); event.preventDefault(); }
-  });
-  canvas.addEventListener('pointermove', event => {
-    if (!dragging) return;
-    const rect = canvas.getBoundingClientRect();
-    const position = Renderer.screenToSurface(event.clientX - rect.left, event.clientY - rect.top);
-    deck.setTarget(currentMode === 'cannon' ? position.x : position.y, currentMode);
-    if (deck.run && deck.clock.time >= deck.run.duration) deck.showResult();
-  });
-  canvas.addEventListener('pointerup', () => dragging = false);
-  canvas.addEventListener('pointercancel', () => dragging = false);
+  canvas.setAttribute('aria-label', 'Cannon flight scene. Live measurements are available in the setup panel.');
 }
 
 function loop(timestamp) {
@@ -1341,7 +1388,7 @@ function loop(timestamp) {
   const elapsed = Math.max(0, (timestamp - lastTime) / 1000);
   var dt = Math.min(elapsed, 0.05);
   lastTime = timestamp;
-  if (document.hidden) { requestAnimationFrame(loop); return; }
+  if (document.hidden || isWikiOpen()) { requestAnimationFrame(loop); return; }
   const sceneLaunch = document.getElementById('scene-launch') as HTMLButtonElement;
   if (sceneLaunch) sceneLaunch.disabled = setupLocked();
   if (rocketFizzleDuration > 0) {
@@ -1354,6 +1401,7 @@ function loop(timestamp) {
   // Advance the recorded vehicle first so framing uses this frame's position,
   // including seeks and accelerated playback, rather than yesterday's target.
   updateRecordedFlight(elapsed);
+  if (currentMode === 'rocket') UI.updateRocketFuel(currentRocketDisplay());
   if (currentMode === 'rocket' && !viewActive && !deck.busy) {
     const values = UI.getRocketValues();
     const pad = Renderer.getRocketPadPosition(values.launchAngle, values.epsilon);
@@ -1373,6 +1421,9 @@ function loop(timestamp) {
   if (reducedMotion()) particles = [];
   updateImpactAnimations(dt);
   if (activeCharacter) activeCharacter.banter = deck.banter && !activeCharacter.silent;
+  const crewBusy=!!flightBuild||pendingFire||(viewActive&&deck.clock.time<deck.run!.duration)
+    ||['flight','approach'].includes(activeCharacter?.flightReaction?.stage);
+  updateBusiness(businessClock,activeCharacter,elapsed,crewBusy);
   updateCharacter(reducedMotion() ? 0 : dt, elapsed);
   syncCharacterToPlanet();
 
@@ -1390,7 +1441,7 @@ function loop(timestamp) {
     }
     if (deck.prediction) Renderer.drawGhost(deck.run.samples, { color: '#e5cf83' });
   }
-  Renderer.drawTarget(deck.target, currentMode);
+  if (resolveEnvironment(currentGravity).name==='earth'&&!resolveEnvironment(currentGravity).interpolated) Renderer.drawGolfFlag();
   // Trajectory dots
   for (var d = 0; d < trajectoryDots.length; d++) {
     Renderer.drawTrajectoryDot(trajectoryDots[d].x, trajectoryDots[d].y);
@@ -1497,24 +1548,28 @@ function loop(timestamp) {
     var nzProp = RocketPropellants.getById(nzVals.propellantId);
     var nzPh = nzProp ? nzProp.placeholder : { gamma: 1.2, Tc_K: 3000 };
     var nzCtx = canvas.getContext('2d');
+    const engineDisplay = currentRocketDisplay();
+    const liveNozzle = viewActive && deck.run?.mode === 'rocket' ? displayedFlightState : null;
     NozzleRender.draw(nzCtx, Renderer.getWidth(), Renderer.getHeight(), {
       throatDia_mm: nzVals.throatDia_mm,
       epsilon:      nzVals.epsilon,
       Pc_bar:       nzVals.Pc_bar,
       MR:           nzVals.MR,
       At:           nzPre.At,
-      mdot:         nzPre.mdot,
-      thrust:       nzPre.thrust,
+      mdot:         (liveNozzle?.mdot || 0) * engineDisplay.output,
+      thrust:       (liveNozzle?.thrustMagnitude || 0) * engineDisplay.output,
       Isp:          nzPre.Isp,
       cStar:        nzPre.cStar,
       Cf:           nzPre.Cf,
-      flowRegime:   nzPre.flowRegime,
-      effectiveEpsilon: nzPre.effectiveEpsilon,
+      flowRegime:   liveNozzle?.flowRegime || 'off',
+      effectiveEpsilon: liveNozzle?.effectiveEpsilon || nzPre.effectiveEpsilon,
       gamma:        nzPh.gamma,
       Tc_K:         nzPh.Tc_K,
-      Pa_Pa:        nzVals.Pa_Pa,
+      Pa_Pa:        liveNozzle?.Pa_Pa ?? nzVals.Pa_Pa,
       Pc_Pa:        nzPre.Pc_Pa,
-      worldTime:    reducedMotion() ? 0 : timestamp / 1000
+      output:       engineDisplay.output,
+      engineLabel:  engineDisplay.label,
+      worldTime:    reducedMotion() ? 0 : engineDisplay.time
     });
   }
 
@@ -1522,7 +1577,7 @@ function loop(timestamp) {
 
   // Particles (shared across both modes)
   Renderer.drawParticles(particles);
-  Renderer.drawSceneNotes(deck.target, currentMode, activeCharacter);
+  Renderer.drawSceneNotes(currentMode, activeCharacter);
 
   requestAnimationFrame(loop);
 }
@@ -1575,7 +1630,6 @@ function boot() {
     onBarrelChange: onBarrelChange,
     onModeChange: function (mode) {
       if (!restoring && deck) clearRange();
-      if (deck && !restoring) deck.setTarget(mode === 'rocket' ? 1000 : 45, mode);
       // Save current mode's zoom state
       var savePPM = Renderer.getCurrentPPM();
       if (currentMode === 'cannon') {
@@ -1585,6 +1639,9 @@ function boot() {
       }
 
       currentMode = mode;
+      canvas.setAttribute('aria-label', mode === 'rocket'
+        ? 'Rocket flight scene. Live measurements are available in the setup panel.'
+        : 'Cannon flight scene. Live measurements are available in the setup panel.');
 
       // Restore new mode's zoom state
       if (mode === 'cannon') {
@@ -1605,11 +1662,7 @@ function boot() {
       }
     },
     onRocketLaunch: rocketLaunch,
-    onRocketClear: clearRange,
-    onExperiment: function (experiment) {
-      clearRange(); deck.setTarget(experiment.target || (currentMode === 'rocket' ? 1000 : 45), currentMode);
-      deck.message(experiment.question);
-    }
+    onRocketClear: clearRange
   });
 
   deck = new FlightDeck(document.querySelector('.canvas-area')!);
@@ -1618,9 +1671,23 @@ function boot() {
     if (!viewActive) restoreRun();
     lastFlightTime = deck.clock.time;
     stopEngineLoop(); updateRecordedFlight(0); syncEngineAudio();
+    ensureCrewFlight();
   };
   deck.onReplay = () => { restoreRun(); syncEngineAudio(); };
-  deck.onSound = syncEngineAudio;
+  // Unlock on the user's gesture, before asynchronous flight recording can
+  // lose browser activation. A suspended context used to remain silent.
+  const unlockFlightAudio = async () => {
+    if (!deck.sound || isWikiOpen()) return;
+    try {
+      audioCtx ??= new ((window as any).AudioContext || (window as any).webkitAudioContext)();
+      await audioCtx.resume();
+      if (!deck.sound || isWikiOpen()) return;
+      if (audioCtx.state !== 'running') throw new Error('Audio is suspended');
+      syncEngineAudio();
+    } catch { deck.message('Audio could not start. Toggle Sound again and check browser or device mute.'); }
+  };
+  deck.onSound = () => { if (deck.sound) void unlockFlightAudio(); else syncEngineAudio(); };
+  document.addEventListener('click', () => { if(deck.sound && !isWikiOpen() && (!audioCtx || audioCtx.state !== 'running')) void unlockFlightAudio(); }, {capture:true});
   installSceneControls();
   Renderer.resize();
   window.addEventListener('resize', function () {
@@ -1647,6 +1714,13 @@ function boot() {
   // Spawn initial character for current planet
   syncCharacterToPlanet();
 
+  installWiki(() => {
+    // Keep the current experiment intact while reading, and leave resuming it
+    // to the reader on their return. No time elapses behind the atlas.
+    deck.clock.paused = true;
+    stopEngineLoop();
+    deck.update();
+  });
   requestAnimationFrame(loop);
 }
 

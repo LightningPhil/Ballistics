@@ -1,0 +1,44 @@
+# Atlas artwork
+
+## Responsive Solar System revision
+
+The active main map is now composed by `src/wiki/solar-map.ts`. Its background is `src/assets/wiki/solar-atlas-background.webp`, exported from the built-in image-generation edit saved at `solar-system-cartoon-assets/wiki/solar-atlas-background.png`. Original transparent planet artwork is layered above it. Selected moon symbols without original cutouts are illustrative vector drawings, not observational portraits. The earlier flattened solar-system plate below is retained as a source/reference, but is no longer displayed in the app.
+
+Body centres, clickable targets, labels and faint leaders share one coordinate model. There are independently arranged landscape and portrait compositions, switched by the actual map container width; landscape is retained down to 560 px of map width for tablet use. The enlarged map uses distinct SVG identifiers and keeps the same links. All eight planets zigzag through the composition with gently normalised sizes and alternating above/below name-only callouts. The Sun is partly off the left edge. Compact moon loops have clear gaps between families. Only the simulated Moon and Ganymede receive callouts and individual pages; other companions link to their parent-world articles. One selected moon per family is shown; this is not a total-moon-count diagram.
+
+Gold paths represent schematic solar orbits, with pale dashed local paths for moons. Orbital dimensions and orientations are compressed for layout, not an ephemeris. The asteroid band is outside Mars and inside Jupiter; the Kuiper band is outside Neptune, with Pluto placed in it. Both bands use closed elliptical annuli, with independent angular and radial particle sequences to prevent an accidental broken spiral. Their labels sit directly on the regions without leaders. Pluto has no ninth planet track. The Kuiper article explains that real orbits and populations overlap and the belt is not a sharp wall.
+
+### Background edit prompt (built-in tool)
+
+Use case: precise-object-edit.
+Edit target: the supplied illustrated Solar System plate.
+Create a clean PAINTED BACKGROUND LAYER for rebuilding this interactive educational atlas. Remove ALL planets, the Sun, all moons, all rings, all orbit lines, the asteroid band, and the Sun's glow. Fill those removed regions seamlessly with the same quiet deep navy and petrol-teal textured space. Preserve the lovely handmade gouache/paper grain, restrained pinprick stars and faint cloudy star dust, especially around the edges. Calm dark central area with sparse stars, no large bright spiral galaxies or large objects. A sophisticated natural-history atlas atmosphere. Full-bleed 3:2 landscape background. NO lettering, labels, lines, planets, moons or objects; accurate orbit geometry, original planet cutouts, and labels will be composed as responsive vector/HTML layers in the app. Keep the original dark teal/navy palette and painterly quality.
+
+### Verification
+
+Geometry tests check planet ordering, belt membership, closed bands with particles filling their width, compact non-overlapping moon paths, moon parents, mixed orbital phases, alternating non-overlapping labels, and valid body/name destinations at every reading level. Browser checks cover desktop and tablet layouts, body and label clicks, parent-world links for unnamed moons, and enlarged-view navigation.
+
+Created with the built-in image-generation tool. Existing planet cutouts remain the source for planet articles and moon-family cards. The plates are artist’s impressions, not to scale, with illustrative orbital positions and selected satellites. Labels use HTML or SVG text so they remain accessible and link to articles.
+
+## Project assets
+
+- Master solar-system illustration: `solar-system-cartoon-assets/wiki/solar-system.png`
+- Master asteroid-belt illustration: `solar-system-cartoon-assets/wiki/asteroid-belt.png`
+- Browser derivatives: `src/assets/wiki/solar-system.webp` and `src/assets/wiki/asteroid-belt.webp` (WebP quality 88, original dimensions).
+
+## Solar-system prompt
+
+Use case: scientific-educational. Create a beautiful wide 3:2 illustrated solar-system atlas plate for an educational companion to a playful physics app. Style: sophisticated cut-paper and softly textured gouache, warm cream sun, dusty teal/navy space, ochre, terracotta and muted blue planets, subtle grain like a vintage natural-history book. NOT photorealism. A scientifically legible schematic, emphatically NOT TO SCALE. Sun at the left centre, eight nested thin elliptical orbital paths viewed obliquely opening toward the right. EXACTLY EIGHT planets, one on each successive orbit from Sun outward: small grey Mercury, pale ochre Venus, blue-green Earth, rusty Mars, large banded Jupiter, ringed pale-gold Saturn, pale cyan Uranus, deep blue Neptune. Spread planets across the paths so none overlap; show much larger spacing for the outer planets artistically compressed. A sparse band of tiny rocky flecks BETWEEN Mars's and Jupiter's orbits. Tiny moons grouped locally close to their parent planets: one near Earth, two near Mars, four near Jupiter, a few near Saturn/Uranus/Neptune; none at Mercury/Venus. Moon paths are tiny loops centred on planets, distinct from solar orbits. Make these local satellite groupings visually clear but subordinate. No Pluto on a ninth planet track. No faces, rockets, lettering, labels, captions, legend, logo or watermarks; all accessible labels and precision maps will be added by the app. Full-bleed, polished composition, generous quiet dark area upper-left for an editorial heading.
+
+## Asteroid-belt prompt
+
+Use case: scientific-educational. Create a beautiful wide 3:2 illustrated atlas plate explaining the MAIN ASTEROID BELT, for a sophisticated but friendly educational wiki. Full-bleed dark navy and deep teal space, softly textured cut-paper/gouache natural-history illustration, warm cream and dusty terracotta accents, fine gold orbital lines. Scientifically clear oblique overhead diagram: a small luminous Sun near left centre; four nested thin orbital ellipses around it, the tiny planets Mercury, Venus, Earth, and rusty Mars on those successive orbits. OUTSIDE Mars is a broad annular belt represented by SPARSE small rocky flecks distributed around the Sun, with lots of visible empty dark space between all objects. OUTSIDE the belt is Jupiter's orbit with a large banded Jupiter on the upper-right. The belt must lie between Mars's and Jupiter's paths, never inside Mars or beyond Jupiter. On the lower-right margin show a separate elegant magnified vignette with just three widely separated asteroid specimens: a rounded cratered grey Ceres, a smaller lumpy grey Vesta, and one irregular dark rock. Separate this foreground vignette from the orbital schematic with a subtle fine-line magnification circle so it cannot be mistaken for actual giant rocks blocking the orbit. Big difference between sparse distant belt and enlarged specimens. No spacecraft, rockets, danger, collisions, explosions or crowded cinematic rock field. No text, letters, numbers, labels, logos or watermarks: labels will be added accessibly in the app. Polished editorial composition, calm, curious, educational, not to scale.
+
+## Asteroid-belt correction
+
+Precise educational correction to this existing asteroid-belt plate only. Keep the full composition, textured style, Sun, Mercury, Venus, Jupiter, belt, background, and magnified asteroid vignette unchanged. Correct the placement of EARTH and MARS on the inner orbits. The four thin inner elliptical orbits must have exactly one planet each: Mercury on the innermost orbit, Venus on the second orbit, Earth on the third orbit, Mars on the fourth and outermost inner orbit. In the 1536x1024 reference, move the blue-green Earth from approximately (522,427) to (525,457), centred on the THIRD thin ellipse near its lower-right arc. Move reddish Mars from approximately (737,361) to (857,362), centred on the FOURTH and OUTERMOST inner ellipse at its right-hand edge, just inside the asteroid belt. Remove their old positions cleanly. Do not add any extra planets, lines, text or labels. The order must clearly be Sun, Mercury, Venus, Earth, Mars, asteroid belt, Jupiter. Preserve everything else.
+
+## Accuracy notes
+
+The main belt is between Mars and Jupiter. The four inner planets each occupy their own orbital path. The solar-system plate includes exactly eight planets, with no ninth planet track for Pluto. Representative moons are grouped around their parent planets; the data-backed family explorer supplies names and membership. The belt rocks and all body sizes and separations are exaggerated. The three specimens are illustrative, not observational portraits. Article references point to NASA Science and NASA Glenn. No mutable total moon counts or future mission dates are used.
+

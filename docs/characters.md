@@ -2,7 +2,45 @@
 
 > **Status:** Implemented. Historical audit and plan; the "What's Wrong Now"
 > section describes the pre-upgrade artwork, not the shipped rigs. Current
-> artwork: `src/crew.ts`, `src/planet-guests.ts`, `src/aquatic-characters.ts`.
+> artwork: `src/crew.ts`, `src/planet-guests.ts`, `src/aquatic-characters.ts`,
+> `src/squid.ts`, `src/ice-bear.ts`, all built on the shared kit in `src/toon.ts`.
+> The squid’s fresh-hole and freezing lifecycle lives in `src/squid-life.ts`;
+> close-ups preserve activity and facing while framing the relevant face or tool.
+> Mercury's robot now takes its cues from the original TV Marvin: tall angular
+> metal head, tired red lamps, instrument cabinet and a mechanical march.
+> Uranus's robot draws on the film Marvin: oversized white globe head, low green
+> eyes, compact body, hanging arms and a weary shuffle. Their separate heads,
+> bodies, limbs and squashed poses share the activity and viewing-direction rig.
+> Ground launch behaviour now lives in `src/crew-flight.ts`: an immediate retreat
+> bounded by the scene for `min(5, flight time + 1)` viewing seconds, binocular
+> watching, then a dash to the actual impact and a downward inspection pose.
+> All walkers watch both flight types after retreating. Idle pauses randomly
+> look sideways, towards the viewer, or both in sequence; some use binoculars
+> after a longer pause. The newt never uses binoculars. The bear limits viewer
+> glances to brief moments and
+> sits on its haunches to use both forepaws; the submarine pilot watches from the
+> hatch after the launch dive and scans on each idle surface visit. Whales swim
+> fully submerged for 14–22 seconds, rise briefly for 4.5 seconds and dive again;
+> alternate visits show a blowhole spout, an inhalation or quiet surfacing.
+> Returns over very large distances are theatrical and
+> take at most five presentation seconds. Reset/replay restores the home spot;
+> reverse seeking clears the inspection. Cloud visitors and the squid retain
+> their separate lifecycles. Portraits share running/inspection poses and face
+> the displayed landing point; the bear lowers its nose to sniff.
+> `src/character-business.ts` owns one shared viewing-time schedule: the first
+> silly action is due after 12–28 seconds and subsequent opportunities are
+> 45–90 seconds apart. Launching clears props immediately; flight opportunities
+> are skipped, never queued. World switches preserve the schedule and clear the
+> old actor's prop. The golfer opens an umbrella, astronaut drops a failed paper
+> plane, robots read a guidebook or folding tablet, alien unrolls a friendly
+> tripod blueprint, newt wears a policeman's helmet, bear eats ice cream and
+> snowman juggles snowballs. Mercury's robot reads inward-facing pages with 42
+> on the cover; the astronaut's throw displays “Does this really need air..?”.
+> The snowman keeps both eyes in its three-quarter glances. The eating bear
+> faces its cone with a supported elbow, and its portrait includes the cone.
+> The squid, submarine and whale retain their existing activities.
+> Props use the same hand anchors and
+> progress in the scene and portrait; reduced motion holds a readable pose.
 >
 > **Goal:** Replace all 9 characters' primitive-shape drawing code with polished, cartoon-quality canvas art that looks release-ready.
 

@@ -152,12 +152,6 @@ input[type='range']::-moz-range-thumb { width: 15px; height: 15px; border: 3px s
 .tw-warning, .fizzle-message { padding: 12px; border: 1px solid #e1c5a5; background: #fbf0dc; border-radius: 10px; font-size: 11px; line-height: 1.55; color: #9c623b; }
 .post-flight-summary { padding: 14px; border: 1px solid #c3d6b8; border-radius: 11px; background: #eef4e4; }
 .post-flight-summary .section-header { margin-bottom: 14px; }
-.experiment-cards { display: grid; gap: 6px; }
-.experiment-card { display: flex; gap: 11px; align-items: flex-start; width: 100%; text-align: left; background: transparent; color: #4c6348; border: 1px solid transparent; border-radius: 8px; padding: 10px 7px; }
-.experiment-card:hover:not(:disabled), .experiment-card.active { border-color: #bfd0af; background: #edf3e2; }
-.experiment-number { font: 10px var(--font-mono); color: #a27c49; padding-top: 1px; }
-.experiment-card strong { display: block; font-weight: 650; font-size: 12px; }
-.experiment-card small { display: block; color: #6f7d63; font-size: 11px; line-height: 1.5; margin-top: 4px; }
 .lab-footer { text-align: center; color: #a0a58b; font-size: 11px; font-family: var(--font-serif); font-style: italic; padding-top: 26px; }
 .lab-footer span { display: block; margin-top: 5px; font-family: 'Segoe UI', system-ui, sans-serif; font-style: normal; font-size: 9px; color: #a2ac94; }
 @media (max-width: 1050px) and (min-width: 761px) { .app-container { grid-template-columns: 317px minmax(0, 1fr); } .lab-brand { padding: 18px 15px 15px; } .mode-toggle { margin: 0 15px 12px; } .launch-actions { padding: 0 15px 15px; } .controls-scroll { padding: 18px 15px 22px; } .edition-mark { display: none; } }
@@ -192,7 +186,7 @@ input[type='range']::-moz-range-thumb { width: 15px; height: 15px; border: 3px s
   .world-caption { font-size: 11px; }
   .slider-label, .slider-row > label { font-size: 13px; }
   .field-note, .propellant-note { font-size: 12px; }
-  .readout-label, .lab-details summary, .experiment-card strong { font-size: 12px; }
+  .readout-label, .lab-details summary { font-size: 12px; }
   .readout-value { font-size: 12px; }
   .lab-details { margin-top: 12px; }
   .details-content { gap: 20px; }

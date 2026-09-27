@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { ENVIRONMENTS, resolveEnvironment } from '../src/environment.ts';
 import { PLANET_FACTS } from '../src/planet-facts.ts';
-import { WORLD_CHARACTERS, characterForWorld, nextIceBearGait } from '../src/world-characters.ts';
+import { WORLD_CHARACTERS, characterForWorld } from '../src/world-characters.ts';
 import { WORLD_ART } from '../src/world-art.ts';
 import { GRAVITY_MIN, GRAVITY_MAX, GRAVITY_SLIDER_STEPS, clampGravity,
   gravityFromSliderPosition, sliderPositionForGravity } from '../src/gravity-scale.ts';
@@ -62,16 +62,6 @@ test('new world presets retain their measured scale and intended inhabitants', (
   assert.equal(ganymede.surfacePressure, 0);
   assert.ok(Math.abs(ganymede.gravity * ganymede.radius ** 2 / 9.8878e12 - 1) < .01);
   assert.equal(characterForWorld('ganymede'), 'squid');
-});
-
-test('the ice bear alternates two-legged and four-legged walks', () => {
-  let gait = 'four';
-  const walks = [];
-  for (let i = 0; i < 6; i++) {
-    gait = nextIceBearGait(gait);
-    walks.push(gait);
-  }
-  assert.deepEqual(walks, ['two', 'four', 'two', 'four', 'two', 'four']);
 });
 
 test('world picker replaces the old note with the fact dialog controls', async () => {

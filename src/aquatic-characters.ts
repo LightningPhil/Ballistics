@@ -1,10 +1,18 @@
-import type { CrewPose } from './crew.ts';
+import { viewingDevice, type CrewPose } from './crew.ts';
 import { CLOUD_GUEST_SURFACE } from './cloud-guests.ts';
+import { observationAim } from './crew-watch.ts';
 
 interface AquaticPose extends CrewPose {
   surfaceAmount?: number;
+  activityTimer?: number;
   portrait?: boolean;
   fleeing?: boolean;
+  /** Metres relative to the cloud deck; negative is beneath it. */
+  y?: number;
+  /** Smoothed facing, -1…1, so a turn reads as a quick paper flip. */
+  turn?: number;
+  /** Cloud-top colour as [r,g,b], normally the planet's surface edge. */
+  cloudEdge?: number[];
   spoutParticles?: { ox: number; oy: number; life: number }[];
 }
 
@@ -51,64 +59,144 @@ function finite(value: number | undefined, fallback = 0) {
   return Number.isFinite(value) ? value as number : fallback;
 }
 
-/** Soft local cloud banks, painted in the same metre scale as their guest.
- * Their feathered overlaps veil the lower hull/body without a hard waterline.
- * Portraits skip these entirely: the little face remains clear at every depth.
+function clamp(value: number, low: number, high: number) {
+  return Math.max(low, Math.min(high, value));
+}
+
+function lerp(a: number, b: number, u: number) {
+  return a + (b - a) * u;
+}
+
+function rgba(colour: number[], alpha: number, lighten = 0) {
+  const [r, g, b] = colour.map(channel => Math.round(channel + (255 - channel) * lighten));
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+/** Where the swimmer sits in its cloud sea, in local 80-unit metre space. */
+interface Swim {
+  depth: number;
+  waterline: number;
+  facing: number;
+  pitch: number;
+  wave: (x: number) => number;
+}
+
+/** `surfacedLine`/`submergedLine` are body heights that meet the cloud tops. */
+function swim(char: AquaticPose, t: number, surfacedLine: number, submergedLine: number,
+  dive: number, rise: number, floor = CLOUD_GUEST_SURFACE): Swim & { bodyY: number } {
+  const surface = clamp(finite(char.surfaceAmount, 1), floor, 1);
+  const depth = (1 - surface) / (1 - floor);
+  const waterline = Number.isFinite(char.y) ? (char.y as number) * 80 : -3.2 - depth * 14.1;
+  const direction = char.direction === -1 ? -1 : 1;
+  const turn = char.portrait || char.reducedMotion ? direction : clamp(finite(char.turn, direction), -1, 1);
+  const facing = (turn < 0 ? -1 : 1) * Math.max(.06, Math.abs(turn));
+  const arc = Math.sin(Math.PI * depth);
+  const pitch = char.state === 'diving' ? dive * arc : char.state === 'surfacing' ? -rise * arc : 0;
+  const wave = (x: number) => waterline + Math.sin(x * .085 + t * 1.7) * 1.5 + Math.sin(x * .19 - t * 2.4) * .8;
+  return { depth, waterline, facing, pitch, wave,
+    bodyY: char.portrait ? 0 : waterline - lerp(surfacedLine, submergedLine, depth) };
+}
+
+/** Paint only above the cloud tops; the planet's own deck shows below. */
+function clipAboveClouds(ctx: CanvasRenderingContext2D, sea: Swim) {
+  ctx.beginPath();
+  ctx.moveTo(-240, -420);
+  ctx.lineTo(240, -420);
+  for (let x = 240; x >= -240; x -= 6) ctx.lineTo(x, sea.wave(x));
+  ctx.closePath();
+  ctx.clip();
+}
+
+/** A foamy crest where the body meets the cloud sea, with froth at the bow
+ * and stern. Portraits never draw it.
  */
-function cloudBank(ctx: CanvasRenderingContext2D, surface: number, t: number,
-  whale: boolean, foreground: boolean) {
-  const hidden = 1 - surface;
-  const colour = whale ? '211,171,132' : '218,200,151';
-  const drift = Math.sin(t * .38) * 5;
-  const puffs = foreground
-    ? [[-69,12,49,19],[-27,10,54,26],[23,12,52,30],[65,9,42,20],[2,28,75,25]]
-    : [[-64,-15,58,20],[40,-16,64,22],[0,6,102,28]];
-  for (let i = 0; i < puffs.length; i++) {
-    const [x,y,rx,ry] = puffs[i];
-    const opacity = foreground ? .13 + hidden * .84 : .13 + hidden * .3;
-    ctx.save();
-    ctx.translate(x + drift * (i % 2 ? -1 : 1), y + Math.sin(t * .55 + i) * 1.4);
-    ctx.scale(rx, ry);
-    const haze = ctx.createRadialGradient(0,0,.04,0,0,1);
-    haze.addColorStop(0,`rgba(${colour},${opacity})`);
-    haze.addColorStop(.48,`rgba(${colour},${opacity * .8})`);
-    haze.addColorStop(1,`rgba(${colour},0)`);
-    ctx.fillStyle = haze;
-    ctx.beginPath(); ctx.arc(0,0,1,0,TAU); ctx.fill();
-    ctx.restore();
+function cloudCrest(ctx: CanvasRenderingContext2D, sea: Swim, t: number, edge: number[],
+  back: number, front: number, churn: number) {
+  const reach = Math.max(.35, Math.abs(sea.facing)) * Math.sign(sea.facing);
+  const x0 = Math.min(back * reach, front * reach), x1 = Math.max(back * reach, front * reach);
+  const mid = (x0 + x1) / 2;
+
+  ctx.save();
+  ctx.translate(mid, sea.wave(mid) + 2);
+  ctx.scale((x1 - x0) * .66, 16);
+  const mist = ctx.createRadialGradient(0, 0, .05, 0, 0, 1);
+  mist.addColorStop(0, rgba(edge, .55, .12));
+  mist.addColorStop(.6, rgba(edge, .3, .08));
+  mist.addColorStop(1, rgba(edge, 0));
+  ctx.fillStyle = mist;
+  ctx.beginPath(); ctx.arc(0, 0, 1, 0, TAU); ctx.fill();
+  ctx.restore();
+
+  const count = Math.max(4, Math.round((x1 - x0) / 13));
+  const crest: number[][] = [];
+  for (let i = 0; i <= count; i++) {
+    const x = lerp(x0, x1, i / count);
+    crest.push([x, sea.wave(x) - 1]);
   }
+  const top = () => {
+    ctx.moveTo(crest[0][0], crest[0][1] + 2);
+    for (let i = 1; i < crest.length; i++) {
+      const [xa, ya] = crest[i - 1], [xb, yb] = crest[i];
+      const taper = Math.sqrt(Math.sin(Math.PI * (i - .5) / count));
+      const bump = (2.6 + Math.sin(i * 1.9 + t * 2.1) * .8) * taper;
+      ctx.quadraticCurveTo((xa + xb) / 2, (ya + yb) / 2 - bump * 1.6, xb, i === count ? yb + 2 : yb);
+    }
+  };
+  ctx.beginPath();
+  top();
+  for (let x = x1; x >= x0; x -= 7) ctx.lineTo(x, sea.wave(x) + 5.5 + Math.sin(x * .31 + t) * 1.2);
+  ctx.closePath();
+  ctx.fillStyle = rgba(edge, 1);
+  ctx.fill();
+  ctx.beginPath(); top();
+  ctx.strokeStyle = rgba(edge, .85, .36); ctx.lineWidth = 1.7; ctx.stroke();
+
+  // Froth where the body cuts the cloud tops, livelier while rising or diving.
+  for (const [x, side] of [[front * reach, 1], [back * reach, -1]]) {
+    for (let i = 0; i < 3; i++) {
+      const puff = 2.6 + (2 - i) * .9 + churn * 1.8 + Math.sin(t * 3.1 + i * 2 + side) * .6;
+      const px = x + side * Math.sign(sea.facing) * (i * 5 - 2);
+      ctx.beginPath();
+      ctx.arc(px, sea.wave(px) - puff * .35, puff, 0, TAU);
+      ctx.fillStyle = rgba(edge, 1, .3 + i * .08);
+      ctx.fill();
+    }
+  }
+  ctx.strokeStyle = INK; ctx.lineWidth = 2.2;
 }
 
 /**
  * At s=80, the surfaced whale is about 184×112 pixels, x=-110…74, y=-112…0.
  * Its eye is (45,-53); a portrait can crop the tail while retaining the face.
- * surfaceAmount gently lowers it into a feathered cloud bank, never clipping
- * the sprite at a hard horizon or hiding it completely during its idle cycle.
+ * The body is cut along the gently waving cloud tops, where a foamy crest
+ * hides the join: surfaced, only the upper back and eye break the surface;
+ * submerged, the whole whale disappears. It pitches nose-down to dive and
+ * nose-up to rise, and flips round smoothly with `turn`.
  * Recognised states: 'spouting' (surfaced blow), 'breathing', 'startled' /
  * 'rocket_startled' (tail thrash), 'squashed', plus the generic swimming
  * states from main.ts; `fleeing` adds the dive-away pose to any of them.
  */
 export function drawWhale(ctx: CanvasRenderingContext2D, cx: number, footY: number, s: number, char: AquaticPose) {
   const t = char.reducedMotion ? 0 : finite(char.stateTimer);
-  const state = char.portrait ? 'idle' : char.state || 'spouting';
-  const direction = char.direction === -1 ? -1 : 1;
-  const surface = char.portrait ? 1 : Math.max(CLOUD_GUEST_SURFACE, Math.min(1, finite(char.surfaceAmount, 1)));
+  const state = char.state || 'spouting';
+  const sea = swim(char, t, -53, -132, .15, .1, 0);
+  const surface = 1 - sea.depth;
   const startled = state === 'startled' || state === 'rocket_startled';
   const breathing = state === 'breathing';
-  const fleeing = !!char.fleeing || startled;
+  const fleeing = !!char.fleeing || startled || state === 'running_away';
   const blinking = !char.reducedMotion && t > 0 && t % 4.7 > 4.53;
+  const edge = Array.isArray(char.cloudEdge) && char.cloudEdge.length >= 3 ? char.cloudEdge : [190, 138, 88];
 
   ctx.save();
   ctx.translate(cx, footY);
   ctx.scale(s / 80, s / 80);
   ink(ctx);
 
-  if (!char.portrait) cloudBank(ctx, surface, t, true, false);
-
   ctx.save();
-  ctx.translate(0, (1 - surface) * 62);
-  ctx.globalAlpha *= .7 + surface * .3;
-  ctx.scale(direction, 1);
+  if (!char.portrait) clipAboveClouds(ctx, sea);
+  ctx.translate(0, sea.bodyY);
+  ctx.scale(sea.facing, 1);
+  ctx.translate(0, -45); ctx.rotate(sea.pitch); ctx.translate(0, 45);
 
   if (state === 'squashed') {
     const squash = Math.min(1, t / .7);
@@ -116,13 +204,15 @@ export function drawWhale(ctx: CanvasRenderingContext2D, cx: number, footY: numb
     ctx.scale(1 + squash * .12, .32 - squash * .1);
   }
 
-  const bob = char.portrait ? 0 : Math.sin(t * 1.8) * 1.7;
+  const bob = char.portrait ? 0 : Math.sin(t * 1.8) * 1.1;
   ctx.translate(0, bob - (startled ? 5 : 0));
 
   // An upswept peduncle and two broad flukes make a whale even in silhouette.
+  // Diving, the flukes lift clear of the clouds before slipping under.
   ctx.save();
   ctx.translate(-57, -36);
-  ctx.rotate(Math.sin(t * (fleeing ? 7.5 : 1.6)) * (fleeing ? .16 : .045));
+  const flukeUp = state === 'diving' ? .65 * Math.sin(Math.PI * sea.depth) : 0;
+  ctx.rotate(-.65 + Math.sin(t * (fleeing ? 7.5 : 1.6)) * (fleeing ? .16 : .045) + flukeUp);
   shape(ctx, BLUE_DARK, () => {
     ctx.moveTo(13, 18);
     ctx.bezierCurveTo(-12, 13, -31, -2, -33, -35);
@@ -205,33 +295,38 @@ export function drawWhale(ctx: CanvasRenderingContext2D, cx: number, footY: numb
   stroke(ctx, () => { ctx.moveTo(38,-68); ctx.quadraticCurveTo(44,-72,51,-67); }, BLUE_DARK, 2.4);
   if (startled) {
     oval(ctx,60,-34,4.5,6.5,INK,false);
-  } else if (breathing && surface > .8) {
-    const opening = 1 + Math.sin(t * 4) * .08;
-    ctx.save(); ctx.translate(58,-34); ctx.scale(opening,opening);
-    oval(ctx,0,0,10,7,INK);
-    oval(ctx,-1,2,5.8,2.7,'#cc7f6e',false);
-    ctx.restore();
-    // Two soft inward curls make the open mouth read as a comic gulp of air.
-    stroke(ctx, () => {
-      ctx.moveTo(83,-42); ctx.bezierCurveTo(74,-47,72,-38,66,-37);
-      ctx.moveTo(87,-29); ctx.bezierCurveTo(78,-24,73,-29,67,-31);
-    }, '#d8ece4', 2.4);
   } else {
     stroke(ctx, () => {
       ctx.moveTo(28,-36); ctx.bezierCurveTo(40,-25,58,-25,65,-40);
     }, INK, 2.6);
     stroke(ctx, () => { ctx.moveTo(24,-34); ctx.quadraticCurveTo(28,-39,32,-37); }, INK, 1.8);
   }
-  // One understated blowhole; emitted particles are owned by the state machine.
-  oval(ctx,8,-83,5,2.2,BLUE_DARK,false);
+  // Whales breathe through the blowhole, with the mouth still relaxed underwater.
+  oval(ctx,8,-83,breathing ? 6 : 5,breathing ? 3.2 : 2.2,BLUE_DARK,false);
   stroke(ctx, () => { ctx.moveTo(3,-85); ctx.quadraticCurveTo(8,-89,13,-85); }, '#b8d1ca', 1.6);
-  if (state === 'spouting' && surface > .8) {
-    stroke(ctx, () => { ctx.moveTo(8,-87); ctx.quadraticCurveTo(9,-103,0,-108); }, '#a5cdd0', 3.7);
-    stroke(ctx, () => { ctx.moveTo(9,-94); ctx.quadraticCurveTo(12,-106,20,-102); }, '#cde2db', 3);
-    oval(ctx,-1,-110,2.6,3.6,'#cde2db',false);
-    oval(ctx,23,-104,2,2.8,'#a5cdd0',false);
+  if (breathing && surface > .8) {
+    const inhale = char.reducedMotion ? .5 : (t * .8) % 1;
+    ctx.save(); ctx.globalAlpha = Math.sin(Math.PI * inhale) * .8;
+    for (const side of [-1, 1]) stroke(ctx, () => {
+      ctx.moveTo(8 + side * (24 - inhale * 10), -105 + inhale * 7);
+      ctx.quadraticCurveTo(8 + side * 9, -104 + inhale * 12, 8 + side * 3, -89);
+    }, '#d8ece4', 2.1);
+    ctx.restore();
   }
-  if (!char.reducedMotion && !char.portrait) {
+  if (state === 'spouting' && surface > .8) {
+    const age = char.reducedMotion ? .7 : finite(char.activityTimer, t % 2.2);
+    const plume = Math.sin(Math.PI * clamp(age / 2.2, 0, 1));
+    stroke(ctx, () => { ctx.moveTo(8,-87); ctx.quadraticCurveTo(9,-89-26*plume,0,-89-33*plume); }, '#a5cdd0', 3.7);
+    stroke(ctx, () => { ctx.moveTo(9,-88-12*plume); ctx.quadraticCurveTo(12,-89-30*plume,20,-89-25*plume); }, '#cde2db', 3);
+    for (let i = 0; i < 7; i++) {
+      const flight = ((age * 1.2 + i / 7) % 1);
+      const spread = (i % 2 ? 1 : -1) * (9 + i * 2) * flight;
+      ctx.save(); ctx.globalAlpha = (1 - flight) * plume;
+      oval(ctx,8+spread,-87-64*flight+45*flight*flight,1.5,2.5,'#d2e8e0',false);
+      ctx.restore();
+    }
+  }
+  if (state === 'spouting' && surface > .8 && !char.reducedMotion && !char.portrait) {
     for (const particle of char.spoutParticles || []) {
       if (!Number.isFinite(particle.ox) || !Number.isFinite(particle.oy) || !Number.isFinite(particle.life)) continue;
       const life = Math.max(0, Math.min(1.2, particle.life));
@@ -243,36 +338,74 @@ export function drawWhale(ctx: CanvasRenderingContext2D, cx: number, footY: numb
   }
   ctx.restore();
 
-  if (!char.portrait) cloudBank(ctx, surface, t, true, true);
+  if (!char.portrait && sea.depth < .85) {
+    const churn = state === 'diving' || state === 'surfacing' || fleeing ? 1 : 0;
+    ctx.save(); ctx.globalAlpha = clamp((.85 - sea.depth) / .25, 0, 1);
+    cloudCrest(ctx, sea, t, edge, -96, 66, churn); ctx.restore();
+  } else if (!char.portrait) {
+    // A small travelling ripple hints at the swimmer below, without leaving
+    // a whale-shaped raft of foam on the surface.
+    ctx.save(); ctx.globalAlpha = .25;
+    for (let i = 0; i < 3; i++) {
+      const x = -18 + i * 14, lift = char.reducedMotion ? 0 : (t * 9 + i * 7) % 18;
+      oval(ctx, x, sea.wave(x) - lift * .18, 3 + lift * .12, 1, rgba(edge, .6, .4), false);
+    }
+    ctx.restore();
+  }
   ctx.restore();
 }
 
+/** Captain: warm face, very simple eyes, navy uniform and proper peaked cap. */
+function captain(ctx: CanvasRenderingContext2D, char: AquaticPose, startled: boolean) {
+  oval(ctx,26,-14,16,14,'#587e84',false);
+  shape(ctx,CREAM,() => { ctx.moveTo(18,-24); ctx.lineTo(26,-15); ctx.lineTo(34,-24); ctx.lineTo(30,-26); ctx.lineTo(26,-21); ctx.lineTo(22,-26); },false);
+  oval(ctx,26,-33,11.5,12.5,'#e6b47e');
+  oval(ctx,16,-32,2.5,3.5,'#e6b47e',false);
+  oval(ctx,36,-32,2.5,3.5,'#e6b47e',false);
+  shape(ctx,CREAM,() => {
+    ctx.moveTo(14,-41); ctx.quadraticCurveTo(12,-49,26,-49);
+    ctx.quadraticCurveTo(40,-49,38,-41); ctx.lineTo(35,-39); ctx.lineTo(17,-39);
+  });
+  box(ctx,15,-42,23,5,2,INK);
+  oval(ctx,27,-45,2,2,BRASS,false);
+  const eyeY = char.reaction === 'apex' ? -35 : -33;
+  if (char.reaction === 'coast' && !startled) {
+    stroke(ctx,() => { ctx.moveTo(20,-33); ctx.lineTo(23,-33); ctx.moveTo(29,-33); ctx.lineTo(32,-33); },INK,1.7);
+  } else {
+    oval(ctx,22,eyeY,1.5,startled ? 2.9 : 2.1,INK,false);
+    oval(ctx,31,eyeY,1.5,startled ? 2.9 : 2.1,INK,false);
+  }
+  oval(ctx,19,-28,2.6,1.5,'#cd8666',false);
+  oval(ctx,34,-28,2.6,1.5,'#cd8666',false);
+  if (startled) oval(ctx,27,-26,2.2,3,INK,false);
+  else stroke(ctx,() => { ctx.moveTo(23,-26); ctx.quadraticCurveTo(27,char.reaction === 'fizzle' ? -28 : -22,31,-26); },INK,1.6);
+}
+
 /**
- * At s=80, vessel bounds are about x=-82…68, y=-89…-2, before ±2px bob.
+ * At s=80, vessel bounds are about x=-82…68, y=-89…-2, before about ±1px bob.
  * Its captain's large round window is centred at (26,-36).
- * Recognised states: 'hatch_peek' (surfaced captain), 'startled' /
+ * Recognised states: 'hatch_peek' (the captain up in the hatch, the window empty), 'startled' /
  * 'rocket_startled' (crash dive, fast screw), 'running_away', 'squashed',
  * plus the generic swimming states; `fleeing` spins the screw up too.
  */
 export function drawSubmarine(ctx: CanvasRenderingContext2D, cx: number, footY: number, s: number, char: AquaticPose) {
   const t = char.reducedMotion ? 0 : finite(char.stateTimer);
-  const state = char.portrait ? 'idle' : char.state || 'idle';
-  const surface = char.portrait ? 1 : Math.max(CLOUD_GUEST_SURFACE, Math.min(1, finite(char.surfaceAmount, 1)));
-  const direction = char.direction === -1 ? -1 : 1;
+  const state = char.state || 'idle';
+  const sea = swim(char, t, -11, -46, .12, .09);
   const startled = state === 'startled' || state === 'rocket_startled';
-  const hatchPeek = state === 'hatch_peek';
-  const fleeing = !!char.fleeing || startled;
+  const hatchPeek = state === 'hatch_peek' || state === 'watching';
+  const aim = hatchPeek ? observationAim(char) : undefined;
+  const fleeing = !!char.fleeing || startled || state === 'running_away';
   const swimming = ['walking','returning','running_away','cruising','surfacing','diving','startled'].includes(state);
-  const bob = char.portrait ? 0 : Math.sin(t * 1.8) * 1.8;
+  const bob = char.portrait ? 0 : Math.sin(t * 1.8) * 1.1;
+  const edge = Array.isArray(char.cloudEdge) && char.cloudEdge.length >= 3 ? char.cloudEdge : [200, 180, 125];
 
   ctx.save(); ctx.translate(cx,footY); ctx.scale(s / 80,s / 80); ink(ctx);
-  if (!char.portrait) cloudBank(ctx, surface, t, false, false);
   ctx.save();
-  ctx.translate(0,(1 - surface) * 54);
-  ctx.globalAlpha *= .74 + surface * .26;
-  ctx.translate(0,bob - (startled ? 4 : 0));
-  ctx.scale(direction,1);
-  ctx.rotate(swimming ? Math.sin(t * 2) * .035 : 0);
+  if (!char.portrait) clipAboveClouds(ctx, sea);
+  ctx.translate(0,sea.bodyY + bob - (startled ? 4 : 0));
+  ctx.scale(sea.facing,1);
+  ctx.translate(0,-34); ctx.rotate(sea.pitch + (swimming ? Math.sin(t * 2) * .035 : 0)); ctx.translate(0,34);
   if (state === 'squashed') {
     ctx.translate(0,-1); ctx.scale(1.12,.29);
   }
@@ -291,38 +424,58 @@ export function drawSubmarine(ctx: CanvasRenderingContext2D, cx: number, footY: 
   oval(ctx,-75,-29,4,4,INK,false);
 
   // Periscope retracts when startled; an actual elbow, not an ambiguous stick.
-  const retract = startled ? 9 : 0;
+  // Deep in the clouds it rises higher and slowly scans about.
+  const deep = clamp((sea.depth - .35) / .5, 0, 1);
+  const retract = hatchPeek ? 22 : startled ? 9 : -deep * 9;
+  const scan = lerp(1, Math.cos(t * .8), deep);
+  const k = scan < 0 ? -1 : 1, m = Math.max(.18, Math.abs(scan));
+  const back = 2 - 4 * k, front = 2 + 4 * k, tip = front + k * 11 * m;
   shape(ctx, '#82969a', () => {
-    ctx.moveTo(-2,-60); ctx.lineTo(-2,-82+retract);
-    ctx.quadraticCurveTo(-2,-87+retract,3,-87+retract);
-    ctx.lineTo(17,-87+retract); ctx.lineTo(17,-79+retract);
-    ctx.lineTo(6,-79+retract); ctx.lineTo(6,-60);
+    ctx.moveTo(back,-60); ctx.lineTo(back,-82+retract);
+    ctx.quadraticCurveTo(back,-87+retract,2+k,-87+retract);
+    ctx.lineTo(tip,-87+retract); ctx.lineTo(tip,-79+retract);
+    ctx.lineTo(front,-79+retract); ctx.lineTo(front,-60);
   });
-  box(ctx,14,-89+retract,10,13,4,INK);
-  box(ctx,19,-86+retract,5,7,2,'#adcdd1');
-  stroke(ctx, () => { ctx.moveTo(1,-78+retract); ctx.lineTo(1,-67); }, '#c6d3cd', 1.7);
+  const hood = front + k * 8 * m, glass = front + k * 13 * m;
+  box(ctx,Math.min(hood,hood + k * 10 * m),-89+retract,10 * m,13,Math.min(4,5 * m),INK);
+  box(ctx,Math.min(glass,glass + k * 5 * m),-86+retract,5 * m,7,Math.min(2,2.5 * m),'#adcdd1');
+  stroke(ctx, () => { ctx.moveTo(2 - k,-78+retract); ctx.lineTo(2 - k,-67); }, '#c6d3cd', 1.7);
   if (hatchPeek) {
     const look = Math.sin(t * 1.7);
-    // A curious deckhand rises behind the conning tower and scans the horizon.
+    // The captain climbs up behind the conning tower and scans the horizon.
     shape(ctx,'#3f6674',() => {
       ctx.moveTo(-20,-61); ctx.quadraticCurveTo(-18,-72,-8,-73);
       ctx.quadraticCurveTo(3,-72,5,-61);
     });
-    oval(ctx,-8,-80,9,10,'#e8b780');
-    oval(ctx,-17,-80,2.2,3,'#e8b780',false);
-    oval(ctx,1,-80,2.2,3,'#e8b780',false);
+    // The pilot can look independently of the vessel's swimming direction.
+    const facing = aim && aim.yaw ? aim.yaw * Math.sign(sea.facing) : 1;
+    const tilt = aim?.yaw ? -clamp(aim.elevation, -.2, 1.05) : 0;
+    ctx.save(); ctx.translate(-8,-80); ctx.scale(facing,1); ctx.rotate(tilt); ctx.translate(8,80);
+    oval(ctx,-8,-80,9,10,'#e6b47e');
+    oval(ctx,-17,-80,2.2,3,'#e6b47e',false);
+    oval(ctx,1,-80,2.2,3,'#e6b47e',false);
     shape(ctx,'#fff3d9',() => {
       ctx.moveTo(-18,-86); ctx.quadraticCurveTo(-16,-94,-7,-94);
       ctx.quadraticCurveTo(2,-94,3,-86); ctx.lineTo(0,-84); ctx.lineTo(-16,-84);
     });
     box(ctx,-17,-87,19,4,2,INK);
+    oval(ctx,-7,-89.5,1.5,1.5,BRASS,false);
     oval(ctx,-11+look*1.2,-80,1.4,2,INK,false);
     oval(ctx,-4+look*1.2,-80,1.4,2,INK,false);
     stroke(ctx,() => { ctx.moveTo(-12,-75); ctx.quadraticCurveTo(-8,-72,-4,-75); },INK,1.4);
-    stroke(ctx,() => {
-      ctx.moveTo(-17,-67); ctx.quadraticCurveTo(-24,-76,-17,-82);
-      ctx.lineTo(-12,-84);
-    },'#3f6674',3);
+    ctx.restore();
+    if (aim) {
+      const side = aim.yaw !== 0;
+      for (const [shoulder, gx, gy] of [[-17, side ? 5 : -7, 4], [2, side ? 13 : 7, 5]]) {
+        const x = -8 + facing * (Math.cos(tilt) * gx - Math.sin(tilt) * gy);
+        const y = -80 + Math.sin(tilt) * gx + Math.cos(tilt) * gy;
+        stroke(ctx, () => { ctx.moveTo(shoulder,-68); ctx.quadraticCurveTo(shoulder + (shoulder < -8 ? -6 : 6),-70,x,y); }, INK, 5.5);
+        stroke(ctx, () => { ctx.moveTo(shoulder,-68); ctx.quadraticCurveTo(shoulder + (shoulder < -8 ? -6 : 6),-70,x,y); }, '#3f6674', 3.5);
+        oval(ctx,x,y,2.6,2.6,'#e6b47e');
+      }
+      ctx.save(); ctx.translate(-8,-80); ctx.scale(facing,1); ctx.rotate(tilt); ctx.scale(.75,.75);
+      viewingDevice(ctx,side,false,6); ctx.restore();
+    }
   }
   box(ctx,-18,-65,37,23,8,'#d9b471');
   box(ctx,-13,-68,28,7,3,CREAM);
@@ -367,29 +520,9 @@ export function drawSubmarine(ctx: CanvasRenderingContext2D, cx: number, footY: 
   oval(ctx,26,-34,20,20,CREAM);
   oval(ctx,26,-34,17,17,'#426575');
   ctx.save(); ctx.beginPath(); ctx.arc(26,-34,16.7,0,TAU); ctx.clip();
-  // Captain: warm face, very simple eyes, navy uniform and proper peaked cap.
-  oval(ctx,26,-14,16,14,'#587e84',false);
-  shape(ctx,CREAM,() => { ctx.moveTo(18,-24); ctx.lineTo(26,-15); ctx.lineTo(34,-24); ctx.lineTo(30,-26); ctx.lineTo(26,-21); ctx.lineTo(22,-26); },false);
-  oval(ctx,26,-33,11.5,12.5,'#e6b47e');
-  oval(ctx,16,-32,2.5,3.5,'#e6b47e',false);
-  oval(ctx,36,-32,2.5,3.5,'#e6b47e',false);
-  shape(ctx,CREAM,() => {
-    ctx.moveTo(14,-41); ctx.quadraticCurveTo(12,-49,26,-49);
-    ctx.quadraticCurveTo(40,-49,38,-41); ctx.lineTo(35,-39); ctx.lineTo(17,-39);
-  });
-  box(ctx,15,-42,23,5,2,INK);
-  oval(ctx,27,-45,2,2,BRASS,false);
-  const eyeY = char.reaction === 'apex' ? -35 : -33;
-  if (char.reaction === 'coast' && !startled) {
-    stroke(ctx,() => { ctx.moveTo(20,-33); ctx.lineTo(23,-33); ctx.moveTo(29,-33); ctx.lineTo(32,-33); },INK,1.7);
-  } else {
-    oval(ctx,22,eyeY,1.5,startled ? 2.9 : 2.1,INK,false);
-    oval(ctx,31,eyeY,1.5,startled ? 2.9 : 2.1,INK,false);
-  }
-  oval(ctx,19,-28,2.6,1.5,'#cd8666',false);
-  oval(ctx,34,-28,2.6,1.5,'#cd8666',false);
-  if (startled) oval(ctx,27,-26,2.2,3,INK,false);
-  else stroke(ctx,() => { ctx.moveTo(23,-26); ctx.quadraticCurveTo(27,char.reaction === 'fizzle' ? -28 : -22,31,-26); },INK,1.6);
+  // While the captain is up in the hatch, the seat behind the glass is empty.
+  if (hatchPeek) box(ctx,18,-33,16,22,5,'#35525e');
+  else captain(ctx, char, startled);
   // A short glass reflection is kept away from the face.
   stroke(ctx,() => { ctx.moveTo(15,-44); ctx.quadraticCurveTo(12,-39,12,-35); },'rgba(234,247,235,.55)',2.2);
   ctx.restore();
@@ -411,6 +544,10 @@ export function drawSubmarine(ctx: CanvasRenderingContext2D, cx: number, footY: 
     stroke(ctx,() => { ctx.moveTo(-17,-74); ctx.lineTo(-20,-77); ctx.moveTo(-10,-77); ctx.lineTo(-10,-81); },'#e2ac55',2.2);
   }
   ctx.restore();
-  if (!char.portrait) cloudBank(ctx, surface, t, false, true);
+  if (!char.portrait) {
+    const churn = state === 'diving' || state === 'surfacing' || fleeing ? 1 : 0;
+    const narrow = sea.depth > .7 ? lerp(1, .36, clamp((sea.depth - .7) / .3, 0, 1)) : 1;
+    cloudCrest(ctx, sea, t, edge, -78 * narrow, 72 * narrow, churn);
+  }
   ctx.restore();
 }

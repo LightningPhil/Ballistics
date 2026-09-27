@@ -15,7 +15,6 @@ export class FlightDeck {
   run: FlightRecord | null = null;
   baseline: FlightRecord | null = null;
   pinned = false;
-  target = 45;
   ghost = true;
   prediction = false;
   vectors = false;
@@ -41,25 +40,24 @@ export class FlightDeck {
       <circle class="minute-face" cx="50" cy="64" r="11"/><line id="clock-minute" x1="50" y1="64" x2="50" y2="56"/>
       <line id="clock-hand" x1="50" y1="56" x2="50" y2="16"/><circle class="clock-pin" cx="50" cy="50" r="3"/>
       </svg><span class="clock-legend">sec · 30 min</span></div>
-      <div class="flight-instruments"><div class="clock-heading"><span class="eyebrow">FLIGHT TIME</span>
+      <div class="flight-instruments"><div class="flight-topline"><div class="clock-heading"><span class="eyebrow">FLIGHT TIME</span>
       <output id="flight-time">00:00.0</output><output id="flight-rate">Auto · 1.0×</output></div>
       <div class="flight-controls"><button id="flight-pause" type="button" disabled>Pause</button>
       <button id="flight-replay" type="button" disabled>Replay</button><button id="flight-next" type="button" disabled>Next moment</button>
       <label class="rate-choice">Time <select id="flight-speed" aria-label="Time speed"><option value="auto">Auto</option>
-      <option value="1">1×</option><option value="4">4×</option><option value="16">16×</option><option value="64">64×</option></select></label></div>
-      <div class="flight-timeline"><label class="timeline-label" for="flight-timeline">Inspect flight <span id="flight-duration">Ready to launch</span></label>
+      <option value="1">1×</option><option value="4">4×</option><option value="16">16×</option><option value="64">64×</option></select></label></div></div>
+      <div class="flight-timeline"><label class="timeline-label" for="flight-timeline">Inspect flight</label>
       <input id="flight-timeline" type="range" min="0" max="1" step="0.01" value="0" disabled aria-label="Inspect recorded flight time">
-      </div></div>
+      <span id="flight-duration">Ready to launch</span></div></div>
       <div class="flight-notebook"><p id="flight-status" role="status" aria-live="polite">Pick a launch. Make a prediction. See what happens.</p>
-      <div class="notebook-tools"><label>Target <input id="flight-target" type="number" value="45" min="0" max="100000000" step="1" aria-label="Target distance in metres"> m</label>
-      <button id="flight-pin" type="button" disabled aria-pressed="false">Pin this flight</button>
-      <details><summary>View & sound</summary><div class="view-options">
+      <div class="notebook-tools"><details><summary>View & sound</summary><div class="view-options">
       <label><input id="flight-ghost" type="checkbox" checked> Previous flight</label>
       <label><input id="flight-prediction" type="checkbox"> Reveal full path</label>
       <label><input id="flight-vectors" type="checkbox"> Motion & force arrows</label>
       <label><input id="flight-sound" type="checkbox"> Sound</label>
       <label><input id="flight-banter" type="checkbox" checked> Character remarks</label>
-      </div></details></div><p class="comparison-note" id="flight-comparison">The next flight can be compared with this one.</p></div>`;
+      <button id="flight-pin" type="button" disabled aria-pressed="false">Pin this flight</button>
+      <p class="comparison-note" id="flight-comparison">The next flight can be compared with this one.</p></div></details></div></div>`;
     parent.prepend(el); this.element = el; this.status = this.get('flight-status');
     this.button('flight-pause').onclick = () => {
       if (!this.run) return;
@@ -75,16 +73,14 @@ export class FlightDeck {
     };
     this.input('flight-timeline').oninput = () => {
       if (!this.run) return;
-      this.clock.seek(Number(this.input('flight-timeline').value), this.run.duration); this.onSeek(); this.update();
+      const time = Number(this.input('flight-timeline').value);
+      // Range inputs round down to their step: the right edge must still reach
+      // the exact impact, including recordings ending between hundredths.
+      this.clock.seek(time >= this.run.duration - .01 ? this.run.duration : time, this.run.duration); this.onSeek(); this.update();
     };
     this.get<HTMLSelectElement>('flight-speed').onchange = () => {
       const value = this.get<HTMLSelectElement>('flight-speed').value;
       this.clock.select(value === 'auto' ? 'auto' : Number(value)); this.update();
-    };
-    this.input('flight-target').oninput = () => {
-      const value = this.input('flight-target').valueAsNumber;
-      if (Number.isFinite(value)) this.target = Math.max(0, Math.min(1e8, value));
-      if (this.run && this.clock.time >= this.run.duration) this.showResult();
     };
     this.button('flight-pin').onclick = () => {
       if (!this.run) return;
@@ -114,12 +110,7 @@ export class FlightDeck {
     this.updateComparison(); this.update();
   }
   reset() { this.busy = false; this.clock.paused = true; this.clock.time = 0;
-    this.message('Ready for another experiment. Your recorded flight is kept for replay.'); this.update(); }
-  setTarget(value: number, mode: string) {
-    this.target = Math.max(0, Math.min(1e8, Math.round(value)));
-    this.input('flight-target').value = String(this.target);
-    this.input('flight-target').setAttribute('aria-label', mode === 'rocket' ? 'Target height in metres' : 'Target distance in metres');
-  }
+    this.message(this.run ? 'Ready for another experiment. Your recorded flight is kept for replay.' : 'Ready to launch. Change a setting and see what happens.'); this.update(); }
   replay() {
     if (!this.run || this.busy) return;
     this.clock.load(); this.message('Replay — the same recorded physics.'); this.onReplay(); this.update();
@@ -137,10 +128,12 @@ export class FlightDeck {
     if (run.outcome === 'no-liftoff') { this.message(end.outcomeReason || 'No lift-off: outward thrust must exceed weight. Try less mass, a steeper angle or more thrust.'); return; }
     if (run.outcome === 'escape') { this.message('Escape trajectory. The unpowered vehicle is heading away with enough energy to leave this world.'); return; }
     if (run.outcome === 'orbit') { this.message('Orbit established: the unpowered path clears the planet. Replay or try another launch.'); return; }
-    if (run.outcome !== 'impact') { this.message('Observation ended before a landing or confirmed orbit. Height shown is the highest observed, not a predicted apex. Try a shorter burn.'); return; }
-    const measured = run.mode === 'rocket' ? run.maxHeight : end.x;
-    const miss = measured - this.target;
-    this.message(`${run.mode === 'rocket' ? 'Highest point' : 'Landed'}: ${measured.toFixed(1)} m · ${Math.abs(miss).toFixed(1)} m ${miss < 0 ? 'short of' : 'beyond'} target · ${formatTime(run.duration)} flight.${run.mode === 'rocket' && end.impactSpeed != null ? ` Contact speed ${end.impactSpeed.toFixed(1)} m/s.` : ''}`);
+    if (run.outcome !== 'impact') { this.message('Observation ended before a landing or confirmed orbit. Try a shorter burn.'); return; }
+    if (run.mode === 'rocket') {
+      this.message(`Landed ${(end.x - run.launchX).toFixed(1)} m from pad · ${formatTime(run.duration)} flight${end.impactSpeed != null ? ` · ${end.impactSpeed.toFixed(1)} m/s at contact` : ''}.`); return;
+    }
+    const measured = end.x;
+    this.message(`Landed at ${measured.toFixed(1)} m along the surface · ${formatTime(run.duration)} flight.`);
   }
   update() {
     const time = this.clock.time, run = this.run;

@@ -18,10 +18,3 @@ export function characterForWorld(name: string): string | null {
     ? WORLD_CHARACTERS[name]
     : null;
 }
-
-export type IceBearGait = 'two' | 'four';
-
-/** Pluto's ice bear deliberately alternates gaits rather than relying on chance. */
-export function nextIceBearGait(current: IceBearGait = 'four'): IceBearGait {
-  return current === 'four' ? 'two' : 'four';
-}

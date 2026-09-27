@@ -1,7 +1,7 @@
 .canvas-area { display: flex; flex-direction: column; min-width: 0; }
 .canvas-area #sim-canvas { flex: 1; min-height: 260px; height: 0; width: 100%; touch-action: pan-y; }
-.flight-deck { color: #253c3b; background: #fff7e6; padding: 12px 20px 11px; display: grid; grid-template-columns: 86px minmax(0,1fr); gap: 9px 18px; border-bottom: 1px solid #d9ceb6; font: 13px/1.45 system-ui,sans-serif; z-index: 2; }
-.chronograph { align-self: center; width: 86px; }
+.flight-deck { color: #253c3b; background: #fff7e6; padding: 10px 16px; display: grid; grid-template-columns: 62px minmax(0,1fr); gap: 5px 14px; border-bottom: 1px solid #d9ceb6; font: 12px/1.4 system-ui,sans-serif; z-index: 2; }
+.chronograph { align-self: center; width: 62px; grid-row:1/3; }
 .chronograph svg { display: block; width: 100%; overflow: visible; filter: drop-shadow(0 2px 1px #45634c12); }
 .clock-bezel { fill: #e7dfc5; stroke: #9fae95; stroke-width: .8; }
 .clock-face { fill: #fffcf3; stroke: #6b877e; stroke-width: 1.6; }
@@ -14,10 +14,12 @@
 .clock-pin { fill: #bb5937; stroke: #fffcf3; stroke-width: .7; }
 .clock-legend { display: block; margin-top: 3px; color: #71816b; font: 9px/1.2 system-ui,sans-serif; letter-spacing: .03em; text-align: center; }
 .clock-heading, .flight-controls, .notebook-tools { display: flex; align-items: center; gap: 6px 8px; flex-wrap: wrap; }
-.clock-heading { min-height: 32px; margin-bottom: 4px; }
+.flight-topline { display:flex; align-items:center; justify-content:space-between; gap:6px 16px; flex-wrap:wrap; }
+.clock-heading { min-height: 32px; gap:5px 8px; flex-wrap:nowrap; }
+.flight-controls { justify-content:flex-end; }
 .flight-deck .eyebrow { font-size: 9px; letter-spacing: .12em; font-weight: 700; color: #74816a; }
-#flight-time { color: #304e42; font-size: 25px; font-weight: 550; font-variant-numeric: tabular-nums; letter-spacing: -.025em; line-height: 1.2; }
-#flight-rate { margin-left: auto; min-width: 7.3em; padding: 3px 8px; border: 1px solid #d9e1cd; border-radius: 20px; background: #edf1e2; color: #536b53; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: center; white-space: nowrap; }
+#flight-time { color: #304e42; font-size: 22px; font-weight: 550; font-variant-numeric: tabular-nums; letter-spacing: -.025em; line-height: 1.2; }
+#flight-rate { min-width: 6.5em; padding: 2px 6px; border: 1px solid #d9e1cd; border-radius: 20px; background: #edf1e2; color: #536b53; font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: center; white-space: nowrap; }
 .flight-deck button, .flight-deck select, .flight-deck input[type=number] { color: #3d5948; background: #fffbf1; border: 1px solid #cbd2be; border-radius: 8px; padding: 6px 9px; min-height: 34px; font: inherit; }
 .flight-deck button { cursor: pointer; font-weight: 550; transition: background .15s, border-color .15s; }
 .flight-deck button:hover:enabled { background: #e9efdf; border-color: #8ea78b; }
@@ -34,35 +36,36 @@
 .flight-deck #flight-replay:hover:enabled, .flight-deck #flight-next:hover:enabled { background: #eef1e4; border-color: #a8b69b; }
 .rate-choice { display: inline-flex; align-items: center; gap: 5px; color: #6c7b61; font-size: 11px; }
 .flight-deck .rate-choice select { padding-inline: 7px; font-size: 12px; }
-.flight-deck .timeline-label { display: flex; justify-content: space-between; gap: 10px; margin-top: 8px; color: #64765c; font-size: 11px; }
-#flight-duration { font-variant-numeric: tabular-nums; text-align: right; }
-#flight-timeline { display: block; width: 100%; accent-color: #416d5a; height: 7px; margin-block: 10px 5px; }
-.flight-notebook { grid-column: 1/-1; border-top: 1px solid #e0deca; padding-top: 9px; }
-#flight-status { margin: 0 0 7px; min-height: 1.45em; font-size: 13px; }
+.flight-timeline { display:grid; grid-template-columns:auto minmax(60px,1fr) auto; align-items:center; gap:12px; margin-top:5px; }
+.flight-deck .timeline-label { color: #64765c; font-size: 10px; }
+#flight-duration { font-size:10px; color:#64765c; font-variant-numeric: tabular-nums; text-align: right; }
+#flight-timeline { display: block; width: 100%; accent-color: #416d5a; height: 7px; margin:9px 0; }
+.flight-notebook { grid-column: 2; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+#flight-status { margin: 0; min-height: 1.4em; font-size: 11px; }
 .notebook-tools { gap: 6px 10px; }
 .notebook-tools label { display: inline-flex; align-items: center; gap: 6px; color: #64755c; font-size: 12px; }
-#flight-target { width: 94px; font-variant-numeric: tabular-nums; }
 .notebook-tools details { margin-left: auto; position: relative; }
-.notebook-tools summary { cursor: pointer; color: #61755a; padding: 6px; border-radius: 6px; font-size: 12px; }
+.notebook-tools summary { cursor: pointer; color: #61755a; padding: 6px; border-radius: 6px; font-size: 11px; white-space:nowrap; }
 .notebook-tools summary:hover { background: #edf0e1; }
 .view-options { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; width: 225px; display: grid; gap: 12px; padding: 16px; background: #fffaf0; box-shadow: 0 8px 28px #263b3b22; border: 1px solid #c9cbb5; border-radius: 10px; }
-.view-options input { accent-color: #416d5a; width: 17px; height: 17px; }
+.view-options input[type=checkbox] { accent-color: #416d5a; width: 17px; height: 17px; }
+.view-options label[hidden] { display:none; }
+.engine-state { margin:8px 0 5px; font:600 11px/1.4 system-ui,sans-serif; color:#53705d; }
 .comparison-note { font-size: 11px; line-height: 1.5; color: #748268; margin: 6px 0 0; }
 @media (max-width: 620px) {
-  .flight-deck { padding: 12px; gap: 8px 12px; grid-template-columns: 70px minmax(0,1fr); }
-  .chronograph { width: 70px; grid-column: 1; grid-row: 1; }
+  .flight-deck { padding: 10px; gap: 5px 10px; grid-template-columns: 52px minmax(0,1fr); }
+  .chronograph { width: 52px; grid-column: 1; grid-row: 1; align-self:start; }
   .clock-legend { font-size: 8px; margin-top: 1px; }
-  .flight-instruments { display: contents; }
-  .clock-heading { grid-column: 2; grid-row: 1; align-content: center; margin: 0; gap: 6px; }
-  .clock-heading .eyebrow { flex: 0 0 100%; font-size: 9px; }
-  #flight-time { font-size: 25px; }
+  .clock-heading { margin: 0; gap: 6px; }
+  .clock-heading .eyebrow { font-size: 8px; }
+  #flight-time { font-size: 22px; }
   #flight-rate { margin-left: auto; min-width: 0; padding: 3px 7px; font-size: 10px; }
-  .flight-controls, .flight-timeline { grid-column: 1/-1; }
-  .flight-controls { gap: 6px; }
+  .flight-controls { gap: 6px; justify-content:flex-start; }
   .flight-controls button,.flight-controls select { font-size: 12px; padding: 6px 8px; }
   .flight-deck #scene-launch { gap: 10px; padding-inline: 12px; }
-  .flight-deck .timeline-label { margin-top: 2px; }
-  .flight-notebook { padding-top: 8px; }
+  .flight-timeline { grid-template-columns:minmax(50px,1fr) auto; gap:6px; }
+  .flight-deck .timeline-label { display:none; }
+  .flight-notebook { grid-column:1/-1; }
   .notebook-tools { gap: 6px 8px; }
   #flight-pin { font-size: 12px; }
   .comparison-note { font-size: 11px; }
@@ -70,5 +73,5 @@
 @media (pointer:coarse) {
   .flight-deck button,.flight-deck select,.flight-deck input[type=number],.notebook-tools summary { min-height: 44px; }
   .flight-deck input[type=number] { font-size: 16px; }
-  #flight-timeline { height: 10px; margin-block: 14px 12px; }
+  #flight-timeline { height: 10px; margin-block: 12px; }
 }

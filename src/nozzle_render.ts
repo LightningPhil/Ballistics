@@ -6,7 +6,7 @@ import { RocketPropellants } from './rocket_propellants.ts';
  * ============================================================================
  *
  * ROLE:  Draws a live, parametric cross-section of the rocket engine nozzle
- *        as an overlay inset on the main canvas (upper right, beneath the
+ *        as an overlay inset on the main canvas (upper right, above the
  *        character close-up). Every slider change reshapes the geometry,
  *        teaching how propellant choice, chamber pressure, throat area,
  *        expansion ratio and mixture ratio determine nozzle geometry and
@@ -25,9 +25,9 @@ import { RocketPropellants } from './rocket_propellants.ts';
 
 // ── Layout Constants ─────────────────────────────────────────────────────
 var INSET_MARGIN_X = 20;
-var INSET_MARGIN_Y = 150; // Leave room for the target readout and character asides.
+var INSET_MARGIN_Y = 16;
 var INSET_MAX_W    = 320;
-var INSET_MAX_H    = 184;
+var INSET_MAX_H    = 204;
 var INSET_W_FRAC   = 0.28;
 var CORNER_R       = 8;
 var PADDING        = 10;  // internal padding within the inset
@@ -114,7 +114,8 @@ function computeLayout(d, iw, ih) {
   var At     = d.At || 0.002;
   var eps    = clamp(d.epsilon || 20, 2, 250);
   var MR     = clamp(d.MR || 2.5, 0.5, 15);
-  var mdot   = d.mdot || 5;
+  var mdot   = Math.max(0, d.mdot ?? 5);
+  var output = mdot > 0 ? clamp(d.output ?? 1, 0, 1) : 0;
   var Pc_bar = clamp(d.Pc_bar || 100, 10, 300);
 
   // ── Region width fractions ──
@@ -165,7 +166,7 @@ function computeLayout(d, iw, ih) {
 
   // ── Chamber fill colour ──
   var pT = clamp((Pc_bar - 10) / 290, 0, 1);
-  var chamCol = chamberColour(pT);
+  var chamCol = lerpRGB([47, 61, 68], chamberColour(pT), output);
 
   return {
     // X positions
@@ -188,6 +189,7 @@ function computeLayout(d, iw, ih) {
     eps: eps,
     MR: MR,
     mdot: mdot,
+    output: output,
     Pc_bar: Pc_bar,
     At: At,
     // Inner dims
@@ -334,7 +336,8 @@ function drawThroat(ctx, L, cy) {
   ctx.fillRect(x0, cy + hh, x1 - x0, 1.5);
 
   // Sonic glow
-  var glowAlpha = clamp(L.mdot / 50, 0.1, 0.5);
+  if (L.output <= 0) return;
+  var glowAlpha = clamp(L.mdot / 50, 0.1, 0.5) * L.output;
   var glowR = Math.max(hh * 1.5, 6);
   var glow = ctx.createRadialGradient(xMid, cy, 0, xMid, cy, glowR);
   glow.addColorStop(0, COL_THROAT_GLOW + glowAlpha + ')');
@@ -391,9 +394,10 @@ function drawDiverging(ctx, L, cy) {
 
 // 3.6 Exit Plume Hint
 function drawPlume(ctx, L, cy, d) {
+  if ((L.output <= 0 && d.flowRegime !== 'unchoked') || d.flowRegime === 'off' || d.output === 0) return;
   var x0 = L.xExit;
   var hh = L.exitHalfH;
-  var plumeLen = hh * 0.7;
+  var plumeLen = hh * 0.7 * L.output;
   var plumeHalfW = hh * (1 + 0.1 * Math.sqrt(L.eps));
 
   // Over/under-expansion adjustment
@@ -408,7 +412,7 @@ function drawPlume(ctx, L, cy, d) {
     var pe_pc = RocketPropellants._exitPressureRatio(gamma, Me);
     Pe = pe_pc * Pc_Pa;
   }
-  if (!(L.mdot > 0) || d.flowRegime === 'unchoked' || d.flowRegime === 'off') {
+  if (d.flowRegime === 'unchoked') {
     ctx.font = '10px system-ui, sans-serif';
     ctx.fillStyle = '#ffb36b';
     ctx.globalAlpha = 0.8;
@@ -430,7 +434,7 @@ function drawPlume(ctx, L, cy, d) {
 
   // Triangular plume gradient
   var grad = ctx.createLinearGradient(x0, 0, x0 + plumeLen, 0);
-  grad.addColorStop(0, 'rgba(255,200,100,0.25)');
+  grad.addColorStop(0, 'rgba(255,200,100,' + (.25 * L.output) + ')');
   grad.addColorStop(1, 'rgba(255,200,100,0)');
   ctx.fillStyle = grad;
   ctx.beginPath();
@@ -497,7 +501,7 @@ function halfHeightAt(L, tNorm) {
 }
 
 function drawStreamlines(ctx, L, cy, worldTime) {
-  if (!(L.mdot > 0)) return;
+  if (!(L.mdot > 0) || L.output <= 0) return;
   var numLines = 3 + Math.floor(clamp(L.mdot / 10, 0, 5));
   var nozzleStartX = L.xChamber;
   var nozzleLen = L.xExit - L.xChamber;
@@ -514,7 +518,7 @@ function drawStreamlines(ctx, L, cy, worldTime) {
 
     // Draw the streamline as a series of short segments with colour changes
     ctx.lineWidth = 1;
-    ctx.globalAlpha = 0.5;
+    ctx.globalAlpha = 0.5 * L.output;
 
     var prevX = 0, prevY = 0;
     for (var s = 0; s <= segments; s++) {
@@ -536,7 +540,7 @@ function drawStreamlines(ctx, L, cy, worldTime) {
     }
 
     // Animated dots sliding along the streamline
-    ctx.globalAlpha = 0.85;
+    ctx.globalAlpha = 0.85 * L.output;
     for (var di = 0; di < DOTS_PER_LINE; di++) {
       var phase = (di / DOTS_PER_LINE) + i * 0.17;
       // Speed increases through the nozzle — use a non-linear wrap
@@ -581,17 +585,20 @@ function drawLabels(ctx, L, cy, d) {
 
 // ── Main draw function ───────────────────────────────────────────────────
 
+/** Shared with the portrait so the two overlays never compete for space. */
+function insetBounds(canvasW:number, canvasH:number) {
+  if (canvasW <= 680 || canvasH < INSET_MARGIN_Y + INSET_MAX_H + 104) return null;
+  const width = Math.min(INSET_MAX_W, Math.max(260, canvasW * INSET_W_FRAC));
+  return { x:canvasW - width - INSET_MARGIN_X, y:INSET_MARGIN_Y, width, height:INSET_MAX_H };
+}
+
 function draw(ctx, canvasW, canvasH, d) {
   if (!d) return;
 
   // ── Compute inset size & position ──
-  var iw = Math.min(INSET_MAX_W, Math.max(260, canvasW * INSET_W_FRAC));
-  var ih = INSET_MAX_H;
-  // Don't draw if canvas is too small
-  if (canvasW < 580 || canvasH < INSET_MARGIN_Y + ih + 20) return;
-
-  var ix = canvasW - iw - INSET_MARGIN_X;
-  var iy = INSET_MARGIN_Y;
+  const bounds = insetBounds(canvasW, canvasH);
+  if (!bounds) return;
+  var iw = bounds.width, ih = bounds.height, ix = bounds.x, iy = bounds.y;
 
   ctx.save();
 
@@ -619,7 +626,7 @@ function draw(ctx, canvasW, canvasH, d) {
   var drawX = ix + PADDING;
   var drawY = iy + PADDING + 26;  // below title
   var drawW = iw - PADDING * 2;
-  var drawH = ih - PADDING * 2 - 49;
+  var drawH = ih - PADDING * 2 - 69;
   var cy = drawY + drawH / 2;  // centre-line y
 
   // Compute nozzle layout
@@ -647,6 +654,12 @@ function draw(ctx, canvasW, canvasH, d) {
 
   // ── Labels & dimensions ──
   drawLabels(ctx, L, cy, d);
+  if (d.engineLabel) {
+    ctx.font = '500 10px system-ui, sans-serif';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+    ctx.fillStyle = L.output > 0 ? '#f4deb0' : '#b9c9c7';
+    ctx.fillText(d.engineLabel, ix + PADDING, iy + ih - 9, iw - PADDING * 2);
+  }
 
   // ── Centre-line (axis of symmetry) ──
   ctx.strokeStyle = 'rgba(255,255,255,0.1)';
@@ -663,5 +676,6 @@ function draw(ctx, canvasW, canvasH, d) {
 
 // ── Expose namespace ─────────────────────────────────────────────────────
 export const NozzleRender = {
-  draw: draw
+  draw: draw,
+  insetBounds
 };

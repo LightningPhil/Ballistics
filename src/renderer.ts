@@ -1,7 +1,10 @@
 import { drawCrew } from './crew.ts';
+import { NozzleRender } from './nozzle_render.ts';
+import { gazeAim, observationAim, rocketWatchAim } from './crew-watch.ts';
+import { businessTime } from './character-business.ts';
 import { drawWhale, drawSubmarine } from './aquatic-characters.ts';
 import { drawNewt, drawSnowman } from './planet-guests.ts';
-import { drawGiantSquid } from './squid.ts';
+import { drawGiantSquid, drawIceHole } from './squid.ts';
 import { drawIceBear } from './ice-bear.ts';
 import { rocketCameraFraming, type RocketCameraRequest } from './camera.ts';
 import { ENVIRONMENTS } from './environment.ts';
@@ -14,7 +17,7 @@ import { ENVIRONMENTS } from './environment.ts';
  * ROLE:  Everything drawn on <canvas>. Planet environments (sky, curved
  *        ground, features), the side-elevation cannon, launch tower and
  *        rocket, cannonballs, flags, craters/gas holes, particles, muzzle
- *        flash, shockwave, ghost trails, the target marker and the character
+ *        flash, shockwave, ghost trails, the decorative golf flag and the character
  *        close-up. Owns the camera: dynamic zoom, panning, the planet-view
  *        blend from flat horizon to whole-planet circle, and the rocket
  *        follow camera (framing maths in camera.ts).
@@ -668,69 +671,25 @@ function drawGhost(points, options: { color?: string } = {}) {
   ctx.restore();
 }
 
-function drawTarget(value, mode = 'cannon') {
-  if (!Number.isFinite(value)) return;
-  var rocketMode = mode === 'rocket';
-  var point = toCanvas(rocketMode ? TOWER_BASE_X_M : value, rocketMode ? value : 0);
-  ctx.save();
-  ctx.lineCap = 'round';
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = '#315d59';
-  if (rocketMode) {
-    ctx.strokeStyle = 'rgba(236,201,115,.9)';
-    ctx.setLineDash([6, 5]);
-    if (curveActive) {
-      var ring = (curveRadius + value) * currentPPM;
-      if (ring > 0) { ctx.beginPath(); ctx.arc(curveCentreX,curveCentreY,ring,0,Math.PI*2);ctx.stroke(); }
-    } else {
-      ctx.beginPath();ctx.moveTo(0,point.y);ctx.lineTo(W,point.y);ctx.stroke();
-    }
-    ctx.setLineDash([]);
-    // Only show the handle at the real goal, where dragging can hit it.
-    if (point.x >= 0 && point.x <= W && point.y >= 0 && point.y <= H) {
-      ctx.fillStyle = '#f3cf76';ctx.beginPath();ctx.arc(point.x,point.y,5,0,Math.PI*2);ctx.fill();
-    }
-  } else {
-    if (point.x >= -60 && point.x <= W + 60 && point.y >= -70 && point.y <= H + 70) {
-      ctx.translate(point.x,point.y);
-      if (curveActive) ctx.rotate(value / curveRadius);
-      ctx.fillStyle = 'rgba(33,52,48,.18)';ctx.beginPath();ctx.ellipse(0,0,17,4,0,0,Math.PI*2);ctx.fill();
-      ctx.strokeStyle='#324b4c';ctx.lineWidth=3;
-      ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,-49);ctx.stroke();
-      ctx.beginPath();ctx.moveTo(1,-48);ctx.quadraticCurveTo(15,-51,29,-43);
-      ctx.lineTo(22,-31);ctx.quadraticCurveTo(12,-37,1,-34);ctx.closePath();
-      ctx.fillStyle='#e9ae57';ctx.fill();ctx.lineWidth=1.5;ctx.stroke();
-      ctx.fillStyle='#fff1c8';ctx.beginPath();ctx.arc(11,-42,3,0,Math.PI*2);ctx.fill();
-    }
-  }
-  ctx.restore();
+/** A fixed piece of Earth scenery, with no measurement or interaction. */
+function drawGolfFlag() {
+  if(currentPPM<8)return;
+  const x=8.5, point=toCanvas(x,0), scale=currentPPM/80;
+  ctx.save();ctx.translate(point.x,point.y);ctx.rotate(surfaceNormalAngle(x));ctx.scale(scale,scale);
+  ctx.fillStyle='#456e49';ctx.beginPath();ctx.ellipse(0,0,24,5,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#243d37';ctx.beginPath();ctx.ellipse(0,-1,5,2,0,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#f9f0cf';ctx.lineWidth=2.5;ctx.beginPath();ctx.moveTo(0,-1);ctx.lineTo(0,-66);ctx.stroke();
+  ctx.fillStyle='#c76649';ctx.strokeStyle='#744831';ctx.lineWidth=1.2;
+  ctx.beginPath();ctx.moveTo(1,-65);ctx.quadraticCurveTo(14,-69,24,-60);ctx.lineTo(19,-47);
+  ctx.quadraticCurveTo(10,-54,1,-49);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();
 }
 
-/** Screen-space notes stay clear of the target and the running character. */
-function drawSceneNotes(value, mode, char) {
-  if (Number.isFinite(value)) {
-    var rocketMode = mode === 'rocket';
-    var point = toCanvas(rocketMode ? TOWER_BASE_X_M : value, rocketMode ? value : 0);
-    var distance = Math.abs(value) >= 1000 ? (value / 1000).toFixed(1) + ' km' : Math.round(value) + ' m';
-    var direction = point.x > W ? ' →' : point.x < 0 ? ' ←' : point.y < 0 ? ' ↑' : point.y > H ? ' ↓' : '';
-    var text = (rocketMode ? 'Height goal · ' : 'Target · ') + distance + direction;
-    ctx.save();
-    ctx.font = '600 12px system-ui, sans-serif';
-    drawAnnotation(text, W - ctx.measureText(text).width - 34, 16);
-    ctx.restore();
-  }
-  if (char) drawCharacterAside(char);
+/** Persistent character portrait and speech. */
+function drawSceneNotes(mode, char) {
+  const nozzle = mode === 'rocket' ? NozzleRender.insetBounds(W, H) : null;
+  if (char) drawCharacterAside(char, nozzle ? nozzle.y + nozzle.height + 48 : 90);
 }
 
-function drawAnnotation(text, x, y) {
-  ctx.save();ctx.font='600 12px system-ui, sans-serif';
-  var width=ctx.measureText(text).width+18;
-  ctx.beginPath();ctx.roundRect(clamp(x,5,W-width-5),y,width,25,8);
-  ctx.fillStyle='rgba(255,247,228,.94)';ctx.fill();
-  ctx.strokeStyle='rgba(40,62,60,.25)';ctx.lineWidth=1;ctx.stroke();
-  ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillStyle='#2c454b';
-  ctx.fillText(text,clamp(x,5,W-width-5)+9,y+12.5);ctx.restore();
-}
 
 function getCannonTipPhys(angleDeg) {
   var rad = angleDeg * Math.PI / 180;
@@ -1921,24 +1880,13 @@ function drawStickman(physX, physY, poseData) {
   if(currentPPM<16)return;
   var point=toCanvas(physX,physY);
   var pose=poseData.pose||'idle';
-  var size=currentPPM*.76;
-  drawCrew(ctx,point.x,point.y,size,{
+  // The crew rig draws the carried barrel section and the spanner itself.
+  drawCrew(ctx,point.x,point.y,currentPPM*.76,{
     type:'worker',
-    state:pose==='running'?'running_away':pose==='panicked'?'startled':pose,
+    state:pose==='running'?'running_away':pose,
     stateTimer:poseData.timer||0,
     direction:poseData.direction||1
   });
-  ctx.save();ctx.translate(point.x,point.y);ctx.scale(size/100,size/100);
-  ctx.strokeStyle='#2d4249';ctx.lineWidth=2;ctx.lineCap='round';
-  if(pose==='carrying'){
-    ctx.beginPath();ctx.roundRect(-34,-118,65,13,3);ctx.fillStyle='#3c6070';ctx.fill();ctx.stroke();
-    ctx.fillStyle='#e9bd6b';ctx.fillRect(-28,-118,5,13);ctx.fillRect(20,-118,5,13);
-  } else if(pose==='screwing'){
-    ctx.save();ctx.translate(28,-37);ctx.rotate(Math.sin((poseData.timer||0)*8)*.4);
-    ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(11,-22);ctx.lineTo(17,-24);ctx.stroke();
-    ctx.restore();
-  }
-  ctx.restore();
 }
 
 
@@ -1947,7 +1895,9 @@ function drawStickman(physX, physY, poseData) {
 // State machine is managed by main.ts; renderer just draws based on the state object.
 
 function drawCharacter(char) {
-  if (!char || !char.visible) return;
+  if (!char) return;
+  if (char.type === 'squid' && Array.isArray(char.holes)) drawSquidHoles(char.holes);
+  if (!char.visible) return;
 
   var position = toCanvas(char.x, Number.isFinite(char.y) ? char.y : 0);
   ctx.save();
@@ -1957,17 +1907,39 @@ function drawCharacter(char) {
   ctx.restore();
 }
 
+/** Ganymede's holes: cracking open, open water, or skinning over with new ice. */
+function drawSquidHoles(holes) {
+  if (planetViewFrac > .5 || !(currentPPM > 2)) return;
+  for (var hole of holes) {
+    if (!hole || !Number.isFinite(hole.x)) continue;
+    var at = toCanvas(hole.x, 0);
+    if (at.x < -currentPPM || at.x > W + currentPPM) continue;
+    ctx.save();
+    ctx.translate(at.x, at.y);
+    ctx.rotate(surfaceNormalAngle(hole.x));
+    ctx.scale(currentPPM / 80, currentPPM / 80);
+    drawIceHole(ctx, 'back', hole);
+    ctx.restore();
+  }
+}
+
 function drawCharacterSprite(cx, cy, s, char) {
 
   // Normalize rocket_startled to startled for drawing purposes
   // (visually identical, only duration differs — handled in main.ts)
   var drawChar = char;
+  if (Number.isFinite(char.gaitSpeed)) drawChar={...char,speed:char.gaitSpeed};
   if (char.state === 'rocket_startled') {
     drawChar = {};
     for (var k in char) {
       if (char.hasOwnProperty(k)) drawChar[k] = char[k];
     }
     drawChar.state = 'startled';
+  }
+
+  if ((drawChar.type === 'whale' || drawChar.type === 'submarine') && env && env.surfEdge) {
+    if (drawChar === char) drawChar = { ...char };
+    drawChar.cloudEdge = env.surfEdge;
   }
 
   var isCrew = ['golfer','alien','spaceman','robot','icerobot'].includes(drawChar.type);
@@ -1987,9 +1959,13 @@ function drawCharacterSprite(cx, cy, s, char) {
 }
 
 
-// ── Persistent character close-up, beneath the target readout ────────────────
-function drawCharacterAside(char) {
-  var speech = typeof char.bubbleText === 'string' ? char.bubbleText.trim() : '';
+// ── Persistent character close-up, framed for the active pose ────────────────
+function drawCharacterAside(char, centreY = 90) {
+  const offsetY = centreY - 90;
+  ctx.save(); ctx.translate(0, offsetY);
+  var speech = char.business?.kind === 'paper-plane'
+    ? businessTime(char) >= 2 ? 'Does this really need air..?' : ''
+    : typeof char.bubbleText === 'string' ? char.bubbleText.trim() : '';
   if (char.banter !== false && speech) drawCharacterSpeech(speech);
 
   ctx.save();
@@ -1998,18 +1974,44 @@ function drawCharacterAside(char) {
   // Frame faces rather than shrinking wide bodies into the little round window.
   var framing = char.type === 'newt' ? { scale: 68, x: -26.35, footY: 122.3 }
     : char.type === 'snowman' ? { scale: 54, x: 0, footY: 147 }
-    : char.type === 'icebear' ? { scale: 72, x: -.9, footY: 163.8 }
+    : char.type === 'icebear' ? { scale: 72, x: -5.5, footY: 163.8 }
     : char.type === 'squid' ? { scale: 62, x: 0, footY: 137.3 }
     : char.type === 'whale' ? { scale: 54, x: -27.7, footY: 124.4 }
     : char.type === 'submarine' ? { scale: 65, x: -21.1, footY: 119.3 }
+    // The robots' larger heads need room for the startled jump, too.
+    : char.type === 'robot' || char.type === 'icerobot' ? { scale: 40, x: 0, footY: 120 }
     : { scale: 43, x: 0, footY: 120 };
-  // Keep their face visible even while the world sprite is flattened or out of view.
+  // Being outside the camera does not change what the character is doing.
   var portrait = { ...char, portrait: true,
-    state: !char.visible || char.state === 'squashed' ? 'idle' : char.state };
-  if (['newt', 'icebear', 'squid', 'whale', 'submarine'].includes(char.type)) portrait.direction = 1;
-  if (char.type === 'icebear') portrait.upright = false;
-  if (['whale', 'submarine'].includes(char.type)) portrait.surfaceAmount = 1;
+    state: char.state === 'off_screen' ? 'running_away' : char.state };
+  if (char.state === 'watching' && char.watchTarget) {
+    // The inset lives above the field: aim from its own face to the displayed
+    // rocket, rather than borrowing the ground observer's opposite bearing.
+    const target = toCanvas(char.watchTarget.x, char.watchTarget.y);
+    portrait.watchAim = rocketWatchAim(W - 52, { x: target.x, y: 91 + offsetY - target.y });
+    // Guest rigs and their portrait crop must agree about the new bearing.
+    if (char.type !== 'submarine') portrait.direction = portrait.watchAim.yaw < 0 ? -1 : 1;
+  }
+  if (char.state === 'inspecting' && char.inspectTarget) {
+    portrait.direction = toCanvas(char.inspectTarget.x, char.inspectTarget.y).x < W - 52 ? -1 : 1;
+  }
+  const portraitAim = observationAim(portrait)||gazeAim(portrait);
+  if (portraitAim && char.type !== 'submarine') portrait.direction = portraitAim.yaw < 0 ? -1 : 1;
+  if (char.type === 'submarine' && ['hatch_peek', 'watching'].includes(char.state)) framing = { scale: 104, x: 10.4, footY: 194 };
+  if (char.business?.kind === 'umbrella') framing={scale:34,x:-9,footY:124};
+  if (char.business?.kind === 'paper-plane') framing={scale:36,x:-12,footY:115};
+  if (char.business?.kind === 'police-hat') framing={scale:56,x:-21,footY:128};
+  if (char.business?.kind === 'ice-cream') framing={scale:60,x:-10,footY:146};
+  if (char.type === 'whale' && char.state === 'spouting') framing = { scale: 43, x: -17, footY: 131 };
+  if (char.type === 'squid' && char.state === 'hammering') framing = { scale: 42, x: -15, footY: 123 };
+  // Flattened rigs sit at ground level. Lower the camera to include their face
+  // and dizzy stars instead of replacing the injury with a smile.
+  if (char.state === 'squashed' && !['icebear', 'squid'].includes(char.type)) {
+    framing = { ...framing, footY: char.type === 'whale' ? 100 : char.type === 'submarine' ? 98 : 101 };
+  }
+  if (portrait.direction === -1) framing.x = -framing.x;
   drawCharacterSprite(W-52+framing.x,framing.footY,framing.scale,portrait);
+  ctx.restore();
   ctx.restore();
 }
 
@@ -2576,7 +2578,7 @@ export const Renderer = {
   drawLandedBall: drawLandedBall,
   drawTrajectoryDot: drawTrajectoryDot,
   drawGhost: drawGhost,
-  drawTarget: drawTarget,
+  drawGolfFlag: drawGolfFlag,
   drawSceneNotes: drawSceneNotes,
   drawFlag: drawFlag,
   drawCrater: drawCrater,

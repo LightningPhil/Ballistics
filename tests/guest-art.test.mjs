@@ -4,6 +4,8 @@ import { drawWhale, drawSubmarine } from '../src/aquatic-characters.ts';
 import { drawNewt, drawSnowman } from '../src/planet-guests.ts';
 import { drawGiantSquid } from '../src/squid.ts';
 import { drawIceBear } from '../src/ice-bear.ts';
+import { SILLY_ACTIONS } from '../src/character-business.ts';
+import { drawCrew } from '../src/crew.ts';
 
 const artists = { whale: drawWhale, submarine: drawSubmarine, newt: drawNewt, snowman: drawSnowman,
   icebear: drawIceBear, squid: drawGiantSquid };
@@ -49,8 +51,8 @@ function canvasSpy() {
 
 test('guest characters draw every field pose at natural world and portrait scales without mutating state', () => {
   for (const [type, draw] of Object.entries(artists)) {
-    for (const state of ['idle', 'walking', 'returning', 'running_away', 'startled', 'rocket_startled', 'squashed',
-      'cruising', 'surfacing', 'surfaced', 'spouting', 'breathing', 'hatch_peek', 'diving']) {
+    for (const state of ['idle', 'walking', 'returning', 'running_away', 'running_to', 'waiting', 'inspecting', 'startled', 'rocket_startled', 'squashed',
+      'watching', 'cruising', 'surfacing', 'surfaced', 'spouting', 'breathing', 'hatch_peek', 'diving']) {
       for (const direction of [-1, 1]) for (const scale of [1e-8, 38, 80]) {
         const h = canvasSpy();
         const pose = { type, state, direction, stateTimer: 1.2, surfaceAmount: .7,
@@ -78,14 +80,25 @@ test('surfacing activities add distinct whale and submarine performances', () =>
   }
 });
 
-test('the ice bear has distinct two-leg and four-leg walking rigs', () => {
-  const fourLegged = canvasSpy(), twoLegged = canvasSpy();
-  const pose = { type: 'icebear', state: 'walking', direction: 1, stateTimer: 1.2 };
-  drawIceBear(fourLegged.ctx, 0, 0, 80, { ...pose, upright: false });
-  drawIceBear(twoLegged.ctx, 0, 0, 80, { ...pose, upright: true });
-  assert.notDeepEqual(twoLegged.calls, fourLegged.calls);
-  assert.equal(fourLegged.depth, 0);
-  assert.equal(twoLegged.depth, 0);
+test('the submarine captain leaves the window empty while he is up in the hatch', () => {
+  const UNIFORM = '#587e84';
+  const fills = calls => calls.filter(([name, key]) => name === 'set' && key === 'fillStyle').map(([, , value]) => value);
+  const pose = { type: 'submarine', direction: 1, surfaceAmount: 1, stateTimer: 1 };
+  const surfaced = canvasSpy(), peeking = canvasSpy();
+  drawSubmarine(surfaced.ctx, 0, 0, 80, { ...pose, state: 'surfaced' });
+  drawSubmarine(peeking.ctx, 0, 0, 80, { ...pose, state: 'hatch_peek' });
+  assert.ok(fills(surfaced.calls).includes(UNIFORM), 'The captain sits at the window');
+  assert.ok(!fills(peeking.calls).includes(UNIFORM), 'Nobody is left at the window');
+});
+
+test('the ice bear walks and runs on all fours and preserves its separate frightened pose', () => {
+  const draw = pose => { const h = canvasSpy(); drawIceBear(h.ctx, 0, 0, 80, { type: 'icebear', direction: 1, stateTimer: 1.2, ...pose }); return h; };
+  for (const state of ['walking', 'returning', 'running_away']) {
+    const plain = draw({ state }), stale = draw({ state, upright: true });
+    assert.deepEqual(stale.calls, plain.calls, `${state} ignores any old two-legged flag`);
+    assert.equal(plain.depth, 0);
+  }
+  assert.notDeepEqual(draw({ state: 'startled', stateTimer: .3 }).calls, draw({ state: 'walking', stateTimer: .3 }).calls);
 });
 
 test('the squid has distinct resting, slithering and startled poses', () => {
@@ -102,11 +115,11 @@ test('the squid has distinct resting, slithering and startled poses', () => {
 
 test('new guests preserve finite, balanced, immutable artwork through their full gait and portrait poses', () => {
   for (const [type, draw] of [['icebear', drawIceBear], ['squid', drawGiantSquid]]) {
-    for (const state of ['idle', 'walking', 'returning', 'running_away', 'startled', 'rocket_startled', 'squashed', 'celebrating']) {
-      for (const upright of [false, true]) for (const portrait of [false, true]) {
+    for (const state of ['idle', 'walking', 'returning', 'running_away', 'startled', 'rocket_startled', 'squashed', 'celebrating', 'hammering', 'breaking', 'submerged', 'diving', 'emerging']) {
+      for (const portrait of [false, true]) {
         for (const direction of [-1, 1]) for (const stateTimer of [0, .15, 1.2, 13.7]) {
           const h = canvasSpy();
-          const pose = Object.freeze({ type, state, upright, portrait, direction, stateTimer, reaction: 'escape' });
+          const pose = Object.freeze({ type, state, portrait, direction, stateTimer, reaction: 'escape' });
           const before = { ...pose };
           draw(h.ctx, -20, 60, 80, pose);
           assert.ok(h.calls.some(([name]) => name === 'fill'), `${type}/${state} remains painted`);
@@ -118,19 +131,54 @@ test('new guests preserve finite, balanced, immutable artwork through their full
   }
 });
 
-test('new guest portraits remain steady and recognizable through world gaits, impacts and reactions', () => {
-  for (const [type, draw] of [['icebear', drawIceBear], ['squid', drawGiantSquid]]) {
-    const baseline = canvasSpy();
-    const pose = { type, state: 'idle', stateTimer: 0, direction: 1, portrait: true, upright: false };
-    draw(baseline.ctx, 0, 0, 80, pose);
-    for (const state of ['walking', 'returning', 'running_away', 'startled', 'rocket_startled', 'squashed', 'off_screen']) {
-      const h = canvasSpy();
-      draw(h.ctx, 0, 0, 80, { ...pose, state, stateTimer: 8.3, upright: true });
-      const transforms = calls => calls.filter(([name]) => ['translate', 'rotate', 'scale', 'transform', 'setTransform'].includes(name));
-      assert.deepEqual(transforms(h.calls), transforms(baseline.calls), `${type}/${state} keeps its portrait framing`);
-      if (!['startled', 'rocket_startled'].includes(state)) {
-        assert.deepEqual(h.calls, baseline.calls, `${type}/${state} keeps its steady portrait pose`);
+test('guest portraits preserve activity, animation and facing instead of substituting idle', () => {
+  for (const [type, draw] of Object.entries(artists)) {
+    const pose = { type, state: 'idle', stateTimer: .3, direction: 1, portrait: true, surfaceAmount: .6 };
+    const paint = extra => { const h = canvasSpy(); draw(h.ctx, 0, 0, 80, { ...pose, ...extra, surfaceAmount: ['breathing', 'hatch_peek'].includes(extra.state) ? 1 : pose.surfaceAmount }); return h.calls; };
+    const idle = paint({});
+    const states = type === 'whale' ? ['diving', 'breathing', 'startled', 'squashed']
+      : type === 'submarine' ? ['diving', 'hatch_peek', 'startled', 'squashed']
+      : ['walking', 'running_away', 'startled', 'squashed'];
+    if (type === 'squid') states.push('hammering', 'diving', 'submerged', 'breaking', 'emerging');
+    for (const state of states) {
+      assert.notDeepEqual(paint({ state }), idle, type + '/' + state + ' shows its current activity');
+      if (state !== 'squashed' || type !== 'snowman') {
+        assert.notDeepEqual(paint({ state, direction: -1 }), paint({ state }), type + '/' + state + ' respects facing');
       }
+    }
+    assert.notDeepEqual(paint({ state: 'running_away', stateTimer: .7 }), paint({ state: 'running_away' }), type + ' keeps animating');
+  }
+});
+
+test('guest binoculars follow left, right and front bearings in the field and portrait', () => {
+  for (const type of ['snowman','icebear','submarine']) {
+    const draw = artists[type];
+    for (const portrait of [false,true]) for (const direction of [-1,1]) for (const yaw of [-1,0,1]) for (const elevation of [-.2,0,1.05]) {
+      const h = canvasSpy();
+      draw(h.ctx,0,0,80,Object.freeze({type,portrait,direction,state:'watching',stateTimer:1.5,surfaceAmount:1,watchAim:{yaw,elevation}}));
+      assert.equal(h.depth,0);
+      assert.ok(h.calls.some(([name,key,value]) => name === 'set' && key === 'fillStyle' && value === '#7fabb5'),`${type} visibly holds optics`);
+    }
+  }
+  for(const state of ['idle','watching'])for(const portrait of [false,true]){
+    const h=canvasSpy();
+    drawNewt(h.ctx,0,0,80,{type:'newt',state,portrait,stateTimer:8,reaction:'apex',watchAim:{yaw:1,elevation:.8},idleLook:{sequence:0,side:1,duration:10,opticsAt:0}});
+    assert.ok(!h.calls.some(([name,key,value])=>name==='set'&&key==='fillStyle'&&value==='#7fabb5'),'The newt never draws binoculars');
+  }
+});
+
+test('all eight silly actions animate in field and close-up, remain finite, and restore canvas state',()=>{
+  for(const [type,kind] of Object.entries(SILLY_ACTIONS)){
+    const draw=artists[type]||drawCrew;
+    for(const portrait of [false,true])for(const direction of [-1,1]){
+      const frames=[];
+      for(const elapsed of [0,.3,1.5,2.5,4,6.5,8.9]){
+        const h=canvasSpy(),pose=Object.freeze({type,state:'business',stateTimer:elapsed,portrait,direction,business:Object.freeze({kind,elapsed,duration:kind==='blueprint'?11:9})});
+        draw(h.ctx,0,0,80,pose);assert.equal(h.depth,0);frames.push(h.calls);
+      }
+      assert.notDeepEqual(frames[1],frames[4],`${kind} has a visible performance`);
+      const still=elapsed=>{const h=canvasSpy();draw(h.ctx,0,0,80,{type,state:'business',portrait,direction,reducedMotion:true,business:{kind,elapsed,duration:9}});return h.calls;};
+      assert.deepEqual(still(1),still(7),`${kind} respects reduced motion`);
     }
   }
 });
@@ -138,7 +186,7 @@ test('new guest portraits remain steady and recognizable through world gaits, im
 test('reduced motion freezes decorative guest animation while keeping recognizable artwork', () => {
   for (const [type, draw] of Object.entries(artists)) {
     for (const state of ['idle', 'walking', 'running_away', 'startled', 'rocket_startled']) {
-      for (const options of [{}, { upright: true }, { portrait: true, upright: true }]) {
+      for (const options of [{}, { portrait: true }]) {
       const pose = { type, state, direction: 1, surfaceAmount: 1, reducedMotion: true, spoutParticles: [], ...options };
       const first = canvasSpy(), later = canvasSpy();
       draw(first.ctx, 0, 0, 80, { ...pose, stateTimer: 1 });
