@@ -89,7 +89,7 @@ test('long recorded returning flight remains visible through Auto/64×, curvatur
   for (const mode of ['auto', 64]) {
     const h = scene(938, 480), clock = new PlaybackClock();
     Renderer.setTargetGravity(setup.gravity); Renderer.updateWorld(10);
-    clock.load(); clock.select(mode);
+    clock.load(run); clock.select(mode);
     let minimumPPM = 80, frames = 0;
     while (!clock.paused && frames++ < 100000) {
       clock.advance(1 / 20, run);

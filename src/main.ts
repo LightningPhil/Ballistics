@@ -18,6 +18,9 @@ import { beginCrewFlight, clearCrewFlight, inspectLanding, isWalkingGuest, updat
 import { rocketDisplay } from './rocket-presentation.ts';
 import { beginSquidBreakout, headForSquidHole, enterSquidHole, releaseSquidTarget, squidUnderIce, updateSquidHoles } from './squid-life.ts';
 import { installWiki, isWikiOpen } from './wiki/wiki.ts';
+import { installManual, isManualOpen } from './manual.ts';
+
+const isReadingOpen = () => isWikiOpen() || isManualOpen();
 
 /**
  * ============================================================================
@@ -455,7 +458,7 @@ function syncCharacterToPlanet() {
 
 // ── Audio: Cannon boom synthesiser ─────────────────────────────────────────
 function playCannonBoom() {
-  if (!deck?.sound || isWikiOpen()) return;
+  if (!deck?.sound || isReadingOpen()) return;
   try {
     if (!audioCtx) {
       audioCtx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
@@ -485,7 +488,7 @@ function playCannonBoom() {
 
 // ── Audio: Metallic clang for barrel modification ──────────────────────────
 function playClangSound() {
-  if (!deck?.sound || isWikiOpen()) return;
+  if (!deck?.sound || isReadingOpen()) return;
   try {
     if (!audioCtx) {
       audioCtx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
@@ -1027,7 +1030,7 @@ function handleRocketLanding(state) {
 
 // ── Audio: Engine running loop ─────────────────────────────────────────────
 function startEngineLoop() {
-  if (!deck?.sound || isWikiOpen()) return;
+  if (!deck?.sound || isReadingOpen()) return;
   try {
     if (!audioCtx) {
       audioCtx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
@@ -1080,7 +1083,7 @@ function stopEngineLoop() {
 }
 
 function playBurnoutSound() {
-  if (!deck?.sound || isWikiOpen()) return;
+  if (!deck?.sound || isReadingOpen()) return;
   try {
     if (!audioCtx) return;
     var duration = 0.4;
@@ -1105,7 +1108,7 @@ function playBurnoutSound() {
 
 // ── Audio: Sad trombone for fizzle end ─────────────────────────────────────
 function playSadTrombone() {
-  if (!deck?.sound || isWikiOpen()) return;
+  if (!deck?.sound || isReadingOpen()) return;
   try {
     if (!audioCtx) {
       audioCtx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
@@ -1168,7 +1171,7 @@ async function beginFlight(mode: 'cannon' | 'rocket', config: any, initial: any)
     const run = await recordFlight(mode, config, initial, controller.signal);
     if (controller.signal.aborted) return;
     flightBuild = null; deck.load(run);
-    if (isWikiOpen()) deck.clock.paused = true;
+    if (isReadingOpen()) deck.clock.paused = true;
     currentGravity = config.gravity; currentPlanetRadius = config.planetRadius;
     launchTME = Physics.computeEnergy(initial, config.gravity).tme;
     rocketMaxThrust = initial.thrustMagnitude || 0;
@@ -1190,7 +1193,7 @@ async function beginFlight(mode: 'cannon' | 'rocket', config: any, initial: any)
   } catch (error) {
     if (controller.signal.aborted) return;
     flightBuild = null; deck.busy = false;
-    deck.message('This configuration could not be simulated. Reset or adjust the launch settings.');
+    deck.message('This configuration could not be simulated. Reset or adjust the launch settings.', true);
     deck.update(); UI.setFlightActive(false); console.error(error);
   }
 }
@@ -1239,7 +1242,7 @@ function restoreRun() {
 }
 
 function syncEngineAudio() {
-  const shouldPlay = deck?.sound && !isWikiOpen() && viewActive && !deck.clock.paused && activeRocket?.engineOn;
+  const shouldPlay = deck?.sound && !isReadingOpen() && viewActive && !deck.clock.paused && activeRocket?.engineOn;
   if (shouldPlay && !rocketEngineAudio) startEngineLoop();
   else if (!shouldPlay) stopEngineLoop();
   if (shouldPlay && rocketEngineAudio) rocketEngineAudio.gain.gain.setTargetAtTime(.12 * currentRocketDisplay().output, audioCtx.currentTime, .04);
@@ -1374,23 +1377,12 @@ function drawVectors(state: any) {
   ctx.restore();
 }
 
-function installSceneControls() {
-  const controls = document.querySelector('.flight-controls')!;
-  const launch = document.createElement('button'); launch.id = 'scene-launch'; launch.textContent = 'Launch';
-  launch.onclick = () => { if (currentMode === 'cannon') fire(); else rocketLaunch(); };
-  const reset = document.createElement('button'); reset.textContent = 'Reset'; reset.onclick = clearRange;
-  controls.prepend(launch, reset);
-  canvas.setAttribute('aria-label', 'Cannon flight scene. Live measurements are available in the setup panel.');
-}
-
 function loop(timestamp) {
   if (!lastTime) lastTime = timestamp;
   const elapsed = Math.max(0, (timestamp - lastTime) / 1000);
   var dt = Math.min(elapsed, 0.05);
   lastTime = timestamp;
-  if (document.hidden || isWikiOpen()) { requestAnimationFrame(loop); return; }
-  const sceneLaunch = document.getElementById('scene-launch') as HTMLButtonElement;
-  if (sceneLaunch) sceneLaunch.disabled = setupLocked();
+  if (document.hidden || isReadingOpen()) { requestAnimationFrame(loop); return; }
   if (rocketFizzleDuration > 0) {
     rocketFizzleTimer = Math.min(rocketFizzleDuration, rocketFizzleTimer + elapsed);
   }
@@ -1677,18 +1669,18 @@ function boot() {
   // Unlock on the user's gesture, before asynchronous flight recording can
   // lose browser activation. A suspended context used to remain silent.
   const unlockFlightAudio = async () => {
-    if (!deck.sound || isWikiOpen()) return;
+    if (!deck.sound || isReadingOpen()) return;
     try {
       audioCtx ??= new ((window as any).AudioContext || (window as any).webkitAudioContext)();
       await audioCtx.resume();
-      if (!deck.sound || isWikiOpen()) return;
+      if (!deck.sound || isReadingOpen()) return;
       if (audioCtx.state !== 'running') throw new Error('Audio is suspended');
       syncEngineAudio();
-    } catch { deck.message('Audio could not start. Toggle Sound again and check browser or device mute.'); }
+    } catch { deck.message('Audio could not start. Toggle Sound again and check browser or device mute.', true); }
   };
   deck.onSound = () => { if (deck.sound) void unlockFlightAudio(); else syncEngineAudio(); };
-  document.addEventListener('click', () => { if(deck.sound && !isWikiOpen() && (!audioCtx || audioCtx.state !== 'running')) void unlockFlightAudio(); }, {capture:true});
-  installSceneControls();
+  document.addEventListener('click', () => { if(deck.sound && !isReadingOpen() && (!audioCtx || audioCtx.state !== 'running')) void unlockFlightAudio(); }, {capture:true});
+  canvas.setAttribute('aria-label', 'Cannon flight scene. Live measurements are available in the setup panel.');
   Renderer.resize();
   window.addEventListener('resize', function () {
     Renderer.resize();
@@ -1714,13 +1706,14 @@ function boot() {
   // Spawn initial character for current planet
   syncCharacterToPlanet();
 
-  installWiki(() => {
-    // Keep the current experiment intact while reading, and leave resuming it
-    // to the reader on their return. No time elapses behind the atlas.
+  const pauseForReading = () => {
+    // Keep the experiment intact while reading; the reader chooses when to resume.
     deck.clock.paused = true;
     stopEngineLoop();
     deck.update();
-  });
+  };
+  installWiki(pauseForReading);
+  installManual(pauseForReading);
   requestAnimationFrame(loop);
 }
 

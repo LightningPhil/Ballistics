@@ -23,6 +23,7 @@ export class FlightDeck {
   busy = false;
   private element: HTMLElement;
   private status: HTMLElement;
+  private error: HTMLElement;
   private lastStatus = '';
   private previousRuns: Partial<Record<FlightRecord['mode'], FlightRecord>> = {};
   onSeek: () => void = () => {};
@@ -30,8 +31,8 @@ export class FlightDeck {
   onReplay: () => void = () => {};
   constructor(parent: HTMLElement) {
     const el = document.createElement('section');
-    el.className = 'flight-deck'; el.setAttribute('aria-label', 'Flight clock and notebook');
-    el.innerHTML = `<div class="chronograph" aria-hidden="true"><svg viewBox="0 0 100 100">
+    el.className = 'flight-deck'; el.setAttribute('aria-label', 'Flight controls and exploration');
+    el.innerHTML = `<div class="flight-topline"><div class="flight-clock"><div class="chronograph" aria-hidden="true"><svg viewBox="0 0 100 100">
       <circle class="clock-bezel" cx="50" cy="50" r="48"/>
       <circle class="clock-face" cx="50" cy="50" r="45"/>
       ${Array.from({length: 60}, (_, i) => `<line class="clock-tick${i % 5 ? '' : ' clock-tick-major'}" transform="rotate(${i * 6} 50 50)" x1="50" y1="${i % 5 ? 8 : 7}" x2="50" y2="${i % 5 ? 10 : 14}"/>`).join('')}
@@ -39,26 +40,42 @@ export class FlightDeck {
       <text x="50" y="85" text-anchor="middle">30</text><text x="22" y="54" text-anchor="middle">45</text>
       <circle class="minute-face" cx="50" cy="64" r="11"/><line id="clock-minute" x1="50" y1="64" x2="50" y2="56"/>
       <line id="clock-hand" x1="50" y1="56" x2="50" y2="16"/><circle class="clock-pin" cx="50" cy="50" r="3"/>
-      </svg><span class="clock-legend">sec · 30 min</span></div>
-      <div class="flight-instruments"><div class="flight-topline"><div class="clock-heading"><span class="eyebrow">FLIGHT TIME</span>
-      <output id="flight-time">00:00.0</output><output id="flight-rate">Auto · 1.0×</output></div>
-      <div class="flight-controls"><button id="flight-pause" type="button" disabled>Pause</button>
-      <button id="flight-replay" type="button" disabled>Replay</button><button id="flight-next" type="button" disabled>Next moment</button>
+      </svg></div><div class="clock-heading"><span class="eyebrow">FLIGHT TIME</span>
+      <div class="clock-readings"><output id="flight-time" aria-label="Flight time">00:00.0</output><output id="flight-rate">Auto · 1.0×</output></div></div></div>
+      <button type="button" id="open-wiki" class="open-wiki" aria-haspopup="dialog" aria-controls="educational-wiki"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="4"/><ellipse cx="16" cy="16" rx="14" ry="7" transform="rotate(-35 16 16)"/><circle cx="27" cy="8" r="2.5"/></svg><span>Explore the Solar System</span><span class="wiki-arrow" aria-hidden="true">↗</span></button>
+      <div class="flight-utilities">
       <label class="rate-choice">Time <select id="flight-speed" aria-label="Time speed"><option value="auto">Auto</option>
-      <option value="1">1×</option><option value="4">4×</option><option value="16">16×</option><option value="64">64×</option></select></label></div></div>
-      <div class="flight-timeline"><label class="timeline-label" for="flight-timeline">Inspect flight</label>
-      <input id="flight-timeline" type="range" min="0" max="1" step="0.01" value="0" disabled aria-label="Inspect recorded flight time">
-      <span id="flight-duration">Ready to launch</span></div></div>
-      <div class="flight-notebook"><p id="flight-status" role="status" aria-live="polite">Pick a launch. Make a prediction. See what happens.</p>
-      <div class="notebook-tools"><details><summary>View & sound</summary><div class="view-options">
+      <option value="1">1×</option><option value="4">4×</option><option value="16">16×</option><option value="64">64×</option></select></label>
+      <button type="button" id="open-manual" class="flight-icon-button" aria-label="Instruction manual" title="Instruction manual" aria-haspopup="dialog" aria-controls="instruction-manual"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5.5C9 3.5 5 3.5 2.5 4.5v15c3-1 6.5-1 9.5 1 3-2 6.5-2 9.5-1v-15C19 3.5 15 3.5 12 5.5ZM12 5.5v15M6 8h2.5M6 11h2.5M15.5 8H18M15.5 11H18"/></svg></button>
+      <details class="flight-settings"><summary aria-label="Settings" title="Settings" aria-controls="flight-settings-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 3-.6 2.4-2 .9-2.3-.7-2.5 4.3 1.7 1.7v2.3l-1.7 1.7 2.5 4.3 2.3-.7 2 .9.6 2.4h5l.6-2.4 2-.9 2.3.7 2.5-4.3-1.7-1.7v-2.3l1.7-1.7-2.5-4.3-2.3.7-2-.9-.6-2.4Z"/><circle cx="12" cy="12.8" r="3.3"/></svg></summary><div class="view-options" id="flight-settings-panel">
+      <h2>Settings</h2><fieldset><legend>Display</legend>
       <label><input id="flight-ghost" type="checkbox" checked> Previous flight</label>
       <label><input id="flight-prediction" type="checkbox"> Reveal full path</label>
       <label><input id="flight-vectors" type="checkbox"> Motion & force arrows</label>
+      </fieldset><fieldset><legend>Sound & characters</legend>
       <label><input id="flight-sound" type="checkbox"> Sound</label>
       <label><input id="flight-banter" type="checkbox" checked> Character remarks</label>
+      </fieldset><fieldset><legend>Compare experiments</legend>
       <button id="flight-pin" type="button" disabled aria-pressed="false">Pin this flight</button>
-      <p class="comparison-note" id="flight-comparison">The next flight can be compared with this one.</p></div></details></div></div>`;
+      <p class="comparison-note" id="flight-comparison">Your previous flight will stay as a faint trail.</p></fieldset></div></details></div></div>
+      <div class="flight-playback"><div class="flight-controls" role="group" aria-label="Playback"><button id="flight-pause" type="button" disabled>Pause</button>
+      <button id="flight-replay" type="button" disabled title="Replay the recorded flight">Replay</button><button id="flight-next" type="button" disabled title="Jump to the next flight event">Next moment</button></div>
+      <div class="flight-timeline"><label class="timeline-label" for="flight-timeline">Inspect flight</label>
+      <input id="flight-timeline" type="range" min="0" max="1" step="0.01" value="0" disabled aria-label="Inspect recorded flight time">
+      <span id="flight-duration">Ready to launch</span></div></div>
+      <p id="flight-status" class="flight-announcement" role="status" aria-live="polite"></p>`;
+    const settings = el.querySelector<HTMLDetailsElement>('.flight-settings')!;
     parent.prepend(el); this.element = el; this.status = this.get('flight-status');
+    // Routine announcements remain available to screen readers without adding
+    // a caption beneath the timeline. Failures stay visible beside Launch/Reset.
+    this.error = document.createElement('p');
+    this.error.className = 'flight-error'; this.error.setAttribute('role', 'alert'); this.error.hidden = true;
+    document.querySelector('.launch-actions')!.append(this.error);
+    settings.addEventListener('keydown', event => {
+      if(event.key === 'Escape') { settings.open = false; settings.querySelector('summary')!.focus(); event.stopPropagation(); }
+    });
+    document.addEventListener('pointerdown', event => { if(!settings.contains(event.target as Node)) settings.open = false; });
+    settings.addEventListener('focusout', event => { if(event.relatedTarget && !settings.contains(event.relatedTarget as Node)) settings.open = false; });
     this.button('flight-pause').onclick = () => {
       if (!this.run) return;
       if (this.clock.time >= this.run.duration) { this.replay(); return; }
@@ -99,21 +116,24 @@ export class FlightDeck {
   private get<T extends HTMLElement = HTMLElement>(id: string): T { return this.element.querySelector(`#${id}`)!; }
   private button(id: string) { return this.get<HTMLButtonElement>(id); }
   private input(id: string) { return this.get<HTMLInputElement>(id); }
-  message(text: string) { if (text !== this.lastStatus) { this.status.textContent = text; this.lastStatus = text; } }
+  message(text: string, error = false) {
+    if (text !== this.lastStatus) { this.status.textContent = error ? '' : text; this.lastStatus = text; }
+    this.error.textContent = error ? text : ''; this.error.hidden = !error;
+  }
   prepare() { this.busy = true; this.clock.paused = true; this.message('Preparing your experiment… Reset is available.'); this.update(); }
   load(run: FlightRecord) {
     if (this.run) this.previousRuns[this.run.mode] = this.run;
     if (!this.pinned) this.baseline = this.previousRuns[run.mode] || null;
-    this.run = run; this.busy = false; this.clock.load();
+    this.run = run; this.busy = false; this.clock.load(run);
     this.input('flight-timeline').max = String(Math.max(0.01, run.duration));
     this.message(run.mode === 'cannon' ? 'Off it goes. Watch the arc.' : 'Ignition. Watch thrust and weight.');
     this.updateComparison(); this.update();
   }
   reset() { this.busy = false; this.clock.paused = true; this.clock.time = 0;
-    this.message(this.run ? 'Ready for another experiment. Your recorded flight is kept for replay.' : 'Ready to launch. Change a setting and see what happens.'); this.update(); }
+    this.message(this.run ? 'Ready for another experiment. Your recorded flight is kept for replay.' : ''); this.update(); }
   replay() {
     if (!this.run || this.busy) return;
-    this.clock.load(); this.message('Replay — the same recorded physics.'); this.onReplay(); this.update();
+    this.clock.load(this.run); this.message('Replay — the same recorded physics.'); this.onReplay(); this.update();
   }
   updateComparison() {
     const note = this.get('flight-comparison');

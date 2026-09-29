@@ -22,13 +22,84 @@
 </div>
 <span class="edition-mark" aria-hidden="true">FIELD<br>NO. 01</span>
 </header>
-    <button type="button" id="open-wiki" class="open-wiki" aria-haspopup="dialog" aria-controls="educational-wiki"><span aria-hidden="true">✧</span><span><strong>Explore the Solar System</strong><small>Explore worlds, moons & the science of flight</small></span><span aria-hidden="true">↗</span></button>
     <div class="mode-toggle" id="mode-toggle" role="group" aria-label="Launcher">
 <button type="button" class="mode-btn active" data-mode="cannon" aria-pressed="true">
 <span aria-hidden="true">↗</span> Cannon</button>
 <button type="button" class="mode-btn" data-mode="rocket" aria-pressed="false">
 <span aria-hidden="true">↑</span> Rocket</button>
 </div>
+    <div class="controls-scroll">
+      <section class="world-section" aria-label="Environment">
+<div class="section-heading">
+<h2 class="section-header">Choose a world</h2>
+<span class="world-caption" id="environment-label">Earth · 9.81 m/s²</span>
+</div>
+<div class="planet-grid">
+<button type="button" class="planet-btn" data-planet="sun" data-gravity="274" aria-pressed="false">
+<span class="planet-icon" aria-hidden="true">
+</span>
+<span>Sun</span>
+</button>
+<button type="button" class="planet-btn" data-planet="mercury" data-gravity="3.7" aria-pressed="false">
+<span class="planet-icon" aria-hidden="true">
+</span>
+<span>Mercury</span>
+</button>
+<button type="button" class="planet-btn" data-planet="venus" data-gravity="8.87" aria-pressed="false">
+<span class="planet-icon" aria-hidden="true">
+</span>
+<span>Venus</span>
+</button>
+<button type="button" class="planet-btn active" data-planet="earth" data-gravity="9.81" aria-pressed="true">
+<span class="planet-icon" aria-hidden="true">
+</span>
+<span>Earth</span>
+</button>
+<button type="button" class="planet-btn" data-planet="moon" data-gravity="1.62" aria-pressed="false">
+<span class="planet-icon" aria-hidden="true">
+</span>
+<span>Moon</span>
+</button>
+<button type="button" class="planet-btn" data-planet="mars" data-gravity="3.72" aria-pressed="false">
+<span class="planet-icon" aria-hidden="true">
+</span>
+<span>Mars</span>
+</button>
+<button type="button" class="planet-btn" data-planet="jupiter" data-gravity="25.92" aria-pressed="false">
+<span class="planet-icon" aria-hidden="true">
+</span>
+<span>Jupiter</span>
+</button>
+<button type="button" class="planet-btn" data-planet="ganymede" data-gravity="1.428" aria-pressed="false">
+<span class="planet-icon" aria-hidden="true">
+</span>
+<span>Ganymede</span>
+</button>
+<button type="button" class="planet-btn" data-planet="saturn" data-gravity="11.19" aria-pressed="false">
+<span class="planet-icon" aria-hidden="true">
+</span>
+<span>Saturn</span>
+</button>
+<button type="button" class="planet-btn" data-planet="uranus" data-gravity="9.01" aria-pressed="false">
+<span class="planet-icon" aria-hidden="true">
+</span>
+<span>Uranus</span>
+</button>
+<button type="button" class="planet-btn" data-planet="neptune" data-gravity="11.27" aria-pressed="false">
+<span class="planet-icon" aria-hidden="true">
+</span>
+<span>Neptune</span>
+</button>
+<button type="button" class="planet-btn" data-planet="pluto" data-gravity="0.62" aria-pressed="false">
+<span class="planet-icon" aria-hidden="true">
+</span>
+<span>Pluto</span>
+</button>
+</div>
+<button type="button" class="planet-fact-button" id="planet-fact-button" aria-haspopup="dialog" aria-controls="planet-fact-dialog">
+<span id="planet-fact-button-label">Earth facts</span><span aria-hidden="true">↗</span>
+</button>
+</section>
     <div class="launch-actions" aria-label="Launch actions">
 <div id="cannon-actions" class="action-row">
 <button type="button" class="btn-fire" id="btn-fire">Let it fly <span aria-hidden="true">↗</span>
@@ -42,105 +113,6 @@
 </div>
 <p id="flight-lock-note" class="field-note" hidden>Flight in progress. Pause to inspect, or reset to change the setup.</p>
 </div>
-    <div class="controls-scroll">
-      <section class="world-section" aria-label="Environment">
-<div class="section-heading">
-<h2 class="section-header">Choose a world</h2>
-<span class="world-caption" id="environment-label">Earth · 9.81 m/s²</span>
-</div>
-<div class="planet-grid">
-<button type="button" class="planet-btn" data-planet="sun" data-gravity="274" aria-pressed="false">
-<span class="planet-icon" aria-hidden="true">
-</span>
-<span>Sun</span>
-<small>274.00</small>
-</button>
-<button type="button" class="planet-btn" data-planet="mercury" data-gravity="3.7" aria-pressed="false">
-<span class="planet-icon" aria-hidden="true">
-</span>
-<span>Mercury</span>
-<small>3.70</small>
-</button>
-<button type="button" class="planet-btn" data-planet="venus" data-gravity="8.87" aria-pressed="false">
-<span class="planet-icon" aria-hidden="true">
-</span>
-<span>Venus</span>
-<small>8.87</small>
-</button>
-<button type="button" class="planet-btn active" data-planet="earth" data-gravity="9.81" aria-pressed="true">
-<span class="planet-icon" aria-hidden="true">
-</span>
-<span>Earth</span>
-<small>9.81</small>
-</button>
-<button type="button" class="planet-btn" data-planet="moon" data-gravity="1.62" aria-pressed="false">
-<span class="planet-icon" aria-hidden="true">
-</span>
-<span>Moon</span>
-<small>1.62</small>
-</button>
-<button type="button" class="planet-btn" data-planet="mars" data-gravity="3.72" aria-pressed="false">
-<span class="planet-icon" aria-hidden="true">
-</span>
-<span>Mars</span>
-<small>3.72</small>
-</button>
-<button type="button" class="planet-btn" data-planet="jupiter" data-gravity="25.92" aria-pressed="false">
-<span class="planet-icon" aria-hidden="true">
-</span>
-<span>Jupiter</span>
-<small>25.92</small>
-</button>
-<button type="button" class="planet-btn" data-planet="ganymede" data-gravity="1.428" aria-pressed="false">
-<span class="planet-icon" aria-hidden="true">
-</span>
-<span>Ganymede</span>
-<small>1.43</small>
-</button>
-<button type="button" class="planet-btn" data-planet="saturn" data-gravity="11.19" aria-pressed="false">
-<span class="planet-icon" aria-hidden="true">
-</span>
-<span>Saturn</span>
-<small>11.19</small>
-</button>
-<button type="button" class="planet-btn" data-planet="uranus" data-gravity="9.01" aria-pressed="false">
-<span class="planet-icon" aria-hidden="true">
-</span>
-<span>Uranus</span>
-<small>9.01</small>
-</button>
-<button type="button" class="planet-btn" data-planet="neptune" data-gravity="11.27" aria-pressed="false">
-<span class="planet-icon" aria-hidden="true">
-</span>
-<span>Neptune</span>
-<small>11.27</small>
-</button>
-<button type="button" class="planet-btn" data-planet="pluto" data-gravity="0.62" aria-pressed="false">
-<span class="planet-icon" aria-hidden="true">
-</span>
-<span>Pluto</span>
-<small>0.62</small>
-</button>
-</div>
-<button type="button" class="planet-fact-button" id="planet-fact-button" aria-haspopup="dialog" aria-controls="planet-fact-dialog">
-<span id="planet-fact-button-label">Earth fact</span><span aria-hidden="true">↗</span>
-</button>
-<details class="lab-details">
-<summary>Custom gravity</summary>
-<div class="details-content">
-<div class="slider-row">
-<div class="slider-label-row">
-<span class="slider-label">
-<label for="slider-gravity">Surface gravity</label>
-<button type="button" class="tooltip-trigger" aria-label="About Surface gravity" data-tip="Gravity decreases with altitude and points towards the world centre. Between preset values, the world properties interpolate. Worlds without a solid surface use an imaginary launch level.">?</button>
-</span>
-<output class="slider-value" id="val-gravity" for="slider-gravity">9.81 m/s²</output>
-</div>
-<input type="range" id="slider-gravity" min="0" max="1000" value="465" step="1" aria-label="Surface gravity" aria-valuetext="9.81 m/s²">
-</div>
-</div>
-</details>
-</section>
       <section class="cannon-panel" id="cannon-panel" aria-label="Cannon settings">
 <h2 class="section-header">Set your shot</h2>
 <div class="slider-group">
@@ -165,31 +137,6 @@
 <input type="range" id="slider-force" min="50" max="5000" value="500" step="10" aria-label="Launch force">
 </div>
 </div>
-<details class="lab-details">
-<summary>Ball & barrel</summary>
-<div class="details-content">
-<div class="slider-row">
-<div class="slider-label-row">
-<span class="slider-label">
-<label for="slider-mass">Ball mass</label>
-<button type="button" class="tooltip-trigger" aria-label="About Ball mass" data-tip="&lt;b&gt;Same push, different ball&lt;/b&gt;&lt;br&gt;The same launch work gives a heavier ball less speed: v = √(2Fd/m). Once in flight, gravitational acceleration is independent of the ball’s mass.">?</button>
-</span>
-<output class="slider-value" id="val-mass" for="slider-mass">5 kg</output>
-</div>
-<input type="range" id="slider-mass" min="0.5" max="20" value="5" step="0.1" aria-label="Ball mass">
-</div>
-<div class="slider-row">
-<div class="slider-label-row">
-<span class="slider-label">
-<label for="slider-barrel">Barrel length</label>
-<button type="button" class="tooltip-trigger" aria-label="About Barrel length" data-tip="&lt;b&gt;Room for a longer push&lt;/b&gt;&lt;br&gt;Work = force × barrel length. In this model a longer barrel delivers more launch energy. The muzzle position also changes.">?</button>
-</span>
-<output class="slider-value" id="val-barrel" for="slider-barrel">2 m</output>
-</div>
-<input type="range" id="slider-barrel" min="0.5" max="5" value="2" step="0.1" aria-label="Barrel length">
-</div>
-</div>
-</details>
 
 <details class="lab-details" open>
 <summary>Flight measurements</summary>
@@ -224,13 +171,35 @@
 <span class="legend-dot pe">
 </span>Height</span>
 </div>
-<p class="field-note">Energy trades between motion and height. Potential energy uses the same radial gravity as the flight; motion energy is treated as dissipated at contact.</p>
+</div>
+</details>
+<details class="lab-details">
+<summary>Ball & barrel</summary>
+<div class="details-content">
+<div class="slider-row">
+<div class="slider-label-row">
+<span class="slider-label">
+<label for="slider-mass">Ball mass</label>
+<button type="button" class="tooltip-trigger" aria-label="About Ball mass" data-tip="&lt;b&gt;Same push, different ball&lt;/b&gt;&lt;br&gt;The same launch work gives a heavier ball less speed: v = √(2Fd/m). Once in flight, gravitational acceleration is independent of the ball’s mass.">?</button>
+</span>
+<output class="slider-value" id="val-mass" for="slider-mass">5 kg</output>
+</div>
+<input type="range" id="slider-mass" min="0.5" max="20" value="5" step="0.1" aria-label="Ball mass">
+</div>
+<div class="slider-row">
+<div class="slider-label-row">
+<span class="slider-label">
+<label for="slider-barrel">Barrel length</label>
+<button type="button" class="tooltip-trigger" aria-label="About Barrel length" data-tip="&lt;b&gt;Room for a longer push&lt;/b&gt;&lt;br&gt;Work = force × barrel length. In this model a longer barrel delivers more launch energy. The muzzle position also changes.">?</button>
+</span>
+<output class="slider-value" id="val-barrel" for="slider-barrel">2 m</output>
+</div>
+<input type="range" id="slider-barrel" min="0.5" max="5" value="2" step="0.1" aria-label="Barrel length">
+</div>
 </div>
 </details>
 </section>
       <section class="rocket-panel" id="rocket-panel" aria-label="Rocket settings" hidden>
-<h2 class="section-header">A small hop, to start</h2>
-<p class="field-note">A ready-to-fly rocket. Try changing just the propellant load.</p>
 <div class="slider-group">
 <div class="slider-row">
 <div class="slider-label-row">

@@ -619,7 +619,7 @@ function draw(ctx, canvasW, canvasH, d) {
   ctx.fillStyle = '#f4deb0';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
-  ctx.fillText('Nozzle design · illustrative flow', ix + PADDING, iy + 10);
+  ctx.fillText('Nozzle Sketch', ix + PADDING, iy + 10);
 
   // ── Internal coordinate system ──
   // Drawing area within padding

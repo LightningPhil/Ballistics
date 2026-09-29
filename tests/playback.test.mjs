@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PlaybackClock, automaticRate } from '../src/playback.ts';
+import { PlaybackClock, automaticRate, MAX_AUTO_VIEW_SECONDS } from '../src/playback.ts';
 import { MIN_CANNON_PATH_POINTS, PHYSICS_STEP, recordFlight, sampleFlight, compatibleRuns } from '../src/flight.ts';
 import { Physics } from '../src/physics.ts';
 import { RocketPhysics } from '../src/rocket_physics.ts';
@@ -9,43 +9,107 @@ import { resolveEnvironment } from '../src/environment.ts';
 const longRun = { duration: 1200, events: [
   {time:0,kind:'launch'}, {time:180,kind:'burnout'}, {time:600,kind:'apex'}, {time:1200,kind:'impact'}
 ] };
-test('playback never enters slow motion; rate transitions stay continuous across frame rates', () => {
-  for (const hz of [20, 60, 144]) {
-    const clock = new PlaybackClock(); clock.load(); clock.select(64);
-    let previous = 1;
-    for (let frame = 0; frame < hz * 12; frame++) {
-      clock.advance(1 / hz, longRun);
-      assert.ok(clock.rate >= 1 && clock.rate <= 64 + 1e-8);
-      assert.ok(Math.abs(Math.log(clock.rate / previous)) <= .65 / hz + 1e-6);
-      previous = clock.rate;
+
+test('Auto completes short through six-hour recordings within 20 viewing seconds at varied frame rates', () => {
+  for (const duration of [0, .1, 5, 19.99, 20, 20.01, 37.5, 60, 600, 1200, 21600]) {
+    const run = { duration, events: [
+      {time:0,kind:'launch'}, {time:duration * .07,kind:'burnout'},
+      {time:duration * .53,kind:'apex'}, {time:duration,kind:'impact'},
+    ] };
+    for (const hz of [20, 60, 144]) {
+      const clock = new PlaybackClock(); clock.load(run);
+      assert.equal(clock.rate, Math.max(1, duration / MAX_AUTO_VIEW_SECONDS), 'start at the planned rate');
+      let frames = 0;
+      while (!clock.paused && frames < hz * MAX_AUTO_VIEW_SECONDS) {
+        clock.advance(1 / hz, run); frames++;
+        assert.ok(clock.rate >= Math.max(1, duration / MAX_AUTO_VIEW_SECONDS));
+        assert.ok(clock.rate <= Math.max(1, duration / MAX_AUTO_VIEW_SECONDS) * 1.25 + 1e-9);
+      }
+      assert.equal(clock.time, duration, `${duration}s flight at ${hz} Hz must finish within the budget`);
+      assert.equal(clock.paused, true);
     }
-    assert.ok(clock.rate > 30);
-    clock.select(1);
-    for (let frame = 0; frame < hz * 12 && !clock.paused; frame++) {
-      clock.advance(1 / hz, longRun); assert.ok(clock.rate >= 1);
-    }
-    assert.equal(clock.mode, 1);
   }
+  assert.ok(automaticRate({duration:21600,events:[]}, 0) > 64, 'Auto must not inherit the manual speed cap');
 });
-test('short flights stay at 1× and automatic targets are continuous at recorded moments', () => {
-  assert.equal(automaticRate({duration: 5, events:[]}, 2), 1);
+
+test('Auto eases modestly at the apex without dropping to real time or braking for impact', () => {
+  const clock = new PlaybackClock(); clock.load(longRun);
+  let previous = clock.rate, largestChange = 0;
+  while (!clock.paused) {
+    clock.advance(1 / 60, longRun);
+    largestChange = Math.max(largestChange, Math.abs(clock.rate / previous - 1));
+    previous = clock.rate;
+  }
+  assert.ok(largestChange < .005, 'the complete Auto flight has gentle frame-to-frame changes');
+  const peak = automaticRate(longRun, 600);
+  assert.ok(peak < automaticRate(longRun, 360));
+  assert.ok(peak < automaticRate(longRun, 840));
+  assert.ok(peak >= automaticRate(longRun, 360) * .85, 'the apex dip is shallow');
+  assert.ok(peak > 1);
+  for (const time of [1000,1190,1199.99,1200]) {
+    assert.equal(automaticRate(longRun,time), automaticRate(longRun,900), 'keep cruising through impact');
+  }
   for (const event of longRun.events) {
-    assert.equal(automaticRate(longRun, event.time), 1);
-    assert.ok(Math.abs(automaticRate(longRun, event.time - .01) - automaticRate(longRun, event.time + .01)) < .001);
+    assert.ok(Math.abs(automaticRate(longRun,event.time - .01) - automaticRate(longRun,event.time + .01)) < .01);
+  }
+  const withoutBurnout = { ...longRun, events:longRun.events.filter(e=>e.kind !== 'burnout') };
+  for (const time of [0,120,180,240,600,1199]) {
+    assert.equal(automaticRate(longRun,time),automaticRate(withoutBurnout,time), 'burnout does not reset the clock');
   }
 });
-test('pause and seek do not advance time, manual choice survives replay', () => {
-  const clock = new PlaybackClock(); clock.select(.25); assert.equal(clock.mode, 1);
-  clock.select(16); clock.load(); assert.equal(clock.mode, 16);
-  clock.seek(600, 1200); clock.advance(.1, longRun);
-  assert.equal(clock.time, 600); assert.equal(clock.paused, true);
-  clock.seek(9999, 1200); assert.equal(clock.time, 1200);
+
+test('Auto handles missing and unusually placed apexes without an endpoint slowdown', () => {
+  for (const apex of [null,0,1,50,550,599,600]) {
+    const run = { duration:600, events:apex === null ? [] : [{kind:'apex',time:apex}] };
+    for (let time=0; time<=600; time+=.5) {
+      const rate=automaticRate(run,time);
+      assert.ok(Number.isFinite(rate) && rate>=30 && rate<=37.5);
+    }
+    assert.equal(automaticRate(run,600),37.5);
+    assert.ok(automaticRate(run,600)>=automaticRate(run,599.99));
+  }
 });
-test('a one-second display frame still advances one second at the standard rate', () => {
-  const clock = new PlaybackClock(); clock.select(1); clock.load();
-  clock.advance(1,longRun);
-  assert.ok(Math.abs(clock.time - 1) < 1e-12);
-  assert.equal(clock.rate,1);
+
+test('Auto follows the same clock across frame rates and dropped frames', () => {
+  const times = [];
+  for (const hz of [20,60,144]) {
+    const clock = new PlaybackClock(); clock.load(longRun);
+    for (let frame=0; frame<hz*8; frame++) clock.advance(1/hz,longRun);
+    times.push(clock.time);
+  }
+  const dropped = new PlaybackClock(); dropped.load(longRun); dropped.advance(8,longRun);
+  for (const time of times) assert.ok(Math.abs(time - dropped.time)<1e-6);
+  dropped.advance(12,longRun);
+  assert.equal(dropped.time,longRun.duration);
+  assert.equal(dropped.paused,true);
+});
+
+test('fixed speeds are exact immediately, including 1× after accelerated Auto and on replay', () => {
+  const clock = new PlaybackClock(); clock.load(longRun); clock.advance(1,longRun);
+  for (const rate of [1,64,1,4,16]) {
+    clock.select(rate);
+    assert.equal(clock.rate,rate);
+    const before=clock.time; clock.advance(.5,longRun);
+    assert.ok(Math.abs(clock.time - before - .5*rate)<1e-10);
+    clock.load(longRun);
+    assert.equal(clock.rate,rate);
+    clock.advance(1,longRun);
+    assert.equal(clock.time,rate);
+  }
+  clock.select(.25); assert.equal(clock.mode,1);
+  clock.select('auto'); assert.equal(clock.rate,automaticRate(longRun,clock.time));
+});
+
+test('pause and seek preserve the recorded time and resume at the appropriate Auto speed', () => {
+  const clock = new PlaybackClock(); clock.load(longRun);
+  clock.seek(600,longRun.duration);
+  assert.equal(clock.rate,automaticRate(longRun,600));
+  clock.advance(1,longRun); assert.equal(clock.time,600); assert.equal(clock.paused,true);
+  clock.paused=false; clock.advance(.1,longRun); assert.ok(clock.time>606);
+  clock.seek(9999,longRun.duration); assert.equal(clock.time,longRun.duration);
+  clock.select(16); clock.load(longRun); assert.equal(clock.mode,16);
+  clock.seek(300,longRun.duration); assert.equal(clock.rate,16);
+  clock.load(longRun); assert.equal(clock.time,0); assert.equal(clock.rate,16);
 });
 test('recorded cannon path, event seeking and replay share one physics solution', async () => {
   const environment = resolveEnvironment(9.81);
@@ -56,7 +120,7 @@ test('recorded cannon path, event seeking and replay share one physics solution'
   assert.ok(run.events.some(e => e.kind === 'apex'));
   const expected = sampleFlight(run, run.duration * .5);
   for (const mode of ['auto',1,16,64]) {
-    const clock = new PlaybackClock(); clock.select(mode); clock.load();
+    const clock = new PlaybackClock(); clock.select(mode); clock.load(run);
     while (!clock.paused) clock.advance(1/60, run);
     assert.deepEqual(sampleFlight(run, clock.time), run.samples.at(-1));
     clock.seek(run.duration*.5,run.duration); assert.deepEqual(sampleFlight(run,clock.time),expected);

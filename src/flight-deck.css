@@ -1,77 +1,96 @@
-.canvas-area { display: flex; flex-direction: column; min-width: 0; }
-.canvas-area #sim-canvas { flex: 1; min-height: 260px; height: 0; width: 100%; touch-action: pan-y; }
-.flight-deck { color: #253c3b; background: #fff7e6; padding: 10px 16px; display: grid; grid-template-columns: 62px minmax(0,1fr); gap: 5px 14px; border-bottom: 1px solid #d9ceb6; font: 12px/1.4 system-ui,sans-serif; z-index: 2; }
-.chronograph { align-self: center; width: 62px; grid-row:1/3; }
-.chronograph svg { display: block; width: 100%; overflow: visible; filter: drop-shadow(0 2px 1px #45634c12); }
-.clock-bezel { fill: #e7dfc5; stroke: #9fae95; stroke-width: .8; }
-.clock-face { fill: #fffcf3; stroke: #6b877e; stroke-width: 1.6; }
-.clock-tick { stroke: #99a895; stroke-width: .65; }
-.clock-tick-major { stroke: #526f5e; stroke-width: 1.5; }
-.chronograph text { fill: #304e42; font: 600 10px system-ui,sans-serif; font-variant-numeric: tabular-nums; }
-.minute-face { fill: #e8ede0; stroke: #9aaa98; stroke-width: .7; }
-#clock-minute { stroke: #547875; stroke-width: 1.8; stroke-linecap: round; }
-#clock-hand { stroke: #bb5937; stroke-width: 2.3; stroke-linecap: round; }
-.clock-pin { fill: #bb5937; stroke: #fffcf3; stroke-width: .7; }
-.clock-legend { display: block; margin-top: 3px; color: #71816b; font: 9px/1.2 system-ui,sans-serif; letter-spacing: .03em; text-align: center; }
-.clock-heading, .flight-controls, .notebook-tools { display: flex; align-items: center; gap: 6px 8px; flex-wrap: wrap; }
-.flight-topline { display:flex; align-items:center; justify-content:space-between; gap:6px 16px; flex-wrap:wrap; }
-.clock-heading { min-height: 32px; gap:5px 8px; flex-wrap:nowrap; }
-.flight-controls { justify-content:flex-end; }
-.flight-deck .eyebrow { font-size: 9px; letter-spacing: .12em; font-weight: 700; color: #74816a; }
-#flight-time { color: #304e42; font-size: 22px; font-weight: 550; font-variant-numeric: tabular-nums; letter-spacing: -.025em; line-height: 1.2; }
-#flight-rate { min-width: 6.5em; padding: 2px 6px; border: 1px solid #d9e1cd; border-radius: 20px; background: #edf1e2; color: #536b53; font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: center; white-space: nowrap; }
-.flight-deck button, .flight-deck select, .flight-deck input[type=number] { color: #3d5948; background: #fffbf1; border: 1px solid #cbd2be; border-radius: 8px; padding: 6px 9px; min-height: 34px; font: inherit; }
-.flight-deck button { cursor: pointer; font-weight: 550; transition: background .15s, border-color .15s; }
-.flight-deck button:hover:enabled { background: #e9efdf; border-color: #8ea78b; }
-.flight-deck button:disabled { opacity: .42; cursor: default; }
-.flight-deck button[aria-pressed=true] { background: #315c50; color: #fff7e6; }
-.flight-deck :focus-visible { outline: 3px solid #c76e3a; outline-offset: 3px; }
-.flight-deck #scene-launch { display: inline-flex; align-items: center; justify-content: center; gap: 14px; padding-inline: 13px; color: #fffaf0; background: #2f6c55; border-color: #2b614d; box-shadow: 0 2px 0 #214b3d; font-weight: 700; }
-.flight-deck #scene-launch::after { content: '↗'; font-size: 17px; line-height: 1; }
-.flight-deck #scene-launch:hover:enabled { background: #255a46; border-color: #214b3d; }
-.flight-deck #scene-launch:active:enabled { box-shadow: none; transform: translateY(1px); }
-.flight-deck #flight-pause { background: #e7eddd; color: #385a45; border-color: #becdb5; }
-.flight-deck #flight-pause:hover:enabled { background: #dce8cd; }
-.flight-deck #flight-replay, .flight-deck #flight-next { background: transparent; border-color: #d9dccd; }
-.flight-deck #flight-replay:hover:enabled, .flight-deck #flight-next:hover:enabled { background: #eef1e4; border-color: #a8b69b; }
-.rate-choice { display: inline-flex; align-items: center; gap: 5px; color: #6c7b61; font-size: 11px; }
-.flight-deck .rate-choice select { padding-inline: 7px; font-size: 12px; }
-.flight-timeline { display:grid; grid-template-columns:auto minmax(60px,1fr) auto; align-items:center; gap:12px; margin-top:5px; }
-.flight-deck .timeline-label { color: #64765c; font-size: 10px; }
-#flight-duration { font-size:10px; color:#64765c; font-variant-numeric: tabular-nums; text-align: right; }
-#flight-timeline { display: block; width: 100%; accent-color: #416d5a; height: 7px; margin:9px 0; }
-.flight-notebook { grid-column: 2; display:flex; align-items:center; justify-content:space-between; gap:12px; }
-#flight-status { margin: 0; min-height: 1.4em; font-size: 11px; }
-.notebook-tools { gap: 6px 10px; }
-.notebook-tools label { display: inline-flex; align-items: center; gap: 6px; color: #64755c; font-size: 12px; }
-.notebook-tools details { margin-left: auto; position: relative; }
-.notebook-tools summary { cursor: pointer; color: #61755a; padding: 6px; border-radius: 6px; font-size: 11px; white-space:nowrap; }
-.notebook-tools summary:hover { background: #edf0e1; }
-.view-options { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; width: 225px; display: grid; gap: 12px; padding: 16px; background: #fffaf0; box-shadow: 0 8px 28px #263b3b22; border: 1px solid #c9cbb5; border-radius: 10px; }
-.view-options input[type=checkbox] { accent-color: #416d5a; width: 17px; height: 17px; }
+.canvas-area { display:flex; flex-direction:column; min-width:0; container-type:inline-size; }
+.canvas-area #sim-canvas { flex:1; min-height:260px; height:0; width:100%; touch-action:pan-y; }
+.flight-deck { flex:0 0 auto; color:#29473f; background:linear-gradient(120deg,#fffaf0,#f5f3e7); padding:8px 18px; border-bottom:1px solid #d2d9c7; font:12px/1.4 'Segoe UI',system-ui,sans-serif; z-index:3; }
+.flight-topline { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(max-content,1fr); align-items:center; gap:14px; }
+.flight-clock { display:flex; align-items:center; gap:10px; min-width:0; }
+.chronograph { flex:0 0 42px; width:42px; }
+.chronograph svg { display:block; width:100%; overflow:visible; filter:drop-shadow(0 2px 1px #45634c12); }
+.clock-bezel { fill:#e7dfc5; stroke:#9fae95; stroke-width:.8; }
+.clock-face { fill:#fffcf3; stroke:#6b877e; stroke-width:1.6; }
+.clock-tick { stroke:#99a895; stroke-width:.65; }
+.clock-tick-major { stroke:#526f5e; stroke-width:1.5; }
+.chronograph text { fill:#304e42; font:600 10px system-ui,sans-serif; font-variant-numeric:tabular-nums; }
+.minute-face { fill:#e8ede0; stroke:#9aaa98; stroke-width:.7; }
+#clock-minute { stroke:#547875; stroke-width:1.8; stroke-linecap:round; }
+#clock-hand { stroke:#bb5937; stroke-width:2.3; stroke-linecap:round; }
+.clock-pin { fill:#bb5937; stroke:#fffcf3; stroke-width:.7; }
+.clock-heading { min-width:0; }
+.flight-deck .eyebrow { display:block; margin-bottom:2px; font-size:8px; letter-spacing:.14em; font-weight:700; color:#71816d; }
+.clock-readings { display:flex; align-items:center; flex-wrap:wrap; gap:3px 8px; }
+#flight-time { color:#304e42; font-size:23px; font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:-.03em; line-height:1.1; }
+#flight-rate { color:#697b64; font-size:10px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.flight-deck button,.flight-deck select,.flight-settings summary { color:#365b4a; background:#fffcf4; border:1px solid #cbd5c3; border-radius:9px; padding:7px 10px; min-height:36px; font:inherit; }
+.flight-deck button { cursor:pointer; font-weight:600; transition:background .15s,border-color .15s,box-shadow .15s; }
+.flight-deck button:hover:enabled { background:#e9efdf; border-color:#8ea78b; }
+.flight-deck button:disabled { opacity:.42; cursor:default; }
+.flight-deck button[aria-pressed=true] { background:#315c50; color:#fff7e6; }
+.flight-deck :focus-visible { outline:3px solid #c76e3a; outline-offset:3px; }
+.flight-deck .open-wiki { justify-self:center; display:flex; align-items:center; justify-content:center; gap:9px; padding:6px 14px; min-height:42px; background:#e9efe1; border-color:#bdcdb7; color:#2d5e4b; border-radius:12px; font-size:13px; box-shadow:0 2px 0 #dce4d2; }
+.open-wiki svg { width:28px; height:28px; flex:0 0 28px; fill:none; stroke:#648574; stroke-width:1.2; }
+.open-wiki svg circle:first-child { fill:#cfa667; stroke:#b88c51; }
+.open-wiki svg circle:last-child { fill:#648574; stroke:#f6f7ea; }
+.open-wiki .wiki-arrow { color:#6e8b70; font-size:17px; }
+.flight-deck .open-wiki:hover { background:#dde9d6; border-color:#8ba987; box-shadow:0 2px 0 #c7d6bf; }
+.flight-utilities { display:flex; justify-content:flex-end; align-items:center; gap:8px; }
+.rate-choice { display:inline-flex; align-items:center; gap:6px; color:#64765e; font-size:11px; white-space:nowrap; }
+.flight-deck .rate-choice select { padding-inline:8px; font-size:12px; cursor:pointer; }
+.flight-settings { position:relative; flex:0 0 auto; }
+.flight-settings summary,.flight-deck .flight-icon-button { display:grid; place-items:center; list-style:none; padding:8px; width:36px; flex:0 0 36px; cursor:pointer; }
+.flight-settings summary::-webkit-details-marker { display:none; }
+.flight-settings summary svg,.flight-icon-button svg { width:19px; height:19px; fill:none; stroke:currentColor; stroke-width:1.5; stroke-linejoin:round; stroke-linecap:round; }
+.flight-settings summary:hover,.flight-settings[open] summary { background:#e3ebd9; border-color:#8ca785; }
+.view-options { position:absolute; right:0; top:calc(100% + 10px); z-index:5; width:272px; max-width:calc(100vw - 28px); max-height:min(540px,calc(100dvh - 90px)); overflow:auto; display:grid; gap:16px; padding:18px; background:#fffaf0; box-shadow:0 12px 36px #263b3b29; border:1px solid #c9d3be; border-radius:14px; }
+.view-options h2 { font:700 19px/1.2 Georgia,serif; color:#304f42; }
+.view-options fieldset { display:grid; gap:9px; margin:0; min-width:0; padding:12px 0 0; border:0; border-top:1px solid #e0e5d4; }
+.view-options legend { padding:0 8px 0 0; color:#7a876e; font-size:10px; font-weight:700; letter-spacing:.04em; }
+.view-options label { display:flex; align-items:center; gap:9px; min-height:28px; color:#476047; cursor:pointer; }
+.view-options input[type=checkbox] { accent-color:#416d5a; width:17px; height:17px; margin:0; }
 .view-options label[hidden] { display:none; }
+.comparison-note { font-size:11px; line-height:1.5; color:#6c7c62; margin:0; }
+.flight-playback { display:flex; align-items:center; gap:16px; margin-top:6px; }
+.flight-controls { display:flex; align-items:center; gap:5px; flex:0 0 auto; }
+.flight-deck #flight-pause { min-width:65px; background:#e7eddd; color:#385a45; border-color:#becdb5; }
+.flight-deck #flight-pause:hover:enabled { background:#dce8cd; }
+.flight-deck #flight-replay,.flight-deck #flight-next { background:transparent; border-color:transparent; }
+.flight-deck #flight-replay:hover:enabled,.flight-deck #flight-next:hover:enabled { background:#eef1e4; border-color:#c3d0b8; }
+.flight-timeline { flex:1; min-width:0; display:grid; grid-template-columns:auto minmax(50px,1fr) auto; align-items:center; gap:10px; }
+.timeline-label { color:#6a7c64; font-size:10px; }
+#flight-duration { font-size:10px; color:#64765c; font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
+#flight-timeline { display:block; width:100%; accent-color:#416d5a; height:6px; margin:12px 0; }
+.flight-announcement { position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+.flight-error { margin:12px 0 0; padding:10px 12px; border:1px solid #d7b5a0; border-radius:8px; background:#fff2e8; color:#854c34; font-size:12px; line-height:1.5; }
 .engine-state { margin:8px 0 5px; font:600 11px/1.4 system-ui,sans-serif; color:#53705d; }
-.comparison-note { font-size: 11px; line-height: 1.5; color: #748268; margin: 6px 0 0; }
-@media (max-width: 620px) {
-  .flight-deck { padding: 10px; gap: 5px 10px; grid-template-columns: 52px minmax(0,1fr); }
-  .chronograph { width: 52px; grid-column: 1; grid-row: 1; align-self:start; }
-  .clock-legend { font-size: 8px; margin-top: 1px; }
-  .clock-heading { margin: 0; gap: 6px; }
-  .clock-heading .eyebrow { font-size: 8px; }
-  #flight-time { font-size: 22px; }
-  #flight-rate { margin-left: auto; min-width: 0; padding: 3px 7px; font-size: 10px; }
-  .flight-controls { gap: 6px; justify-content:flex-start; }
-  .flight-controls button,.flight-controls select { font-size: 12px; padding: 6px 8px; }
-  .flight-deck #scene-launch { gap: 10px; padding-inline: 12px; }
-  .flight-timeline { grid-template-columns:minmax(50px,1fr) auto; gap:6px; }
-  .flight-deck .timeline-label { display:none; }
-  .flight-notebook { grid-column:1/-1; }
-  .notebook-tools { gap: 6px 8px; }
-  #flight-pin { font-size: 12px; }
-  .comparison-note { font-size: 11px; }
+@container (max-width:750px) {
+  .rate-choice { font-size:0; gap:0; }
+  .chronograph { flex-basis:38px; width:38px; }
+  .clock-readings { display:grid; gap:2px; }
+  #flight-time { font-size:21px; }
+  .flight-timeline { grid-template-columns:minmax(50px,1fr) auto; }
+  .timeline-label { display:none; }
+  .flight-playback { gap:10px; }
+}
+@container (max-width:600px) {
+  .flight-deck { padding:10px 12px 8px; }
+  .flight-topline { grid-template-columns:minmax(65px,1fr) minmax(0,190px) auto; gap:9px; }
+  .chronograph { display:none; }
+  .flight-deck .open-wiki { max-width:190px; padding:7px 10px; gap:7px; font-size:12px; line-height:1.3; }
+  .open-wiki .wiki-arrow { display:none; }
+  .flight-utilities { gap:6px; }
+  .rate-choice { font-size:0; gap:0; }
+  .flight-playback { flex-wrap:wrap; gap:0 12px; }
+  .flight-controls { flex:1; }
+  .flight-timeline { flex-basis:100%; }
+}
+@container (max-width:430px) {
+  .flight-topline { grid-template-columns:auto minmax(0,1fr) auto; gap:7px; }
+  .flight-deck .open-wiki { font-size:11px; padding:7px 8px; }
+  .open-wiki svg { display:none; }
+  .flight-deck .eyebrow { font-size:7px; }
+  #flight-time { font-size:20px; }
 }
 @media (pointer:coarse) {
-  .flight-deck button,.flight-deck select,.flight-deck input[type=number],.notebook-tools summary { min-height: 44px; }
-  .flight-deck input[type=number] { font-size: 16px; }
-  #flight-timeline { height: 10px; margin-block: 12px; }
+  .flight-deck button,.flight-deck select,.flight-settings summary { min-height:44px; }
+  .flight-settings summary,.flight-deck .flight-icon-button { width:44px; flex-basis:44px; }
+  .view-options label { min-height:36px; }
+  #flight-timeline { margin-block:16px; }
 }

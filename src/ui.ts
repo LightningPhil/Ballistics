@@ -4,7 +4,7 @@ import { RocketPropellants } from './rocket_propellants.ts';
 import { RocketPhysics } from './rocket_physics.ts';
 import { ENVIRONMENTS, resolveEnvironment } from './environment.ts';
 import { getPlanetFact } from './planet-facts.ts';
-import { clampGravity, gravityFromSliderPosition, sliderPositionForGravity } from './gravity-scale.ts';
+import { clampGravity } from './gravity-scale.ts';
 import { getWorldArt } from './world-art.ts';
 
 /**
@@ -25,8 +25,8 @@ import { getWorldArt } from './world-art.ts';
  */
 
 // ── DOM references (populated in init) ─────────────────────────────────────
-var sliderAngle, sliderMass, sliderForce, sliderBarrel, sliderGravity;
-var valAngle, valMass, valForce, valBarrel, valGravity;
+var sliderAngle, sliderMass, sliderForce, sliderBarrel;
+var valAngle, valMass, valForce, valBarrel;
 var btnFire, btnClear;
 var planetButtons;
 var readVelocity, readHeight, readDistance;
@@ -35,9 +35,7 @@ var energyBarKE, energyBarPE;
 var tooltipEl;
 var planetFactButton, planetFactButtonLabel, planetFactDialog, planetFactCard, planetFactArtwork;
 
-// Surface gravity in m/s². The slider holds a logarithmic position (see
-// gravity-scale.ts), so the authoritative value lives here and presets keep
-// their exact figures (e.g. Ganymede's 1.428).
+// Selected world's exact surface gravity, including Ganymede's 1.428 m/s².
 var gravityValue = 9.81;
 
 // Mode state
@@ -106,14 +104,12 @@ function init(callbacks) {
   sliderMass = document.getElementById('slider-mass');
   sliderForce = document.getElementById('slider-force');
   sliderBarrel = document.getElementById('slider-barrel');
-  sliderGravity = document.getElementById('slider-gravity');
 
   // Value readouts next to sliders
   valAngle = document.getElementById('val-angle');
   valMass = document.getElementById('val-mass');
   valForce = document.getElementById('val-force');
   valBarrel = document.getElementById('val-barrel');
-  valGravity = document.getElementById('val-gravity');
 
   // Buttons
   btnFire = document.getElementById('btn-fire');
@@ -144,7 +140,6 @@ function init(callbacks) {
   wireSlider(sliderMass, valMass, ' kg');
   wireSlider(sliderForce, valForce, ' N');
   wireSlider(sliderBarrel, valBarrel, ' m');
-  wireSlider(sliderGravity, valGravity, ' m/s²');
 
   // Set initial display values
   updateSliderDisplay(sliderAngle, valAngle, '°');
@@ -236,16 +231,6 @@ function setMode(newMode) {
 
 function wireSlider(slider, display, unit) {
   slider.addEventListener('input', function () {
-    // The gravity slider is logarithmic; convert its position and check the
-    // planet match. setGravity() refreshes its readout.
-    if (slider === sliderGravity) {
-      var g = gravityFromSliderPosition(parseFloat(slider.value));
-      setGravity(g);
-      highlightNearestPlanet(g);
-      if (onGravityChange) onGravityChange(g);
-      refreshPreLaunch();
-      return;
-    }
     updateSliderDisplay(slider, display, unit);
     // If barrel slider changes, trigger barrel animation
     if (slider === sliderBarrel) {
@@ -254,13 +239,9 @@ function wireSlider(slider, display, unit) {
   });
 }
 
-/** Set the surface gravity (m/s²), moving the slider thumb to match. */
+/** Preserve the exact selected or recorded surface gravity in m/s². */
 function setGravity(g) {
   gravityValue = clampGravity(g);
-  sliderGravity.value = String(sliderPositionForGravity(gravityValue));
-  var text = gravityValue.toFixed(2) + ' m/s²';
-  valGravity.textContent = text;
-  sliderGravity.setAttribute('aria-valuetext', text);
 }
 
 function currentGravity() {
@@ -268,7 +249,6 @@ function currentGravity() {
 }
 
 function updateSliderDisplay(slider, display, unit) {
-  if (slider === sliderGravity) { setGravity(gravityValue); return; }
   var v = parseFloat(slider.value);
   // Format nicely
   if (unit === '°') {
@@ -385,7 +365,7 @@ function updatePlanetFactButton(name) {
   if (!planetFactButton || !planetFactButtonLabel) return;
   planetFactButton.disabled = !fact;
   planetFactButton.dataset.planet = fact?.id || '';
-  planetFactButtonLabel.textContent = fact ? fact.name + ' fact' : 'World fact';
+  planetFactButtonLabel.textContent = fact ? fact.name + ' facts' : 'World facts';
   // Pre-load the card artwork so the dialog opens complete. An empty src would
   // render a broken-image glyph, so clear the attribute instead.
   if (planetFactArtwork) {
@@ -1048,7 +1028,7 @@ function restoreFlightConfig(mode, config) {
 function updateAllDisplays() {
   [
     [sliderAngle, valAngle, '°'], [sliderMass, valMass, ' kg'], [sliderForce, valForce, ' N'],
-    [sliderBarrel, valBarrel, ' m'], [sliderGravity, valGravity, ' m/s²']
+    [sliderBarrel, valBarrel, ' m']
   ].forEach(function ([slider, display, unit]) { updateSliderDisplay(slider, display, unit); });
   [
     [sliderRocketMR, valRocketMR, ''], [sliderRocketPc, valRocketPc, ' bar'],

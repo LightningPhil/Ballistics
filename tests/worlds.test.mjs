@@ -94,9 +94,6 @@ test('picker buttons carry exactly the preset gravities of the shared environmen
   for (const { name, gravity } of presets) {
     assert.ok(gravity >= GRAVITY_MIN && gravity <= GRAVITY_MAX, `${name} preset is within the slider range`);
   }
-  const [, max, initial] = html.match(/id="slider-gravity" min="0" max="(\d+)" value="(\d+)" step="1"/);
-  assert.equal(Number(max), GRAVITY_SLIDER_STEPS);
-  assert.equal(Number(initial), sliderPositionForGravity(9.81), 'the slider starts on Earth');
 });
 
 test('the custom-gravity slider is logarithmic so rocky worlds are not crushed into a few pixels', () => {

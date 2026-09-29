@@ -1,11 +1,5 @@
 /* A quiet, illustrated atlas: its own reading space, within the field lab. */
 body.atlas-open { overflow: hidden; }
-.open-wiki { margin: 0 22px 14px; padding: 10px 13px; flex: 0 0 auto; display: flex; align-items: center; gap: 10px; border: 1px solid #cdd7c5; border-radius: 10px; background: #eef1e5; color: #315e50; text-align: left; }
-.open-wiki > span:first-child { font: 26px Georgia,serif; }
-.open-wiki strong { display: block; font: 600 13px 'Segoe UI',sans-serif; }
-.open-wiki small { display: block; font-size: 10px; color: #728273; margin-top: 2px; }
-.open-wiki > span:last-child { margin-left: auto; }
-.open-wiki:hover { background: #e4ecdc; border-color: #8da692; }
 .atlas { --atlas-ink:#233d3d; --atlas-muted:#667673; --atlas-paper:#fbf8f0; --atlas-line:#dcded3; --atlas-green:#255f55; --atlas-gold:#b37939; position: fixed; inset: 0; width: 100vw; max-width: none; height: 100dvh; max-height: none; padding: 0; border: 0; margin: 0; color: var(--atlas-ink); background: var(--atlas-paper); overflow: hidden; font: 15px/1.6 'Segoe UI',system-ui,sans-serif; }
 .atlas::backdrop { background: #163732; }
 .atlas *, .atlas *::before, .atlas *::after { box-sizing: border-box; }
