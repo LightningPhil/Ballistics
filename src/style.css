@@ -37,7 +37,7 @@ button { touch-action: manipulation; }
 .skip-link:focus { top: 10px; }
 .app-container { display: grid; grid-template-columns: 359px minmax(0, 1fr); width: 100%; height: 100dvh; }
 .control-panel { min-width: 0; height: 100dvh; display: flex; flex-direction: column; background: var(--bg-panel); border-right: 1px solid #d4dac5; box-shadow: 3px 0 18px #223d2f08; z-index: 2; }
-.controls-scroll { min-height: 0; flex: 1; overflow: auto; overscroll-behavior: contain; padding: 18px 22px 24px; scrollbar-width: thin; scrollbar-color: #bac6b6 transparent; }
+.controls-scroll { min-height: 0; flex: 1; overflow: auto; scrollbar-gutter: stable; overscroll-behavior: contain; padding: 18px 22px 24px; scrollbar-width: thin; scrollbar-color: #bac6b6 transparent; }
 .canvas-area { min-width: 0; position: relative; height: 100dvh; overflow: hidden; background: #c8dfd5; }
 .canvas-area canvas { display: block; width: 100%; height: 100%; }
 .lab-brand { display: flex; align-items: center; gap: 10px; padding: 22px 22px 17px; }
@@ -75,9 +75,9 @@ button { touch-action: manipulation; }
 .planet-fact-button { width: 100%; min-height: 38px; margin-top: 9px; padding: 8px 11px; display: flex; align-items: center; justify-content: space-between; border: 1px solid #d2ddca; border-radius: 9px; color: #315f4c; background: #f1f4e8; font-size: 11px; font-weight: 700; }
 .planet-fact-button:hover { border-color: #88a78c; background: #e7eedc; }
 .planet-fact-button span:last-child { font-size: 16px; font-weight: 400; }
-.planet-fact-dialog { width: min(700px, calc(100vw - 28px)); height: min(570px, calc(100dvh - 28px)); max-width: none; max-height: none; margin: auto; padding: 0; overflow: hidden; border: 0; border-radius: 21px; color: #2c403b; background: #fffaf0; box-shadow: 0 24px 80px #13251d66; }
+.planet-fact-dialog { width: min(800px, calc(100vw - 28px)); max-width: none; max-height: calc(100dvh - 28px); margin: auto; padding: 0; overflow: auto; overscroll-behavior: contain; border: 0; border-radius: 21px; color: #2c403b; background: #fffaf0; box-shadow: 0 24px 80px #13251d66; scrollbar-width: thin; }
 .planet-fact-dialog::backdrop { background: #16251fcc; backdrop-filter: blur(5px); }
-.planet-fact-card { --fact-accent: #4f9682; height: 100%; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; overflow: hidden; background: linear-gradient(145deg, color-mix(in srgb, var(--fact-accent) 12%, #fffaf0) 0 118px, #fffaf0 118px); }
+.planet-fact-card { --fact-accent: #4f9682; background: linear-gradient(145deg, color-mix(in srgb, var(--fact-accent) 12%, #fffaf0) 0 118px, #fffaf0 118px); }
 .planet-fact-hero { min-height: 154px; display: grid; grid-template-columns: 142px minmax(0, 1fr) 34px; gap: 12px; align-items: center; padding: 7px 22px 6px; border-bottom: 1px solid color-mix(in srgb, var(--fact-accent) 30%, #e0dccd); }
 .planet-fact-artwork { display: block; width: 140px; height: 140px; object-fit: contain; filter: drop-shadow(0 8px 8px #263b2b2e); }
 .planet-fact-card[data-world='sun'] .planet-fact-artwork { filter: drop-shadow(0 0 13px #ee8c3888); }
@@ -86,12 +86,14 @@ button { touch-action: manipulation; }
 .planet-fact-heading > p:last-child { max-width: 470px; color: #53665e; font-size: 13px; line-height: 1.4; }
 .planet-fact-close { width: 34px; height: 34px; align-self: start; padding: 0 0 3px; border: 1px solid #bdc9b8; border-radius: 50%; background: #fffaf0cc; color: #52675e; font-size: 25px; line-height: 1; }
 .planet-fact-close:hover { background: #fff; color: #9d503a; }
-.planet-fact-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-bottom: 1px solid #e4e0d3; }
-.planet-fact-stats > div { min-width: 0; padding: 12px 15px; border-right: 1px solid #e4e0d3; border-bottom: 1px solid #e4e0d3; }
-.planet-fact-stats > div:nth-child(5n) { border-right: 0; }
-.planet-fact-stats > div:nth-child(n+6) { border-bottom: 0; }
-.planet-fact-stats span { display: block; color: #7a867d; font-size: 9px; line-height: 1.2; text-transform: uppercase; letter-spacing: .55px; }
-.planet-fact-stats strong { display: block; margin-top: 4px; overflow-wrap: anywhere; color: #304d43; font: 700 12px/1.2 var(--font-mono); }
+.planet-fact-invitation { padding:16px 22px 12px; color:#657567; font-size:12px; line-height:1.5; }
+.planet-fact-invitation strong { color:#315f4c; margin-right:6px; }
+.planet-fact-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap:8px; padding:0 22px 6px; }
+.planet-fact-stats > button { position:relative; min-width:0; min-height:97px; text-align:left; padding:13px 12px 26px; border:1px solid #d9dfcf; border-radius:11px; background:#fffdf5; box-shadow:0 2px 0 #e8ebdd; transition:background .15s,border-color .15s; }
+.planet-fact-stats > button:hover { background:#edf3e4; border-color:#86a58a; }
+.planet-fact-stats .fact-tile-label { display:block; color:#647560; font-size:10px; line-height:1.35; }
+.planet-fact-stats strong { display:block; margin-top:7px; overflow-wrap:anywhere; color:#304d43; font:700 13px/1.4 var(--font-mono); }
+.planet-fact-stats .fact-tile-help { display:grid; place-items:center; position:absolute; right:8px; bottom:7px; width:16px; height:16px; border:1px solid #bdcdb7; border-radius:50%; color:#587752; font:11px Georgia,serif; }
 .planet-fact-details { min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 22px; padding: 18px 22px 15px; }
 .planet-fact-details section { min-width: 0; padding: 14px 15px; border: 1px solid #e1e3d5; border-radius: 12px; background: #ffffff99; }
 .planet-fact-details h3 { margin: 3px 0 8px; color: #354f45; font: 700 17px/1.2 var(--font-serif); }
@@ -164,22 +166,19 @@ input[type='range']::-moz-range-thumb { width: 15px; height: 15px; border: 3px s
   .launch-actions { top:0; }
   .planet-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .planet-btn { min-height: 49px; font-size: 10.8px; padding: 9px 13px; column-gap: 8px; }
-  .planet-fact-dialog { height: min(650px, calc(100dvh - 20px)); }
+  .planet-fact-dialog { max-height: calc(100dvh - 20px); }
   .planet-fact-hero { min-height: 128px; grid-template-columns: 94px minmax(0, 1fr) 32px; gap: 7px; padding: 6px 12px; }
   .planet-fact-artwork { width: 92px; height: 92px; }
   .planet-fact-heading h2 { font-size: 28px; }
   .planet-fact-heading > p:last-child { font-size: 11px; }
   .planet-fact-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .planet-fact-stats > div { padding: 7px 9px; }
-  .planet-fact-stats > div:nth-child(5n) { border-right: 1px solid #e4e0d3; }
-  .planet-fact-stats > div:nth-child(2n) { border-right: 0; }
-  .planet-fact-stats > div:nth-child(n+6) { border-bottom: 1px solid #e4e0d3; }
-  .planet-fact-stats > div:nth-child(n+9) { border-bottom: 0; }
-  .planet-fact-stats strong { font-size: 10px; }
+  .planet-fact-stats { padding:0 12px 8px; }
+  .planet-fact-stats > button { min-height:78px; padding:10px 12px 20px; }
+  .planet-fact-stats strong { font-size:13px; }
   .planet-fact-details { gap: 9px; padding: 11px; }
   .planet-fact-details section { padding: 10px; }
   .planet-fact-details h3 { margin-bottom: 5px; font-size: 15px; }
-  .planet-fact-details section > p:last-child { font-size: 10.5px; line-height: 1.38; }
+  .planet-fact-details section > p:last-child { font-size:12px; line-height:1.55; }
   .planet-fact-footer { min-height: 43px; padding: 8px 12px; gap: 10px; }
   .planet-fact-footer p, .planet-fact-footer a { font-size: 8.5px; }
   .world-caption { font-size: 11px; }

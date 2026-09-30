@@ -1,10 +1,12 @@
 import './cannon-exhibit.css';
 import { exhibitFocus } from './exhibit-focus.ts';
 import { ExhibitAudio } from './exhibit-audio.ts';
+import { control, setControl, stepButton, markSteps, exhibitCue } from './exhibit-controls.ts';
 import { CHARGES, MATERIALS, CANNON_SCALES, simulateCannon, sampleCannon, timeAtTravel,
   pressureIndex, speedIndex, newCannonSession, cannonAction,
-  type CannonSession, type CannonAction, type CannonRun, type CannonSample, type Charge, type Material } from './cannon-model.ts';
+  type CannonSession, type CannonAction, type CannonRun, type CannonSample, type CannonStage, type Charge, type Material } from './cannon-model.ts';
 
+const LOADING:CannonStage[]=['empty','powder','loaded'];
 const clamp=(v:number,min=0,max=1)=>Math.max(min,Math.min(max,v));
 const num=(v:number)=>v.toFixed(1);
 const graph={left:58,top:25,width:784,height:168};
@@ -15,8 +17,8 @@ export function cannonExhibitMarkup() {
     <ol><li><strong>Late 1200s</strong><span>Small metal cannon in China</span></li><li><strong>1326</strong><span>Cannon recorded in Florence</span></li><li><strong>Later centuries</strong><span>Stone and iron shot; changing castles and ships</span></li></ol>
     <p class="cannon-history-note">These were weapons of war, with profound consequences for people and places. Here, a museum-style cutaway lets us examine the history and the physical process.</p></section>
   <section class="cannon-exhibit" aria-label="Interactive historical cannon cutaway">
-    <header><div><p class="atlas-kicker">AN EVENT TOO QUICK TO SEE</p><h2>A brief push, revealed.</h2></div><button type="button" data-focus class="cannon-focus-button">Expand experiment ↗</button></header>
-    <p class="cannon-question">Can the pressure be falling while the ball is still gaining speed?</p>
+    <header><div><p class="atlas-kicker">AN EVENT TOO QUICK TO SEE</p><h2>A brief push, revealed.</h2></div><button type="button" data-focus class="cannon-focus-button">${control('expand','Expand experiment')}</button></header>
+    <p class="cannon-question"><span class="cannon-question-mark" aria-hidden="true">?</span><span><small>A QUESTION TO INVESTIGATE</small>Can the pressure be falling while the ball is still gaining speed?</span></p>
     <div class="cannon-lab-grid"><div class="cannon-demo-panel"><div class="cannon-workbench"><div class="cannon-visual"><svg class="cannon-scene" viewBox="40 95 1000 315" role="img" aria-labelledby="cannon-scene-title cannon-scene-desc">
       <title id="cannon-scene-title">A cutaway of an old cannon on a wooden carriage</title><desc id="cannon-scene-desc">An empty barrel, with a short fuse above its rear. Add an illustrative charge and a same-size ball to explore hot gas and motion.</desc>
       <defs><linearGradient id="cannon-bronze" x2="0" y2="1"><stop stop-color="#ddbc78"/><stop offset=".3" stop-color="#94744b"/><stop offset=".7" stop-color="#b5955c"/><stop offset="1" stop-color="#65563d"/></linearGradient><linearGradient id="cannon-bore" x2="0" y2="1"><stop stop-color="#101c21"/><stop offset="1" stop-color="#31424a"/></linearGradient><radialGradient id="cannon-ball-shade" cx="30%" cy="25%"><stop stop-color="#fff7d5" stop-opacity=".4"/><stop offset="1" stop-color="#10222c" stop-opacity=".55"/></radialGradient><linearGradient id="cannon-gas"><stop stop-color="#f1ad57"/><stop offset="1" stop-color="#eac57c" stop-opacity=".4"/></linearGradient><pattern id="cannon-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(35)"><path d="M0 0V8" stroke="#342f24" stroke-opacity=".2" stroke-width="2"/></pattern></defs>
@@ -41,9 +43,9 @@ export function cannonExhibitMarkup() {
     <div class="cannon-readouts"><div><span>Pressure index</span><strong data-pressure>—</strong></div><div><span>Speed index</span><strong data-speed>—</strong></div><div><span>Barrel travel</span><strong data-travel>—</strong></div></div></div>
     <aside class="cannon-controls" aria-label="Experiment choices"><label>Illustrative charge<select data-charge>${Object.entries(CHARGES).map(([id,c])=>`<option value="${id}" ${id==='medium'?'selected':''}>${c.name}</option>`).join('')}</select></label>
       <label>Ball material<select data-material>${Object.entries(MATERIALS).map(([id,m])=>`<option value="${id}" ${id==='iron'?'selected':''}>${m.name} · ${m.detail.toLowerCase()}</option>`).join('')}</select></label><p>Same size. Different mass.</p>
-      <ol class="cannon-loading"><li><button type="button" data-action="charge"><span>01</span> Add charge</button></li><li><button type="button" data-action="ball"><span>02</span> Add ball</button></li><li><button type="button" data-action="light"><span>03</span> Light fuse</button></li></ol>
-      <button type="button" data-action="reset" class="cannon-new"><span aria-hidden="true">↺</span> Reset Experiment</button><div class="exhibit-sound-controls"><button type="button" data-sound aria-pressed="false" class="cannon-sound">Sound off</button><p data-audio-status role="status">Optional, quiet classroom sound effects.</p></div></aside></div>
-    <div class="cannon-playback"><button type="button" data-play disabled>Play</button><button type="button" data-action="replay" disabled>Replay</button><button type="button" data-next disabled>Next moment</button><label class="cannon-scrubber">Inspect the event<input data-scrub type="range" min="0" max="1000" step="1" value="0" disabled aria-label="Inspect cannon event"></label></div>
+      <ol class="cannon-loading">${stepButton('data-action','charge',1,'Add charge')}${stepButton('data-action','ball',2,'Add ball')}${stepButton('data-action','light',3,'Light fuse')}</ol>
+      <button type="button" data-action="reset" class="cannon-new">${control('reset','Reset Experiment')}</button><div class="exhibit-sound-controls"><button type="button" data-sound aria-pressed="false" class="cannon-sound">${control('soundOff','Sound off')}</button><p data-audio-status role="status">Optional, quiet classroom sound effects.</p></div></aside></div>
+    <div class="cannon-playback"><button type="button" data-play disabled>${control('play','Play')}</button><button type="button" data-action="replay" disabled>${control('replay','Replay')}</button><button type="button" data-next disabled>${control('next','Next moment')}</button><label class="cannon-scrubber">Inspect the event<input data-scrub type="range" min="0" max="1000" step="1" value="0" disabled aria-label="Inspect cannon event"></label></div>
     </div><div class="cannon-plot"><div class="cannon-chart-heading"><div><h3>The push and the motion</h3><div class="cannon-chart-legend"><span><i></i>Pressure</span><span><i></i>Speed</span></div></div><label>Plot against<select data-axis><option value="time">Time</option><option value="travel">Barrel travel</option></select></label></div>
     <svg class="cannon-chart" viewBox="0 0 900 270" role="img" aria-labelledby="cannon-chart-title cannon-chart-desc"><title id="cannon-chart-title">Gas pressure and ball speed</title><desc id="cannon-chart-desc">Both curves use fixed relative scales across experiments. Fire a virtual shot to reveal the curves, then use the time slider or select a point on this chart.</desc><g data-chart-static></g><g data-chart-live></g></svg>
     <p class="cannon-comparison" data-comparison></p></div></div><p class="cannon-model-note">Slow motion · relative scales, not measurements of a real cannon. Charge sizes and model time are illustrative; the gas and moving ball are calculated together.</p>
@@ -91,6 +93,7 @@ export function mountCannonExhibit(root:HTMLElement,saved?:CannonSession) {
   const rig=find<SVGGElement>('[data-cannon-rig]'),fuse=find<SVGPathElement>('[data-fuse]');
   const fuseLength=fuse.getTotalLength();
   const chart=find<SVGSVGElement>('.cannon-chart');
+  const steps=(['charge','ball','light'] as const).map(action=>find<HTMLButtonElement>(`[data-action="${action}"]`));
   const abort=new AbortController(),signal=abort.signal;
   const focus=exhibitFocus(root,'Expanded cannon experiment',signal);
 
@@ -146,12 +149,15 @@ export function mountCannonExhibit(root:HTMLElement,saved?:CannonSession) {
     find('[data-travel]').textContent=shot?(p.travel>=1?'Outside':`${Math.round(p.travel*100)}%`):'—';
     charge.value=session.options.charge;material.value=session.options.material;
     charge.disabled=session.stage!=='empty';material.disabled=!['empty','powder'].includes(session.stage);
-    for(const [action,enabled] of [['charge',session.stage==='empty'],['ball',session.stage==='powder'],['light',session.stage==='loaded']] as const) find<HTMLButtonElement>(`[data-action="${action}"]`).disabled=!enabled;
-    const active=shot||session.stage==='fuse';
-    find<HTMLButtonElement>('[data-play]').disabled=!active;
-    find('[data-play]').textContent=session.playing?'Pause':shot&&session.time>=run.endTime?'Play again':'Play';
+    const step=LOADING.indexOf(session.stage);
+    markSteps(steps,step<0?3:step);
+    const active=shot||session.stage==='fuse',finished=shot&&session.time>=run.endTime,play=find<HTMLButtonElement>('[data-play]');
+    play.disabled=!active;
+    setControl(play,session.playing?'pause':'play',session.playing?'Pause':finished?'Play again':'Play');
+    const cue=exhibitCue(step>=0,active,session.playing,finished);
+    play.classList.toggle('is-next',cue==='play');find('[data-action="reset"]').classList.toggle('is-next',cue==='reset');
     find<HTMLButtonElement>('[data-action="replay"]').disabled=!shot;
-    find<HTMLButtonElement>('[data-next]').disabled=!active||(shot&&session.time>=run.endTime);
+    find<HTMLButtonElement>('[data-next]').disabled=!active||finished;
     scrub.disabled=!shot;scrub.value=String(Math.round(session.time/run.endTime*1000));
     scrub.setAttribute('aria-valuetext',shot?`${Math.round(clamp(p.travel)*100)} percent of barrel travel; pressure index ${num(pressureIndex(p.pressure))}; speed index ${num(speedIndex(p.speed))}`:'Before ignition');
     const x=graph.left+(session.axis==='time'?p.time/CANNON_SCALES.time:Math.min(1,p.travel))*graph.width;
@@ -164,7 +170,11 @@ export function mountCannonExhibit(root:HTMLElement,saved?:CannonSession) {
     const cleared=shot&&p.travel>=1;
     find('[data-comparison]').textContent=previous?`Dashed: previous ${CHARGES[previous.options.charge].name.toLowerCase()} charge, ${MATERIALS[previous.options.material].name.toLowerCase()} ball · exit speed index ${num(speedIndex(previous.exit.speed))}.${cleared?` This experiment: ${num(speedIndex(run.exit.speed))}.`:''}`:cleared?`Exit speed index: ${num(speedIndex(run.exit.speed))}. Reset Experiment keeps these curves for comparison.`:'Try changing just the material between experiments. The previous curves will remain as faint dashed lines.';
     audio.setFuse(session.sound&&session.playing&&session.stage==='fuse',session.fuse);
-    find('[data-sound]').textContent=session.sound?'Sound on':'Sound off';find('[data-sound]').setAttribute('aria-pressed',String(session.sound));
+    showSound();
+  }
+  function showSound() {
+    const button=find('[data-sound]');
+    setControl(button,session.sound?'soundOn':'soundOff',session.sound?'Sound on':'Sound off');button.setAttribute('aria-pressed',String(session.sound));
   }
   function stop() {audio.setFuse(false);session.playing=false;cancelAnimationFrame(frame);frame=0;last=0;}
   function animate(now:number) {
@@ -215,7 +225,7 @@ export function mountCannonExhibit(root:HTMLElement,saved?:CannonSession) {
   chart.addEventListener('pointerdown',event=>{chart.setPointerCapture(event.pointerId);seekChart(event);},{signal});
   chart.addEventListener('pointermove',event=>{if(event.buttons===1)seekChart(event);},{signal});
   document.addEventListener('visibilitychange',()=>{if(document.hidden){stop();draw();}},{signal});
-  const soundButton=find<HTMLButtonElement>('[data-sound]');soundButton.textContent=session.sound?'Sound on':'Sound off';soundButton.setAttribute('aria-pressed',String(session.sound));
+  showSound();
   prepareGraph();draw();
   return { dispose:()=> {stop();focus.close();disposed=true;abort.abort();audio.dispose();return {...session,options:{...session.options},playing:false};} };
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ARTICLES, LEVELS, MOON_FAMILIES, getArticle, parseWikiHash, searchArticles } from '../src/wiki/content.ts';
+import { ARTICLES, LEVELS, MOON_FAMILIES, articleNeighbours, getArticle, parseWikiHash, searchArticles } from '../src/wiki/content.ts';
 import { MAP_BODIES, MAP_LAYOUTS, labelBox, solarOrbitRadius, moonOrbit, mapDestination, beltParticles, solarPlate } from '../src/wiki/solar-map.ts';
 
 test('every atlas topic has three substantial, distinct explanations and valid connections', () => {
@@ -155,6 +155,27 @@ test('every body and name has the same valid article destination at all levels, 
     const ids = [...full.matchAll(/\sid="([^"]+)"/g)].map(m=>m[1]);
     assert.equal(new Set(ids).size,ids.length,'enlarged maps have unique SVG IDs');
   }
+});
+
+test('turning the pages visits every entry once, in atlas order, then returns to the start', () => {
+  const first = ARTICLES[0];
+  assert.equal(articleNeighbours(first.id).previous, undefined);
+  const visited = [];
+  let id = first.id;
+  do {
+    visited.push(id);
+    const { next, wraps } = articleNeighbours(id);
+    assert.equal(wraps, next === first, `${id}: only the last entry leads back to the start`);
+    if (!wraps) assert.equal(articleNeighbours(next.id).previous.id, id, `${id}: previous undoes next`);
+    id = next.id;
+  } while (id !== first.id && visited.length <= ARTICLES.length);
+  assert.deepEqual(visited, ARTICLES.map(a => a.id));
+});
+
+test('pronunciation help is short and only offered where a name is easily misread', () => {
+  const said = ARTICLES.filter(a => a.say);
+  assert.deepEqual(said.map(a => a.id), ['uranus', 'ganymede', 'kuiper-belt']);
+  for (const a of said) assert.match(a.say, /^[A-Za-z]+(-[A-Za-z]+)+( [a-z]+)?$/, a.id);
 });
 
 test('search finds scientific ideas inside explanations as well as titles', () => {

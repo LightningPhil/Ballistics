@@ -4,6 +4,7 @@ import { RocketPropellants } from './rocket_propellants.ts';
 import { RocketPhysics } from './rocket_physics.ts';
 import { ENVIRONMENTS, resolveEnvironment } from './environment.ts';
 import { getPlanetFact } from './planet-facts.ts';
+import { installFactExplanations, updateFactLabels } from './fact-dialog.ts';
 import { clampGravity } from './gravity-scale.ts';
 import { getWorldArt } from './world-art.ts';
 
@@ -306,6 +307,7 @@ function initPlanetFacts() {
   planetFactDialog = document.getElementById('planet-fact-dialog');
   planetFactCard = document.getElementById('planet-fact-card');
   planetFactArtwork = document.getElementById('planet-fact-artwork');
+  installFactExplanations(planetFactDialog);
   planetFactButton.addEventListener('click', function () {
     const fact = getPlanetFact(planetFactButton.dataset.planet);
     if (!fact) return;
@@ -336,6 +338,7 @@ function initPlanetFacts() {
       const element = document.getElementById(id);
       if (element) element.textContent = text;
     });
+    updateFactLabels(planetFactDialog, fact);
     planetFactDialog.showModal();
   });
   planetFactDialog.addEventListener('click', function (event) {

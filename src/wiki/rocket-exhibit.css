@@ -7,15 +7,13 @@
 .rocket-countdown-number { font: 39px Georgia,serif; fill: #f4deac; }
 [data-rocket-flow] { fill: none; stroke-width: 5; stroke-dasharray: 8 7; }
 .rocket-plot-choices { display: flex; gap: 12px; margin: 12px 0 0; }
-.rocket-plot-choices label { flex: 1; min-width: 0; display: grid; gap: 5px; color: #b5c7bd; font-size: 11px; }
+.rocket-plot-choices label { flex: 1; min-width: 0; display: grid; gap: 5px; color: #bccdc3; font-size: 12.5px; }
 .rocket-exhibit .cannon-chart-legend b { font-weight: 400; }
 .rocket-exhibit .cannon-chart { margin-top: 18px; }
 .rocket-exhibit.is-focused { padding: 20px; }
 .rocket-exhibit.is-focused .cannon-question { margin-bottom: 14px; }
 .rocket-exhibit.is-focused .cannon-comparison { margin-bottom: 6px; }
 .rocket-exhibit.is-focused .cannon-model-details { margin-top: 12px; }
-.rocket-exhibit .cannon-loading button { padding-inline: 6px; }
-.rocket-exhibit .cannon-loading button span { margin-right: 4px; }
 @media(min-width:950px) {
   .rocket-exhibit.is-focused .cannon-chart text { font-size: 21px; }
   .rocket-exhibit.is-focused .cannon-controls { grid-template-columns: 1.2fr 1fr 1fr; gap: 8px; padding-top: 8px; }

@@ -8,6 +8,8 @@ export interface Reading {
 export interface Article {
   id: string; title: string; group: string; kind: string; description: string;
   art?: string;
+  /** How to say a name that is often guessed wrongly. */
+  say?: string;
   stats: [string, string][];
   levels: [Reading, Reading, Reading];
   related: string[];
@@ -15,9 +17,9 @@ export interface Article {
 }
 
 export const LEVELS = [
-  { name: 'First look', detail: 'The big idea' },
-  { name: 'Explore', detail: 'How & why' },
-  { name: 'Go deeper', detail: 'The science underneath' },
+  { name: 'First look', detail: 'The big idea, simply explained' },
+  { name: 'Explore', detail: 'How it works, and why' },
+  { name: 'Go deeper', detail: 'More science, step by step' },
 ] as const;
 const nasa = (path: string): [string, string][] => {
   const slug = path.split('/').filter(part => part !== 'facts').pop()!;
@@ -110,7 +112,7 @@ export const ARTICLES: Article[] = [
     ], related: ['jupiter', 'moons', 'uranus'], sources: [...nasa('saturn/facts'), ...nasa('saturn/moons/facts')],
   },
   {
-    id: 'uranus', title: 'Uranus', art: 'uranus', group: 'Our star & planets', kind: '07 / Ice giant',
+    id: 'uranus', title: 'Uranus', art: 'uranus', say: 'YOOR-un-us', group: 'Our star & planets', kind: '07 / Ice giant',
     description: 'A pale blue-green world tipped almost onto its side.',
     stats: [['Solar distance', '19.2 AU'], ['Year', '≈84 Earth years'], ['Axial tilt', '≈98°']],
     levels: [
@@ -150,7 +152,7 @@ export const ARTICLES: Article[] = [
     ], related: ['earth', 'moons', 'ganymede'], sources: nasa('moon/facts'),
   },
   {
-    id: 'ganymede', title: 'Ganymede', art: 'ganymede', group: 'Moons & small worlds', kind: 'A moon of Jupiter',
+    id: 'ganymede', title: 'Ganymede', art: 'ganymede', say: 'GAN-ih-meed', group: 'Moons & small worlds', kind: 'A moon of Jupiter',
     description: 'An icy moon so large it could be mistaken for a planet.',
     stats: [['Orbits', 'Jupiter'], ['Diameter', '≈5,268 km'], ['Orbit', '≈7.2 Earth days']],
     levels: [
@@ -170,7 +172,7 @@ export const ARTICLES: Article[] = [
     ], related: ['kuiper-belt', 'moons', 'neptune'], sources: [...nasa('dwarf-planets/pluto/facts'), ...nasa('dwarf-planets/ceres/facts')],
   },
   {
-    id: 'kuiper-belt', title: 'The Kuiper Belt', group: 'Moons & small worlds', kind: 'Beyond Neptune / icy beginnings',
+    id: 'kuiper-belt', title: 'The Kuiper Belt', say: 'KY-per belt', group: 'Moons & small worlds', kind: 'Beyond Neptune / icy beginnings',
     description: 'The planets end. The Solar System keeps going.',
     stats: [['Main region', '≈30–50 AU'], ['Familiar member', 'Pluto'], ['Materials', 'Ices & rock']],
     levels: [
@@ -277,6 +279,11 @@ export const MOON_FAMILIES = [
 ];
 
 export function getArticle(id: string) { return ARTICLES.find(article => article.id === id); }
+/** The atlas also reads like a book: each entry leads to the next, and the last back to the first. */
+export function articleNeighbours(id: string) {
+  const i = ARTICLES.findIndex(article => article.id === id);
+  return { previous: i > 0 ? ARTICLES[i - 1] : undefined, next: ARTICLES[(i + 1) % ARTICLES.length], wraps: i === ARTICLES.length - 1 };
+}
 export function searchArticles(query: string) {
   const terms = query.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
   return ARTICLES.filter(a => {

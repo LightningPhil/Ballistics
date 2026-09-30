@@ -471,17 +471,18 @@
 <button class="planet-fact-close" value="close" aria-label="Close planet fact">×</button>
 </form>
 </header>
+<p class="planet-fact-invitation"><strong>Ten little facts. Big discoveries.</strong> Select any fact to see what it means.</p>
 <section class="planet-fact-stats" aria-label="Top facts">
-<div><span>Mass</span><strong id="planet-fact-mass">—</strong></div>
-<div><span>Diameter</span><strong id="planet-fact-diameter">—</strong></div>
-<div><span>Distance from Sun</span><strong id="planet-fact-distance">—</strong></div>
-<div><span>Gravity</span><strong id="planet-fact-gravity">—</strong></div>
-<div><span title="How far the spin axis leans from upright">Axial tilt</span><strong id="planet-fact-tilt">—</strong></div>
-<div><span>Day length</span><strong id="planet-fact-day">—</strong></div>
-<div><span>Year / orbit</span><strong id="planet-fact-year">—</strong></div>
-<div><span>Average temp</span><strong id="planet-fact-temp-average">—</strong></div>
-<div><span>Minimum temp</span><strong id="planet-fact-temp-min">—</strong></div>
-<div><span>Maximum temp</span><strong id="planet-fact-temp-max">—</strong></div>
+<button type="button" data-fact="mass" aria-haspopup="dialog" aria-controls="fact-explanation"><span class="fact-tile-label">Mass</span><strong id="planet-fact-mass">—</strong><span class="fact-tile-help" aria-hidden="true">?</span></button>
+<button type="button" data-fact="diameter" aria-haspopup="dialog" aria-controls="fact-explanation"><span class="fact-tile-label">Diameter</span><strong id="planet-fact-diameter">—</strong><span class="fact-tile-help" aria-hidden="true">?</span></button>
+<button type="button" data-fact="distance" aria-haspopup="dialog" aria-controls="fact-explanation"><span class="fact-tile-label">Distance from Sun</span><strong id="planet-fact-distance">—</strong><span class="fact-tile-help" aria-hidden="true">?</span></button>
+<button type="button" data-fact="gravity" aria-haspopup="dialog" aria-controls="fact-explanation"><span class="fact-tile-label">Gravity</span><strong id="planet-fact-gravity">—</strong><span class="fact-tile-help" aria-hidden="true">?</span></button>
+<button type="button" data-fact="tilt" aria-haspopup="dialog" aria-controls="fact-explanation"><span class="fact-tile-label">Axial tilt</span><strong id="planet-fact-tilt">—</strong><span class="fact-tile-help" aria-hidden="true">?</span></button>
+<button type="button" data-fact="day" aria-haspopup="dialog" aria-controls="fact-explanation"><span class="fact-tile-label">Day length</span><strong id="planet-fact-day">—</strong><span class="fact-tile-help" aria-hidden="true">?</span></button>
+<button type="button" data-fact="year" aria-haspopup="dialog" aria-controls="fact-explanation"><span class="fact-tile-label">Year / orbit</span><strong id="planet-fact-year">—</strong><span class="fact-tile-help" aria-hidden="true">?</span></button>
+<button type="button" data-fact="temp-average" aria-haspopup="dialog" aria-controls="fact-explanation"><span class="fact-tile-label">Average temp</span><strong id="planet-fact-temp-average">—</strong><span class="fact-tile-help" aria-hidden="true">?</span></button>
+<button type="button" data-fact="temp-min" aria-haspopup="dialog" aria-controls="fact-explanation"><span class="fact-tile-label">Minimum temp</span><strong id="planet-fact-temp-min">—</strong><span class="fact-tile-help" aria-hidden="true">?</span></button>
+<button type="button" data-fact="temp-max" aria-haspopup="dialog" aria-controls="fact-explanation"><span class="fact-tile-label">Maximum temp</span><strong id="planet-fact-temp-max">—</strong><span class="fact-tile-help" aria-hidden="true">?</span></button>
 </section>
 <div class="planet-fact-details">
 <section>

@@ -1,7 +1,8 @@
 import './wiki.css';
-import { ARTICLES, LEVELS, getArticle, parseWikiHash, searchArticles, type Level, type Article } from './content.ts';
+import { ARTICLES, LEVELS, articleNeighbours, getArticle, parseWikiHash, searchArticles, type Level, type Article } from './content.ts';
 import { solarPlate, asteroidPlate, kuiperPlate, moonExplorer } from './diagrams.ts';
 import { WORLD_ART } from '../world-art.ts';
+import { flightTopicArt } from './topic-art.ts';
 import { cannonExhibitMarkup, mountCannonExhibit } from './cannon-exhibit.ts';
 import type { CannonSession } from './cannon-model.ts';
 import { rocketExhibitMarkup, mountRocketExhibit } from './rocket-exhibit.ts';
@@ -10,6 +11,7 @@ import type { RocketSession } from './rocket-model.ts';
 let dialog: HTMLDialogElement | undefined;
 export const isWikiOpen = () => !!dialog?.open;
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+const symbol = (a: Article) => flightTopicArt(a.id) || (a.id === 'asteroid-belt' ? '⠿' : '◎');
 
 /** Self-contained reading space. Opening it pauses the lab through a callback;
  * the wiki never changes a world, launcher setting, or recorded experiment. */
@@ -19,6 +21,7 @@ export function installWiki(onVisibilityChange: (open: boolean) => void) {
   let family = 'jupiter';
   let cannonSession:CannonSession|undefined, disposeExhibit:(()=>void)|undefined;
   let rocketSession:RocketSession|undefined;
+  let readingChoice = false;
   try { const saved = Number(localStorage.getItem('launch-lab-reading-level')); if ([0, 1, 2].includes(saved)) level = saved as Level; } catch { /* Storage is optional, including file:// builds. */ }
   dialog = document.createElement('dialog');
   dialog.className = 'atlas'; dialog.id = 'educational-wiki'; dialog.setAttribute('aria-label', 'Explore the Solar System, educational companion');
@@ -45,12 +48,30 @@ export function installWiki(onVisibilityChange: (open: boolean) => void) {
     const groups = [...new Set(ARTICLES.map(a => a.group))];
     nav.innerHTML = groups.map(group => {
       const items = matches.filter(a => a.group === group);
-      return items.length ? `<section><h2>${group}</h2>${items.map(a => `<a href="#wiki/${a.id}/${level + 1}" ${a.id === article.id ? 'aria-current="page"' : ''}>${a.art ? `<img src="${WORLD_ART[a.art].mini}" alt="" width="26" height="26">` : `<span class="atlas-topic-symbol" aria-hidden="true">${a.id === 'rockets' ? '↑' : a.id === 'cannons' ? '↗' : a.id === 'asteroid-belt' ? '⠿' : '◎'}</span>`}<span>${a.title}</span></a>`).join('')}</section>` : '';
+      return items.length ? `<section><h2>${group}</h2>${items.map(a => `<a href="#wiki/${a.id}/${level + 1}" ${flightTopicArt(a.id) ? `class="atlas-flight-link atlas-flight-${a.id}"` : ''} ${a.id === article.id ? 'aria-current="page"' : ''}>${a.art ? `<img src="${WORLD_ART[a.art].mini}" alt="" width="26" height="26">` : `<span class="atlas-topic-symbol" aria-hidden="true">${symbol(a)}</span>`}<span>${a.title}${a.id === 'cannons' ? '<small>Pressure. A push. A boom.</small>' : a.id === 'rockets' ? '<small>Thrust. Flight. Discovery.</small>' : ''}</span></a>`).join('')}</section>` : '';
     }).join('') || '<p class="atlas-empty">No topics found. Try “ice”, “gravity” or “moons”.</p>';
     dialog!.querySelector('.atlas-search-status')!.textContent = search.value.trim() ? `${matches.length} ${matches.length === 1 ? 'topic' : 'topics'} found` : '';
   }
   function relatedCard(a: Article) {
-    return `<a class="atlas-related-card" href="#wiki/${a.id}/${level + 1}">${a.art ? `<img src="${WORLD_ART[a.art].full}" alt="" width="68" height="68" loading="lazy">` : `<span class="atlas-related-symbol" aria-hidden="true">${a.id === 'rockets' ? '↑' : a.id === 'cannons' ? '↗' : '◎'}</span>`}<span><small>${a.group}</small><strong>${a.title}</strong></span><span aria-hidden="true">↗</span></a>`;
+    return `<a class="atlas-related-card" href="#wiki/${a.id}/${level + 1}">${a.art ? `<img src="${WORLD_ART[a.art].full}" alt="" width="68" height="68" loading="lazy">` : `<span class="atlas-related-symbol" aria-hidden="true">${symbol(a)}</span>`}<span><small>${a.group}</small><strong>${a.title}</strong></span><span aria-hidden="true">↗</span></a>`;
+  }
+  function pager() {
+    const { previous, next, wraps } = articleNeighbours(article.id);
+    const art = (a: Article) => a.art ? `<img src="${WORLD_ART[a.art].full}" alt="" width="46" height="46" loading="lazy">` : `<span class="atlas-pager-symbol" aria-hidden="true">${symbol(a)}</span>`;
+    const page = (a: Article, rel: 'prev' | 'next', label: string) => `<a class="atlas-pager-${rel}" href="#wiki/${a.id}/${level + 1}" rel="${rel}">${rel === 'prev' ? `<span class="atlas-pager-arrow" aria-hidden="true">←</span>${art(a)}` : ''}<span><small>${label}</small><strong>${a.title}</strong></span>${rel === 'next' ? `${art(a)}<span class="atlas-pager-arrow" aria-hidden="true">→</span>` : ''}</a>`;
+    return `<nav class="atlas-pager" aria-label="Turn the page">${previous ? page(previous, 'prev', 'Previous entry') : ''}${page(next, 'next', wraps ? 'Back to the start' : 'Next entry')}</nav>`;
+  }
+  function readingLevels(place: 'intro' | 'text') {
+    return `<section class="atlas-reading atlas-reading-${place}" aria-label="Three explanation levels">
+      ${place === 'intro' ? '<div class="atlas-reading-label"><div><p class="atlas-kicker">THE SAME TOPIC, AT YOUR PACE</p><h2>Three ways to understand</h2></div><p>Start simple or follow your curiosity further.<br> Choose a level to read its explanation.</p></div>' : '<div class="atlas-reading-label"><h2>Your explanation</h2><small>Switch levels whenever you like.</small></div>'}
+      <div class="atlas-levels" role="group" aria-label="Choose an explanation level">${LEVELS.map((l, i) => `<button type="button" data-level="${i}" data-level-place="${place}" aria-pressed="${level === i}" aria-controls="atlas-reading-content"><span class="atlas-level-number" aria-hidden="true">${i + 1}</span><span><span class="atlas-level-caption">Level ${i + 1}${level === i ? ' · Selected ✓' : ''}</span><strong>${l.name}</strong><small>${l.detail}</small></span></button>`).join('')}</div></section>`;
+  }
+  function showReading() {
+    const target = main.querySelector<HTMLElement>('.atlas-reading-text');
+    // Scroll only the reading pane: scrollIntoView also scrolls the outer
+    // native dialog and can push the persistent top bar off screen.
+    if (target) main.scrollTop += target.getBoundingClientRect().top - main.getBoundingClientRect().top - 24;
+    main.querySelector<HTMLButtonElement>(`[data-level-place="text"][data-level="${level}"]`)?.focus({ preventScroll: true });
   }
   function render(focus = true, keepScroll = false) {
     disposeExhibit?.(); disposeExhibit=undefined;
@@ -61,15 +82,17 @@ export function installWiki(onVisibilityChange: (open: boolean) => void) {
       : article.id === 'cannons' ? cannonExhibitMarkup() : article.id === 'rockets' ? rocketExhibitMarkup() : '';
     main.innerHTML = `<article class="atlas-article" data-topic="${article.id}">
       <div class="atlas-breadcrumb"><a href="#wiki/solar-system/${level + 1}">Atlas</a><span aria-hidden="true">/</span><span>${article.group}</span><span class="atlas-index">ENTRY ${number} / ${ARTICLES.length}</span></div>
-      <header class="atlas-hero ${article.art ? 'atlas-world-hero' : ''}"><div class="atlas-hero-copy"><p class="atlas-kicker">${article.kind}</p><h1 id="atlas-title" tabindex="-1">${article.title}</h1><p class="atlas-deck">${article.description}</p></div>${article.art ? `<div class="atlas-world-art"><span class="atlas-world-orbit" aria-hidden="true"></span><img src="${WORLD_ART[article.art].full}" alt="Illustration of ${article.title.replace(' & the outer frontier', '')}" width="320" height="320"><span class="atlas-world-caption">A WORLD WORTH KNOWING</span></div>` : ''}</header>
+      <header class="atlas-hero ${article.art ? 'atlas-world-hero' : ''}"><div class="atlas-hero-copy"><p class="atlas-kicker">${article.kind}</p><h1 id="atlas-title" tabindex="-1">${article.title}</h1><p class="atlas-deck">${article.description}</p>${article.say ? `<p class="atlas-say"><span>Say it</span><strong>${article.say}</strong></p>` : ''}</div>${article.art ? `<div class="atlas-world-art"><span class="atlas-world-orbit" aria-hidden="true"></span><img src="${WORLD_ART[article.art].full}" alt="Illustration of ${article.title.replace(' & the outer frontier', '')}" width="320" height="320"><span class="atlas-world-caption">A WORLD WORTH KNOWING</span></div>` : ''}</header>
+      ${readingLevels('intro')}
       ${illustration}
       <dl class="atlas-facts">${article.stats.map(([name, value]) => `<div><dt>${name}</dt><dd>${value}</dd></div>`).join('')}</dl>
       ${article.stats.some(([, value]) => value.includes('AU')) ? '<p class="atlas-units">An astronomical unit (AU) is about Earth’s average distance from the Sun: 150 million kilometres. Solar distances here are rounded averages.</p>' : ''}
-      <section class="atlas-reading" aria-label="Choose a reading level"><div class="atlas-reading-label"><span>CHOOSE YOUR DEPTH</span><small>Every level tells the same story.</small></div><div class="atlas-levels" role="group" aria-label="Reading level">${LEVELS.map((l, i) => `<button type="button" data-level="${i}" aria-pressed="${level === i}" aria-controls="atlas-reading-content"><span class="atlas-level-number">0${i + 1}</span><span><strong>${l.name}</strong><small>${l.detail}</small></span></button>`).join('')}</div></section>
+      ${readingLevels('text')}
       <div class="atlas-prose-layout" id="atlas-reading-content"><section class="atlas-prose" aria-labelledby="atlas-reading-heading"><p class="atlas-kicker">${LEVELS[level].name} / ${Math.max(1, Math.ceil(reading.paragraphs.join(' ').split(/\s+/).length / 180))} MIN READ</p><h2 id="atlas-reading-heading">${reading.heading}</h2>${reading.paragraphs.map(p => `<p>${p}</p>`).join('')}${reading.equation ? `<div class="atlas-equation"><span>THE RELATIONSHIP</span><p>${reading.equation.expression}</p><small>${reading.equation.explanation}</small></div>` : ''}</section><aside class="atlas-takeaway"><span aria-hidden="true">✧</span><p class="atlas-kicker">ONE THING TO REMEMBER</p><p>${reading.takeaway}</p></aside></div>
       ${['solar-system', 'moons', 'jupiter', 'saturn', 'uranus', 'neptune', 'earth', 'mars', 'pluto'].includes(article.id) ? moonExplorer(['solar-system', 'moons'].includes(article.id) ? family : article.id, level) : ''}
       ${article.id === 'solar-system' ? `<section class="atlas-world-shelf"><div class="atlas-section-top"><div><p class="atlas-kicker">EIGHT PLANETS, ENDLESS QUESTIONS</p><h3>Choose your next stop.</h3></div></div><div class="atlas-planet-shelf">${ARTICLES.filter(a => a.group === 'Our star & planets' && a.id !== 'sun').map(a => `<a href="#wiki/${a.id}/${level + 1}"><img src="${WORLD_ART[a.id].full}" alt="" width="100" height="100" loading="lazy"><strong>${a.title}</strong><small>${a.kind.split(' / ')[1]}</small></a>`).join('')}</div></section>` : ''}
       <section class="atlas-related"><p class="atlas-kicker">KEEP FOLLOWING YOUR CURIOSITY</p><h3>Everything connects.</h3><div>${article.related.map(id => relatedCard(getArticle(id)!)).join('')}</div></section>
+      ${pager()}
       <footer class="atlas-sources"><div><strong>Keep exploring, with trusted sources.</strong><p>Original explanations, checked against the linked sources. Values are rounded for learning; illustrations are not to scale.</p></div><ul>${article.sources.map(([name, url]) => `<li><a href="${url}" target="_blank" rel="noopener noreferrer">${escape(name)} <span aria-hidden="true">↗</span><span class="atlas-sr-only"> (opens in a new tab)</span></a></li>`).join('')}</ul><span class="atlas-end-mark" aria-hidden="true">✦</span></footer>
       </article>`;
     if(article.id==='cannons') {
@@ -83,6 +106,7 @@ export function installWiki(onVisibilityChange: (open: boolean) => void) {
     renderNav();
     dialog!.querySelector<HTMLAnchorElement>('.atlas-brand')!.href = `#wiki/solar-system/${level + 1}`;
     document.title = `${article.title} · Explore the Solar System`;
+    dialog!.scrollTop = 0;
     main.scrollTop = keepScroll ? scroll : 0;
     if (focus) main.querySelector<HTMLElement>('#atlas-title')!.focus({ preventScroll: true });
   }
@@ -109,7 +133,9 @@ export function installWiki(onVisibilityChange: (open: boolean) => void) {
     open(); article = getArticle(state.id)!; level = state.level;
     try { localStorage.setItem('launch-lab-reading-level', String(level)); } catch { /* Optional. */ }
     render(!sameArticle, sameArticle);
-    if (sameArticle) main.querySelector<HTMLButtonElement>(`[data-level="${level}"]`)?.focus({ preventScroll: true });
+    if (sameArticle && readingChoice) showReading();
+    else if (sameArticle) main.querySelector<HTMLButtonElement>(`[data-level="${level}"]`)?.focus({ preventScroll: true });
+    readingChoice = false;
     menuState(false);
   }
   openButton.onclick = () => {
@@ -136,7 +162,10 @@ export function installWiki(onVisibilityChange: (open: boolean) => void) {
       return;
     }
     const button = (event.target as Element).closest<HTMLButtonElement>('[data-level]');
-    if (button) location.hash = `wiki/${article.id}/${Number(button.dataset.level) + 1}`;
+    if (button) {
+      if (Number(button.dataset.level) === level) showReading();
+      else { readingChoice = true; location.hash = `wiki/${article.id}/${Number(button.dataset.level) + 1}`; }
+    }
   });
   main.addEventListener('change', event => {
     const select = event.target as HTMLSelectElement;

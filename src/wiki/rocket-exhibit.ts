@@ -3,9 +3,11 @@ import './rocket-exhibit.css';
 import { exhibitFocus } from './exhibit-focus.ts';
 import { ExhibitAudio } from './exhibit-audio.ts';
 import { nozzleLabMarkup, mountNozzleLab } from './nozzle-lab.ts';
+import { control, setControl, stepButton, markSteps, exhibitCue } from './exhibit-controls.ts';
 import { PROPELLANT_LOADS, PAYLOADS, BURN_RATES, ROCKET_SCALES, ROCKET_PLOTS, simulateRocket, sampleRocket, timeAtPropellantUsed, rocketIndex, newRocketSession, rocketAction,
-  type RocketRun, type RocketSession, type RocketOptions, type RocketAction, type RocketQuantity, type RocketAxis, type RocketPlot } from './rocket-model.ts';
+  type RocketRun, type RocketSession, type RocketOptions, type RocketAction, type RocketQuantity, type RocketAxis, type RocketPlot, type RocketStage } from './rocket-model.ts';
 
+const LOADING:RocketStage[]=['empty','payload','ready'];
 const clamp=(n:number)=>Math.max(0,Math.min(1,n)),num=(n:number)=>n.toFixed(1);
 const graph={left:58,top:30,width:784,height:162};
 const options=(items:Record<string,{name:string}>,selected:string)=>Object.entries(items).map(([id,v])=>`<option value="${id}" ${id===selected?'selected':''}>${v.name}</option>`).join('');
@@ -16,8 +18,8 @@ export function rocketExhibitMarkup() {
     <ol><li><strong>Medieval China</strong><span>Early gunpowder rockets</span></li><li><strong>16 March 1926</strong><span>Goddard’s first liquid-propellant flight</span></li><li><strong>4 October 1957</strong><span>Sputnik 1, the first artificial satellite</span></li></ol>
     <p class="cannon-history-note">Rocket history includes warfare as well as discovery. This exhibit focuses on the science that lets us send instruments, telescopes and people into space. The cutaway below is a modern schematic, not Goddard’s original rocket.</p></section>
   <section class="cannon-exhibit rocket-exhibit" aria-label="Interactive rocket cutaway">
-    <header><div><p class="atlas-kicker">THE ENGINE COMES ALONG</p><h2>A push that travels with you.</h2></div><button type="button" data-focus class="cannon-focus-button">Expand experiment ↗</button></header>
-    <p class="cannon-question">Can a steady push produce more acceleration as the journey continues?</p>
+    <header><div><p class="atlas-kicker">THE ENGINE COMES ALONG</p><h2>A push that travels with you.</h2></div><button type="button" data-focus class="cannon-focus-button">${control('expand','Expand experiment')}</button></header>
+    <p class="cannon-question"><span class="cannon-question-mark" aria-hidden="true">?</span><span><small>A QUESTION TO INVESTIGATE</small>Can a steady push produce more acceleration as the journey continues?</span></p>
     <div class="cannon-lab-grid"><div class="cannon-demo-panel"><div class="cannon-workbench"><div class="cannon-visual">
       <svg class="rocket-scene" viewBox="0 0 1100 390" role="img" aria-labelledby="rocket-scene-title rocket-scene-desc"><title id="rocket-scene-title">A liquid-propellant rocket in cutaway</title><desc id="rocket-scene-desc">Two tanks feed a chamber and nozzle. The payload travels in the nose.</desc>
       <defs><linearGradient id="rocket-shell" x2="0" y2="1"><stop stop-color="#faf4da"/><stop offset=".4" stop-color="#c5d6cd"/><stop offset="1" stop-color="#6e9295"/></linearGradient><linearGradient id="rocket-copper" x2="0" y2="1"><stop stop-color="#e7b274"/><stop offset=".5" stop-color="#b97751"/><stop offset="1" stop-color="#714a3d"/></linearGradient><linearGradient id="rocket-plume"><stop stop-color="#8acbd4" stop-opacity="0"/><stop offset=".55" stop-color="#f0bd7c" stop-opacity=".5"/><stop offset="1" stop-color="#fff5ca"/></linearGradient><clipPath id="rocket-fuel-clip"><rect x="374" y="145" width="282" height="53" rx="14"/></clipPath><clipPath id="rocket-oxidiser-clip"><rect x="374" y="231" width="282" height="53" rx="14"/></clipPath></defs>
@@ -38,9 +40,9 @@ export function rocketExhibitMarkup() {
       <div class="cannon-readouts"><div><span data-first-label>Pressure index</span><strong data-first>—</strong></div><div><span data-second-label>Speed index</span><strong data-second>—</strong></div><div><span>Propellant left</span><strong data-remaining>—</strong></div></div>
     </div><aside class="cannon-controls" aria-label="Rocket experiment choices">
       <label>Payload<select data-payload>${options(PAYLOADS,'medium')}</select></label><label>Propellant amount<select data-propellant>${options(PROPELLANT_LOADS,'medium')}</select></label><label class="rocket-burn-choice">Burn rate<select data-burn>${options(BURN_RATES,'steady')}</select></label><p>Fixed engine. Invented classroom presets.</p>
-      <ol class="cannon-loading"><li><button type="button" data-rocket-action="payload"><span>01</span> Add payload</button></li><li><button type="button" data-rocket-action="fill" disabled><span>02</span> Fill tanks</button></li><li><button type="button" data-rocket-action="ignite" disabled><span>03</span> Ignite engine</button></li></ol>
-      <button type="button" data-rocket-action="reset" class="cannon-new"><span aria-hidden="true">↺</span> Reset Experiment</button><div class="exhibit-sound-controls"><button type="button" data-rocket-sound class="cannon-sound" aria-pressed="false">Sound off</button><p data-audio-status role="status">Optional, quiet classroom sound effects.</p></div>
-    </aside></div><div class="cannon-playback"><button type="button" data-rocket-play disabled>Play</button><button type="button" data-rocket-action="replay" disabled>Replay</button><button type="button" data-rocket-next disabled>Next moment</button><label class="cannon-scrubber">Inspect the burn<input type="range" min="0" max="1000" step="1" value="0" data-rocket-scrub disabled aria-label="Inspect rocket experiment"></label></div>
+      <ol class="cannon-loading">${stepButton('data-rocket-action','payload',1,'Add payload')}${stepButton('data-rocket-action','fill',2,'Fill tanks')}${stepButton('data-rocket-action','ignite',3,'Ignite engine')}</ol>
+      <button type="button" data-rocket-action="reset" class="cannon-new">${control('reset','Reset Experiment')}</button><div class="exhibit-sound-controls"><button type="button" data-rocket-sound class="cannon-sound" aria-pressed="false">${control('soundOff','Sound off')}</button><p data-audio-status role="status">Optional, quiet classroom sound effects.</p></div>
+    </aside></div><div class="cannon-playback"><button type="button" data-rocket-play disabled>${control('play','Play')}</button><button type="button" data-rocket-action="replay" disabled>${control('replay','Replay')}</button><button type="button" data-rocket-next disabled>${control('next','Next moment')}</button><label class="cannon-scrubber">Inspect the burn<input type="range" min="0" max="1000" step="1" value="0" data-rocket-scrub disabled aria-label="Inspect rocket experiment"></label></div>
     </div><div class="cannon-plot"><div class="cannon-chart-heading"><div><h3>Thrust, mass and motion</h3><div class="cannon-chart-legend"><span><i></i><b data-first-legend>Pressure</b></span><span><i></i><b data-second-legend>Speed</b></span></div></div></div>
     <div class="rocket-plot-choices"><label>Curves<select data-rocket-plot>${options(ROCKET_PLOTS,'pressure-speed')}</select></label><label>Plot against<select data-rocket-axis><option value="time">Time</option><option value="used">Propellant used</option></select></label></div>
     <svg class="cannon-chart rocket-chart" viewBox="0 0 900 270" role="img" aria-labelledby="rocket-chart-title rocket-chart-desc"><title id="rocket-chart-title">The rocket’s changing pressure and motion</title><desc id="rocket-chart-desc">Fixed relative scales let you compare experiments.</desc><g data-rocket-chart-static></g><g data-rocket-chart-live></g></svg><p class="cannon-comparison" data-rocket-comparison></p>
@@ -75,6 +77,7 @@ export function mountRocketExhibit(root:HTMLElement,saved?:RocketSession){
   const nozzle=mountNozzleLab(find<HTMLDetailsElement>('.nozzle-lab'),s.nozzle);
   const focus=exhibitFocus(root,'Expanded rocket experiment',signal),scrub=find<HTMLInputElement>('[data-rocket-scrub]'),chart=find<SVGSVGElement>('.rocket-chart');
   const selectors={payload:find<HTMLSelectElement>('[data-payload]'),propellant:find<HTMLSelectElement>('[data-propellant]'),burn:find<HTMLSelectElement>('[data-burn]')};
+  const steps=(['payload','fill','ignite'] as const).map(action=>find<HTMLButtonElement>(`[data-rocket-action="${action}"]`));
   function enableAudio(){if(s.sound)void audio.enable();}
   function caption(){
     if(s.stage==='empty')return 'Choose a payload, propellant amount and burn rate. There is no air to push against.';
@@ -112,11 +115,13 @@ export function mountRocketExhibit(root:HTMLElement,saved?:RocketSession){
     find('[data-rocket-comparison]').textContent=previous?`Dashed: ${PROPELLANT_LOADS[previous.options.propellant].name.toLowerCase()} load, ${PAYLOADS[previous.options.payload].name.toLowerCase()}, ${BURN_RATES[previous.options.burn].name.toLowerCase()} burn · final speed index ${num(rocketIndex('speed',previous.cutoff.speed))}.${complete?` Now: ${num(rocketIndex('speed',run.cutoff.speed))}.`:''}`:complete?`Final speed index: ${num(rocketIndex('speed',run.cutoff.speed))}. Reset Experiment keeps these curves for comparison.`:'Try changing only the burn rate. Will the final speed change, or just how quickly you reach it?';
     find('#rocket-chart-desc').textContent=flight?`${plot.labels[0]} index ${num(rocketIndex(plot.quantities[0],p[plot.quantities[0]]))}, ${plot.labels[1]} index ${num(rocketIndex(plot.quantities[1],p[plot.quantities[1]]))}. ${Math.round(p.used*100)} percent of loaded propellant used. Fixed comparison scales.`:'Ignite the virtual engine to reveal the curves. Each quantity has its own fixed relative scale.';
     for(const key of Object.keys(selectors) as (keyof RocketOptions)[]){selectors[key].value=s.options[key];selectors[key].disabled=key==='payload'?s.stage!=='empty':key==='propellant'?!['empty','payload'].includes(s.stage):!['empty','payload','ready'].includes(s.stage);}
-    for(const [action,stage] of [['payload','empty'],['fill','payload'],['ignite','ready']] as const)find<HTMLButtonElement>(`[data-rocket-action="${action}"]`).disabled=s.stage!==stage;
-    const active=flight||s.stage==='countdown';find<HTMLButtonElement>('[data-rocket-play]').disabled=!active;find('[data-rocket-play]').textContent=s.playing?'Pause':flight&&s.time>=run.endTime?'Play again':'Play';
-    find<HTMLButtonElement>('[data-rocket-action="replay"]').disabled=!flight;find<HTMLButtonElement>('[data-rocket-next]').disabled=!active||(flight&&s.time>=run.endTime);
+    const step=LOADING.indexOf(s.stage);markSteps(steps,step<0?3:step);
+    const active=flight||s.stage==='countdown',finished=flight&&s.time>=run.endTime,play=find<HTMLButtonElement>('[data-rocket-play]');
+    play.disabled=!active;setControl(play,s.playing?'pause':'play',s.playing?'Pause':finished?'Play again':'Play');
+    const cue=exhibitCue(step>=0,active,s.playing,finished);play.classList.toggle('is-next',cue==='play');find('[data-rocket-action="reset"]').classList.toggle('is-next',cue==='reset');
+    find<HTMLButtonElement>('[data-rocket-action="replay"]').disabled=!flight;find<HTMLButtonElement>('[data-rocket-next]').disabled=!active||finished;
     scrub.disabled=!flight;scrub.value=String(Math.round(s.time/run.endTime*1000));scrub.setAttribute('aria-valuetext',flight?`${Math.round(p.used*100)} percent propellant used; speed index ${num(rocketIndex('speed',p.speed))}`:'Before ignition');
-    find('[data-rocket-sound]').textContent=s.sound?'Sound on':'Sound off';find('[data-rocket-sound]').setAttribute('aria-pressed',String(s.sound));
+    const sound=find('[data-rocket-sound]');setControl(sound,s.sound?'soundOn':'soundOff',s.sound?'Sound on':'Sound off');sound.setAttribute('aria-pressed',String(s.sound));
     audio.setEngine(s.sound&&s.playing&&lit,pressure);
   }
   function stop(){s.playing=false;cancelAnimationFrame(frame);frame=0;last=0;audio.setEngine(false);}
