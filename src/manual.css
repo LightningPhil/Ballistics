@@ -85,3 +85,10 @@ body.manual-open { overflow:hidden; }
   .manual-definitions > div { grid-template-columns:1fr; gap:4px; }
 }
 @media (pointer:coarse) { .manual-index button { min-height:44px; } }
+.manual { overflow:clip; }
+.manual-header { flex-shrink:0; }
+@media(max-width:580px) {
+  .manual-header { padding-top:max(15px,env(safe-area-inset-top)); padding-left:max(15px,env(safe-area-inset-left)); padding-right:max(15px,env(safe-area-inset-right)); }
+  .manual-reader { padding-bottom:env(safe-area-inset-bottom); }
+  .manual-close,.manual-index button { min-height:44px; }
+}

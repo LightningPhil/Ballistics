@@ -1,19 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cannonSetupZoom } from '../src/camera.ts';
+import { cannonSetupZoom, cannonSceneTop, cannonSceneWidth } from '../src/camera.ts';
 
 const viewports = [[320, 220], [360, 280], [390, 320], [768, 220], [1100, 350], [1440, 700]];
 
 // Test the painted barrel corners (including its muzzle band) rather than the
 // helper's bounding formula, using the renderer's actual ground placement.
-function assertLauncherFits(width, height, ppm, length, angle) {
+function assertLauncherFits(width, height, ppm, length, angle, topInset = 0) {
   const radians = angle * Math.PI / 180;
   const ground = height - Math.max(12, 70 * ppm / 80);
   for (const [along, across] of [[-.45, -.22], [-.45, .22], [length, -.20], [length, .20]]) {
     const x = (1.5 + along * Math.cos(radians) - across * Math.sin(radians)) * ppm;
     const y = ground - (1 + along * Math.sin(radians) + across * Math.cos(radians)) * ppm;
     assert.ok(x >= 0 && x <= width - 24 + 1e-8, `barrel outside width at ${width}×${height}, ${length}m/${angle}°`);
-    assert.ok(y >= 24 - 1e-8 && y <= height, `barrel outside height at ${width}×${height}, ${length}m/${angle}°`);
+    assert.ok(y >= topInset + 24 - 1e-8 && y <= height, `barrel outside clear field at ${width}×${height}, ${length}m/${angle}°`);
   }
   assert.ok((1.5 + .79) * ppm <= width - 24 + 1e-8, 'carriage must also fit');
 }
@@ -26,6 +26,29 @@ test('full cannon control range fits on phone and short desktop canvases', () =>
         const ppm = cannonSetupZoom({ width, height, lengths: [length], angles: [angle] });
         assert.ok(ppm > 0 && ppm <= 80);
         assertLauncherFits(width, height, ppm, length, angle);
+      }
+    }
+  }
+});
+
+test('short phone fields keep the full setup below the character caption at every control limit', () => {
+  for (const [width,height] of [[320,231],[375,220],[600,180]]) {
+    for (const length of [.5,2,5]) {
+      for (let angle=5;angle<=85;angle+=5) {
+        const ppm=cannonSetupZoom({width,height,lengths:[length],angles:[angle],topInset:88});
+        assertLauncherFits(width,height,ppm,length,angle,88);
+      }
+    }
+  }
+});
+
+test('short landscape screens keep a useful launcher clear of the portrait column', () => {
+  for (const [width,height] of [[480,136],[568,136],[844,205]]) {
+    const fieldWidth=cannonSceneWidth(width,height),topInset=cannonSceneTop(width,height);
+    for (const length of [.5,2,5]) {
+      for (let angle=5;angle<=85;angle+=5) {
+        const ppm=cannonSetupZoom({width:fieldWidth,height,lengths:[length],angles:[angle],topInset});
+        assertLauncherFits(fieldWidth,height,ppm,length,angle,topInset);
       }
     }
   }

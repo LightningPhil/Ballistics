@@ -2,7 +2,7 @@
 
 A playful physics field station. Launch a cannonball or rocket, watch what happens, change one thing and compare the next flight.
 
-Designed primarily for education on tablets, laptops and desktops. Phone-specific refinements are a later priority.
+Designed for education on phones, tablets, laptops and desktops. Smaller screens keep the field visible above a compact launcher bar; **Setup** opens the scrollable experiment controls and **Done** returns to the field. Launching also closes Setup. Rotate the device at any time without losing settings or the recorded flight; wider screens retain the notebook sidebar. The rocket's **Nozzle Sketch** is also available inside compact Setup.
 
 ## Try it
 

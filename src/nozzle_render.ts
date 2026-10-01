@@ -10,7 +10,8 @@ import { RocketPropellants } from './rocket_propellants.ts';
  *        character close-up). Every slider change reshapes the geometry,
  *        teaching how propellant choice, chamber pressure, throat area,
  *        expansion ratio and mixture ratio determine nozzle geometry and
- *        flow behaviour. Only drawn in rocket mode on wide viewports.
+ *        flow behaviour. The field inset uses wide viewports; compact rocket
+ *        setup uses the same drawing in its own canvas.
  *
  *        Based on: docs/nozzle_parametric_geometry_spec.md
  *        Implementation plan: docs/nozzle.md
@@ -592,11 +593,11 @@ function insetBounds(canvasW:number, canvasH:number) {
   return { x:canvasW - width - INSET_MARGIN_X, y:INSET_MARGIN_Y, width, height:INSET_MAX_H };
 }
 
-function draw(ctx, canvasW, canvasH, d) {
+function draw(ctx, canvasW, canvasH, d, panel = false) {
   if (!d) return;
 
   // ── Compute inset size & position ──
-  const bounds = insetBounds(canvasW, canvasH);
+  const bounds = panel ? { x: 0, y: 0, width: canvasW, height: canvasH } : insetBounds(canvasW, canvasH);
   if (!bounds) return;
   var iw = bounds.width, ih = bounds.height, ix = bounds.x, iy = bounds.y;
 
@@ -677,5 +678,6 @@ function draw(ctx, canvasW, canvasH, d) {
 // ── Expose namespace ─────────────────────────────────────────────────────
 export const NozzleRender = {
   draw: draw,
+  drawPanel: (ctx, width, height, data) => draw(ctx, width, height, data, true),
   insetBounds
 };

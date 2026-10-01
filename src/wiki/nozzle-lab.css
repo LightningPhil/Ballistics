@@ -17,3 +17,13 @@
 .nozzle-info-choices { display:flex; align-items:end; gap:20px; }.nozzle-info-choices label { display:grid; gap:8px; font-size:12px; flex:1; }.nozzle-depth { display:flex; gap:7px; }.nozzle-depth button { font-size:12px; }.nozzle-depth span { opacity:.65; margin-right:5px; }.nozzle-reading { max-width:760px; padding:28px 10px 15px; }.nozzle-reading h3 { font:700 30px/1.25 Georgia,serif; margin:13px 0 22px; }.nozzle-reading p:not(.atlas-kicker) { font-size:16px; line-height:1.85; color:#d0dacb; }.nozzle-info-note { padding-left:10px; font-size:12px; }.nozzle-sources { display:flex; gap:10px 20px; flex-wrap:wrap; border-top:1px solid #456269; margin-top:25px; padding-top:16px; font-size:12px; }.nozzle-sources span { color:#8eafa8; }.nozzle-sources a { color:#c6c49d; text-decoration:none; }.nozzle-sources a:hover { text-decoration:underline; }
 @media(max-width:1150px) { .nozzle-settings { grid-template-columns:repeat(2,minmax(0,1fr)); }.nozzle-pair { grid-template-columns:1fr 2fr; }.nozzle-pair p { grid-column:1/-1; }.nozzle-info-choices { align-items:stretch; flex-direction:column; }.nozzle-results { grid-template-columns:minmax(0,1fr); }.nozzle-metrics { grid-template-columns:repeat(4,1fr); gap:16px; }.nozzle-help [role=tooltip] { width:220px; } }
 @media(max-width:650px) { .nozzle-body { padding:0 16px 20px; }.nozzle-lab>summary { padding:20px 16px; }.nozzle-expand { font-size:0; gap:0; padding:6px; }.nozzle-auto { flex-wrap:wrap; }.nozzle-auto label { flex-basis:100%; }.nozzle-metrics { grid-template-columns:repeat(2,1fr); }.nozzle-pair { display:block; }.nozzle-pair p { margin-top:10px; }.nozzle-depth { flex-wrap:wrap; }.nozzle-control-title { font-size:11px; }.nozzle-help [role=tooltip] { width:190px; }.nozzle-control:nth-child(even) .nozzle-help [role=tooltip] { left:-100px; right:auto; } }
+@media(max-width:650px) {
+  .nozzle-settings { grid-template-columns:1fr; }
+  .nozzle-pair > label { display:block; margin-bottom:8px; }
+  .nozzle-lab .nozzle-control .nozzle-help [role=tooltip] { position:fixed; left:max(12px,env(safe-area-inset-left)); right:max(12px,env(safe-area-inset-right)); top:auto; bottom:max(12px,env(safe-area-inset-bottom)); width:auto; max-width:none; max-height:40dvh; overflow:auto; }
+}
+@media(pointer:coarse) {
+  .nozzle-lab :is(select,input[type=number]) { font-size:16px; min-height:44px; }
+  .nozzle-lab button,.nozzle-lab .nozzle-help-button { min-height:44px; }
+  .nozzle-lab .nozzle-help-button { width:44px; }
+}

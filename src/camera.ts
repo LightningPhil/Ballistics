@@ -8,6 +8,7 @@ export interface CannonSetupFraming {
   baseX?: number;
   baseY?: number;
   margin?: number;
+  topInset?: number;
 }
 
 /** Fit the whole launcher before a shot, including the horizontal pose used by
@@ -15,7 +16,7 @@ export interface CannonSetupFraming {
  * both branches of that maximum must satisfy the top-margin constraint.
  */
 export function cannonSetupZoom({ width, height, lengths, angles, rebuilding = false,
-  defaultPPM = 80, baseX = 1.5, baseY = 1, margin = 24 }: CannonSetupFraming): number {
+  defaultPPM = 80, baseX = 1.5, baseY = 1, margin = 24, topInset = 0 }: CannonSetupFraming): number {
   const length = Math.max(0.5, ...lengths.filter(Number.isFinite));
   const validAngles = angles.filter(Number.isFinite).map(angle => Math.max(0, Math.min(90, angle)));
   const lowAngle = rebuilding ? 0 : Math.min(90, ...validAngles);
@@ -27,9 +28,13 @@ export function cannonSetupZoom({ width, height, lengths, angles, rebuilding = f
   const top = baseY + length * Math.sin(highAngle * Math.PI / 180) + barrelPadding;
   return Math.max(0.01, Math.min(defaultPPM,
     (width - margin) / right,
-    (height - margin) / (top + 70 / 80),
-    (height - margin - 12) / top));
+    (height - margin - topInset) / (top + 70 / 80),
+    (height - margin - 12 - topInset) / top));
 }
+
+/** Short phone scenes need a clear strip beneath the compact portrait/caption. */
+export const cannonSceneTop = (width: number, height: number) => width < 480 && height < 300 ? 88 : 0;
+export const cannonSceneWidth = (width: number, height: number) => width >= 480 && width <= 950 && height < 300 ? width - 344 : width;
 
 export interface RocketCameraPoint { x: number; y: number; theta?: number }
 export interface RocketCameraRequest {
@@ -44,8 +49,9 @@ export interface RocketCameraRequest {
 /** The permanent portrait/captions occupy the upper right. On phones the clear
  * area is below them; wider screens also reserve the nozzle diagram column. */
 export function rocketCameraViewport(width: number, height: number) {
-  const left = 18, right = width > 680 ? width - Math.max(310, Math.min(320, width * .28)) - 34 : width - 18;
-  const top = width > 680 ? 18 : Math.min(132, height * .52);
+  const sideNotes = width > 680 || (width >= 480 && height < 300);
+  const left = 18, right = sideNotes ? width - Math.max(310, Math.min(320, width * .28)) - 34 : width - 18;
+  const top = sideNotes ? 18 : Math.min(height < 300 ? 88 : 132, height * .52);
   return { left, top, right, bottom: height - 16 };
 }
 

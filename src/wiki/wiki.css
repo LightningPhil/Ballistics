@@ -332,3 +332,29 @@ a.atlas-moon-chip:hover { border-color: #8bad95; background: #e7eedf; }
   .atlas-topbar .atlas-close { padding: 8px 8px; font-size: 11px !important; }
   .atlas-close > span { display: none; }
 }
+/* Keep reading controls clear of camera cutouts and the home indicator. */
+.atlas { overflow:clip; }
+.atlas-topbar { height:calc(84px + env(safe-area-inset-top)); padding-top:env(safe-area-inset-top); padding-left:max(32px,env(safe-area-inset-left)); padding-right:max(32px,env(safe-area-inset-right)); }
+.atlas-layout { height:calc(100dvh - 84px - env(safe-area-inset-top)); }
+.atlas-navigation,.atlas-article { padding-bottom:max(30px,env(safe-area-inset-bottom)); }
+@media(max-width:820px) {
+  .atlas-topbar { height:calc(72px + env(safe-area-inset-top)); padding-left:max(12px,env(safe-area-inset-left)); padding-right:max(12px,env(safe-area-inset-right)); }
+  .atlas-layout { height:calc(100dvh - 72px - env(safe-area-inset-top)); }
+  .atlas-navigation { top:calc(72px + env(safe-area-inset-top)); }
+  .atlas-menu,.atlas-close { min-height:44px; }
+  .atlas-lightbox .atlas-plate,.atlas-lightbox .atlas-mechanics,.atlas-solar-lightbox .atlas-solar-plate { min-width:0; }
+  .atlas-lightbox > header { padding:12px; gap:10px; flex-wrap:wrap; }
+  .atlas-lightbox > header > span { flex-basis:100%; order:1; }
+  .atlas-lightbox > header button { width:44px; height:44px; flex-basis:44px; }
+}
+@media(max-width:540px) {
+  .atlas-reading-intro .atlas-levels button { flex-direction:row; text-align:left; gap:12px; }
+  .atlas-lightbox { width:100vw; height:100dvh; border:0; border-radius:0; }
+  .atlas-lightbox > header { padding-top:max(12px,env(safe-area-inset-top)); }
+  .atlas-lightbox-scroll { padding-bottom:env(safe-area-inset-bottom); }
+}
+@media(max-width:360px) { .atlas-topbar { padding-left:max(8px,env(safe-area-inset-left)); padding-right:max(8px,env(safe-area-inset-right)); gap:6px; } }
+@media(pointer:coarse) {
+  .atlas-search input,.atlas-moons select { font-size:16px; min-height:44px; }
+  .atlas-topics a,.atlas-enlarge { min-height:44px; }
+}

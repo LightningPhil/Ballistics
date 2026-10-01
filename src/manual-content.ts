@@ -4,9 +4,9 @@ export const MANUAL_TOPICS = [
     id: 'start', name: 'Start here', title: 'A little curiosity goes a long way.',
     intro: 'Choose a world, launch something, and see what changes when you try again.',
     body: `<ol class="manual-steps">
-      <li><strong>Choose your experiment.</strong><p>Pick <b>Cannon</b> or <b>Rocket</b> in the left panel. The starting settings are ready to try.</p></li>
+      <li><strong>Choose your experiment.</strong><p>Pick <b>Cannon</b> or <b>Rocket</b> in the setup panel. On phones and portrait tablets, use the launcher bar below the field and open <b>Setup</b> to change your experiment. The starting settings are ready to try.</p></li>
       <li><strong>Choose your world.</strong><p>Select a planet, moon or the Sun from the illustrated buttons. The gravity changes with it. The facts button beside the world’s name opens a short introduction.</p></li>
-      <li><strong>Let it fly.</strong><p>The launch buttons are just below the world picker. Use <b>Let it fly</b> for the cannon or <b>Lift off</b> for the rocket. Watch the scene and the measurements, then use <b>Reset</b> to change a setting and try again.</p></li>
+      <li><strong>Let it fly.</strong><p>The launch buttons sit below the world picker on wide screens, or stay in the bottom launcher bar on smaller screens. Use <b>Let it fly</b> for the cannon or <b>Lift off</b> for the rocket. Launching closes compact Setup so you can watch the field. Open Setup again for measurements, then use <b>Reset</b> to change a setting and try again.</p></li>
     </ol>
     <aside class="manual-note"><strong>A useful first experiment</strong><p>Keep the launcher settings the same and try two different worlds. Make a prediction before the second launch.</p></aside>
     <p>The book beside Settings brings you back to this manual. Opening it pauses the scene; use <b>Resume</b> when you return to a flight.</p>`,
@@ -25,7 +25,7 @@ export const MANUAL_TOPICS = [
     body: `<h3>Begin with a small hop</h3><p>Adjust the <b>Propellant load</b> and <b>Launch angle</b>, then use <b>Lift off</b>. The fuel strip in <b>Flight measurements</b> shows what remains and when the engine stops. Coasting means the rocket is still moving with the engine off.</p>
     <h3>Open the workshop</h3><p><b>Engine estimates</b> previews the starting performance. <b>Engine & vehicle workshop</b> contains the propellant choice, empty mass, chamber pressure, throat diameter, expansion ratio, mixture ratio and efficiencies. Estimates describe the model; they are not a promise about a real vehicle.</p>
     <h3>Choose how it steers</h3><p>In <b>Guidance</b>, <b>Hold launch angle</b> keeps the original direction. <b>Timed pitch</b> turns towards a chosen angle over a chosen interval. <b>Follow velocity</b> points along the direction of travel once the selected speed is reached.</p>
-    <p>The <b>Nozzle Sketch</b>, when there is room beside the scene, follows ignition, running and shutdown. Pausing or moving the flight slider also pauses or moves its illustrated flow.</p>
+    <p>The <b>Nozzle Sketch</b> follows ignition, running and shutdown beside the scene on wide screens. On smaller screens, open it inside <b>Setup</b>. Pausing or moving the flight slider also pauses or moves its illustrated flow.</p>
     <aside class="manual-note"><strong>Make sense of the engine controls</strong><p>Visit the rocket lesson for the nozzle explanation and its advanced settings guide. Each topic has three levels, from a first look to a closer study.</p><a href="#wiki/rockets/1">Read How a rocket works <span aria-hidden="true">↗</span></a></aside>`,
   },
   {
@@ -43,7 +43,7 @@ export const MANUAL_TOPICS = [
   },
   {
     id: 'measurements', name: 'Read the measurements', title: 'The numbers tell the other half.',
-    intro: 'The left panel follows the moment you are watching, including when you rewind.',
+    intro: 'The setup panel follows the moment you are watching, including when you rewind.',
     body: `<h3>During the flight</h3><p>Open <b>Flight measurements</b> for the current values. Speed tells you how fast the object is travelling; height or altitude tells you how far it is above the model’s surface. Distances follow the world’s curved surface.</p>
     <p>The cannon also shows its energy measurements. The rocket shows thrust, changing mass, remaining propellant and engine performance. After a rocket flight, <b>The field notes</b> summarises the result.</p>
     <h3>Before a rocket launch</h3><p><b>Engine estimates</b> updates as you adjust the setup. Watch the app’s lift-off warning: the rocket needs enough upward thrust to overcome its weight. Use the rocket lesson to understand what each engine setting changes.</p>

@@ -4,7 +4,7 @@ import { recordFlight, sampleFlight, compatibleRuns, type FlightRecord } from '.
 import { resolveEnvironment } from './environment.ts';
 import { CharacterRemarks } from './character-remarks.ts';
 import { cloudGuestActivity, createCloudGuest, updateCloudGuest, diveCloudGuest } from './cloud-guests.ts';
-import { cannonSetupZoom } from './camera.ts';
+import { cannonSetupZoom, cannonSceneTop, cannonSceneWidth } from './camera.ts';
 import { Physics } from './physics.ts';
 import { RocketPropellants } from './rocket_propellants.ts';
 import { RocketPhysics } from './rocket_physics.ts';
@@ -19,6 +19,7 @@ import { rocketDisplay } from './rocket-presentation.ts';
 import { beginSquidBreakout, headForSquidHole, enterSquidHole, releaseSquidTarget, squidUnderIce, updateSquidHoles } from './squid-life.ts';
 import { installWiki, isWikiOpen } from './wiki/wiki.ts';
 import { installManual, isManualOpen } from './manual.ts';
+import { installResponsiveLayout, drawSetupNozzle, isSetupNozzleVisible } from './responsive-layout.ts';
 
 const isReadingOpen = () => isWikiOpen() || isManualOpen();
 
@@ -836,12 +837,15 @@ function clearLandingPresentation() {
 }
 
 // ── Zoom computation ───────────────────────────────────────────────────────
+let setupWidth = 0, setupHeight = 0;
 function frameCannonSetup() {
   if (currentMode !== 'cannon' || viewActive || deck.busy) return;
   const values = UI.getValues();
   const rebuilding = barrelAnimState !== 'idle';
-  Renderer.setTargetZoom(cannonSetupZoom({
-    width: Renderer.getWidth(), height: Renderer.getHeight(),
+  const width = Renderer.getWidth(), height = Renderer.getHeight();
+  const zoom = cannonSetupZoom({
+    width: cannonSceneWidth(width, height), height,
+    topInset: cannonSceneTop(width, height),
     lengths: rebuilding
       ? [values.barrelLength, barrelDisplayedLen, barrelOldLen, barrelTargetLen]
       : [values.barrelLength],
@@ -850,12 +854,17 @@ function frameCannonSetup() {
       : [values.angle],
     rebuilding, defaultPPM: Renderer.DEFAULT_PPM,
     baseX: Renderer.CANNON_BASE_X_M, baseY: Renderer.CANNON_BASE_Y_M,
-  }));
+  });
+  // A smaller screen needs its safe framing on the first frame after resize.
+  // Changes to the shot itself retain the existing smooth camera movement.
+  if ((width !== setupWidth || height !== setupHeight) && Renderer.getCurrentPPM() > zoom) Renderer.setZoomImmediate(zoom);
+  setupWidth = width; setupHeight = height;
+  Renderer.setTargetZoom(zoom);
 }
 
 function computeNeededZoom(rangeMetres, maxHeightMetres, marginFraction?) {
-  var cW = Renderer.getWidth();
-  var gY = Renderer.getGroundY();
+  var cW = cannonSceneWidth(Renderer.getWidth(), Renderer.getHeight());
+  var gY = Math.max(1, Renderer.getGroundY() - cannonSceneTop(Renderer.getWidth(), Renderer.getHeight()));
   marginFraction = (typeof marginFraction === 'number')
     ? Math.max(0, marginFraction)
     : DEFAULT_ROCKET_ZOOM_MARGIN;
@@ -1533,7 +1542,7 @@ function loop(timestamp) {
   }
 
   // ── Nozzle cutaway inset (rocket mode only) ──
-  if (currentMode === 'rocket' && typeof NozzleRender !== 'undefined' && Renderer.getWidth() > 680) {
+  if (currentMode === 'rocket' && (Renderer.getWidth() > 680 || isSetupNozzleVisible())) {
     var nzVals = UI.getRocketValues();
     var nzGravity = currentGravity;
     var nzPre = RocketPhysics.computePreLaunch(nzVals, nzGravity);
@@ -1542,7 +1551,7 @@ function loop(timestamp) {
     var nzCtx = canvas.getContext('2d');
     const engineDisplay = currentRocketDisplay();
     const liveNozzle = viewActive && deck.run?.mode === 'rocket' ? displayedFlightState : null;
-    NozzleRender.draw(nzCtx, Renderer.getWidth(), Renderer.getHeight(), {
+    const nozzleData = {
       throatDia_mm: nzVals.throatDia_mm,
       epsilon:      nzVals.epsilon,
       Pc_bar:       nzVals.Pc_bar,
@@ -1562,7 +1571,9 @@ function loop(timestamp) {
       output:       engineDisplay.output,
       engineLabel:  engineDisplay.label,
       worldTime:    reducedMotion() ? 0 : engineDisplay.time
-    });
+    };
+    NozzleRender.draw(nzCtx, Renderer.getWidth(), Renderer.getHeight(), nozzleData);
+    drawSetupNozzle(nozzleData);
   }
 
   if (deck.vectors && (activeBall || activeRocket)) drawVectors(activeBall || activeRocket);
@@ -1714,6 +1725,7 @@ function boot() {
   };
   installWiki(pauseForReading);
   installManual(pauseForReading);
+  installResponsiveLayout();
   requestAnimationFrame(loop);
 }
 

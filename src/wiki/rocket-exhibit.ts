@@ -1,5 +1,6 @@
 import './cannon-exhibit.css';
 import './rocket-exhibit.css';
+import { installChartScrubbing } from './chart-scrubbing.ts';
 import { exhibitFocus } from './exhibit-focus.ts';
 import { ExhibitAudio } from './exhibit-audio.ts';
 import { nozzleLabMarkup, mountNozzleLab } from './nozzle-lab.ts';
@@ -143,7 +144,7 @@ export function mountRocketExhibit(root:HTMLElement,saved?:RocketSession){
   find<HTMLSelectElement>('[data-rocket-plot]').addEventListener('change',event=>{s.plot=(event.target as HTMLSelectElement).value as RocketPlot;prepareGraph();draw();},{signal});
   scrub.addEventListener('input',()=>{stop();s.time=Number(scrub.value)/1000*run.endTime;draw();},{signal});
   function seek(event:PointerEvent){if(s.stage!=='flight')return;stop();const point=chart.createSVGPoint();point.x=event.clientX;point.y=event.clientY;const local=point.matrixTransform(chart.getScreenCTM()!.inverse()),fraction=clamp((local.x-graph.left)/graph.width);s.time=s.axis==='time'?Math.min(run.endTime,fraction*ROCKET_SCALES.time):timeAtPropellantUsed(run,fraction);draw();}
-  chart.addEventListener('pointerdown',event=>{chart.setPointerCapture(event.pointerId);seek(event);},{signal});chart.addEventListener('pointermove',event=>{if(event.buttons===1)seek(event);},{signal});
+  installChartScrubbing(chart, seek, signal);
   document.addEventListener('visibilitychange',()=>{if(document.hidden){stop();draw();}},{signal});prepareGraph();draw();
   return {dispose:()=>{stop();focus.close();disposed=true;abort.abort();audio.dispose();return {...s,options:{...s.options},playing:false,nozzle:nozzle.dispose()};}};
 }

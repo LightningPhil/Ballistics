@@ -82,15 +82,31 @@
   .flight-timeline { flex-basis:100%; }
 }
 @container (max-width:430px) {
-  .flight-topline { grid-template-columns:auto minmax(0,1fr) auto; gap:7px; }
-  .flight-deck .open-wiki { font-size:11px; padding:7px 8px; }
-  .open-wiki svg { display:none; }
+  .flight-topline { grid-template-columns:minmax(0,1fr) auto; gap:8px; }
+  .flight-utilities { grid-column:2; grid-row:1; }
+  .flight-deck .open-wiki { grid-column:1/-1; grid-row:2; max-width:none; width:100%; min-height:44px; font-size:13px; padding:7px 10px; }
+  .open-wiki svg { display:block; width:24px; height:24px; flex-basis:24px; }
   .flight-deck .eyebrow { font-size:7px; }
   #flight-time { font-size:20px; }
+}
+@media (max-width:950px) {
+  .flight-deck { padding-top:calc(8px + env(safe-area-inset-top)); padding-left:max(12px, env(safe-area-inset-left)); padding-right:max(12px, env(safe-area-inset-right)); }
+  .flight-deck button,.flight-deck select,.flight-settings summary { min-height:44px; }
+  .flight-settings summary,.flight-deck .flight-icon-button { width:44px; flex-basis:44px; }
+  .view-options label { min-height:44px; }
+  .flight-playback { gap:0 10px; }
+  #flight-timeline { height:32px; margin-block:2px; border:0; border-radius:0; background:linear-gradient(#e1e6d6,#e1e6d6) center / 100% 6px no-repeat; }
 }
 @media (pointer:coarse) {
   .flight-deck button,.flight-deck select,.flight-settings summary { min-height:44px; }
   .flight-settings summary,.flight-deck .flight-icon-button { width:44px; flex-basis:44px; }
   .view-options label { min-height:36px; }
   #flight-timeline { margin-block:16px; }
+}
+@media (max-width:950px) and (max-height:500px) and (min-width:480px) {
+  .flight-playback { flex-wrap:nowrap; gap:8px; }
+  .flight-controls { flex:0 0 auto; }
+  .flight-timeline { flex-basis:auto; }
+  .flight-deck { padding-block:calc(6px + env(safe-area-inset-top)) 6px; }
+  .flight-deck button { padding-inline:8px; }
 }

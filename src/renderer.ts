@@ -687,7 +687,7 @@ function drawGolfFlag() {
 /** Persistent character portrait and speech. */
 function drawSceneNotes(mode, char) {
   const nozzle = mode === 'rocket' ? NozzleRender.insetBounds(W, H) : null;
-  if (char) drawCharacterAside(char, nozzle ? nozzle.y + nozzle.height + 48 : 90);
+  if (char) drawCharacterAside(char, nozzle ? nozzle.y + nozzle.height + 48 : H < 300 ? 46 : 90);
 }
 
 

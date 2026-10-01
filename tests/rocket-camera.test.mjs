@@ -73,7 +73,7 @@ function paintFrame(h, run, time, rate, dt = 1 / 60, duration = 3) {
 test('recorded default rocket stays fully visible throughout flight, contact and next-moment seeking', async () => {
   const setup = config(), run = await recordFlight('rocket', setup, RocketPhysics.createRocketState(setup));
   assert.equal(run.outcome, 'impact'); assert.ok(run.duration > 37 && run.duration < 38);
-  for (const [width, height] of [[938, 480], [320, 260], [390, 390], [768, 220]]) {
+  for (const [width, height] of [[938, 480], [320, 231], [320, 260], [390, 390], [568, 150], [768, 220], [844, 204]]) {
     const h = scene(width, height);
     Renderer.setTargetGravity(setup.gravity); Renderer.updateWorld(10);
     for (let time = 0; time < run.duration; time += 1 / 60) paintFrame(h, run, time, 1);

@@ -40,3 +40,15 @@
   .fact-comparison > svg { width:54px; }
   .fact-explanation-pager { padding:12px; }
 }
+@media(max-width:420px) {
+  .fact-explanation { width:calc(100vw - 16px); max-height:calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); border-radius:14px; }
+  .fact-explanation-bar { padding:10px; gap:8px; }
+  .fact-explanation-bar button { min-width:0; min-height:44px; font-size:12px; }
+  .fact-explanation-bar .fact-explanation-close { flex:0 0 44px; width:44px; height:44px; }
+  .fact-explanation-bar > span { font-size:11px; }
+  .fact-explanation-body { padding:18px; min-height:0; }
+  .fact-explanation-heading > div { min-width:0; }
+  .fact-explanation h2 { overflow-wrap:anywhere; font-size:23px; }
+  .fact-explanation-pager button { min-height:44px; padding-inline:10px; }
+}
+.fact-explanation { overflow:clip; }

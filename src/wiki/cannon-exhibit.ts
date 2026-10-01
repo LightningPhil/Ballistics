@@ -1,4 +1,5 @@
 import './cannon-exhibit.css';
+import { installChartScrubbing } from './chart-scrubbing.ts';
 import { exhibitFocus } from './exhibit-focus.ts';
 import { ExhibitAudio } from './exhibit-audio.ts';
 import { control, setControl, stepButton, markSteps, exhibitCue } from './exhibit-controls.ts';
@@ -222,8 +223,7 @@ export function mountCannonExhibit(root:HTMLElement,saved?:CannonSession) {
     const local=point.matrixTransform(chart.getScreenCTM()!.inverse()),fraction=clamp((local.x-graph.left)/graph.width);
     session.time=session.axis==='time'?Math.min(run.endTime,fraction*CANNON_SCALES.time):timeAtTravel(run,fraction);draw();
   };
-  chart.addEventListener('pointerdown',event=>{chart.setPointerCapture(event.pointerId);seekChart(event);},{signal});
-  chart.addEventListener('pointermove',event=>{if(event.buttons===1)seekChart(event);},{signal});
+  installChartScrubbing(chart, seekChart, signal);
   document.addEventListener('visibilitychange',()=>{if(document.hidden){stop();draw();}},{signal});
   showSound();
   prepareGraph();draw();

@@ -99,7 +99,7 @@
 .cannon-chart-legend span { display: flex; align-items: center; gap: 6px; }
 .cannon-chart-legend i { display: inline-block; border-top: 3px solid #efbb75; width: 20px; }
 .cannon-chart-legend span:last-child i { border-color: #8ed4ce; }
-.cannon-chart { display: block; width: 100%; height: auto; margin-top: 9px; touch-action: none; cursor: crosshair; }
+.cannon-chart { display: block; width: 100%; height: auto; margin-top: 9px; touch-action: pan-y; cursor: crosshair; }
 .cannon-chart text { font: 18px 'Segoe UI',sans-serif; fill: #acc0b6; }
 .cannon-grid { fill: none; stroke: #8caaa5; stroke-opacity: .18; stroke-width: 1; }
 .cannon-pressure-curve,.cannon-speed-curve { fill: none; stroke: #efbb75; stroke-width: 2.8; stroke-linejoin: round; }
@@ -130,7 +130,7 @@
   .cannon-exhibit .exhibit-step { flex-direction: column; justify-content: center; gap: 5px; padding: 9px 4px; text-align: center; }
   .cannon-controls .cannon-new,.exhibit-sound-controls { margin-top: 0; }
   .cannon-controls .cannon-new { grid-column: 1/-1; }
-  .cannon-exhibit header { align-items: start; }
+  .cannon-exhibit header { flex-direction: column; align-items: start; }
   .cannon-exhibit h2 { font-size: 25px; }
   .cannon-question { font-size: 15.5px; }
   .cannon-playback { flex-wrap: wrap; }
@@ -139,4 +139,33 @@
   .cannon-history li { padding: 12px 9px; }
   .cannon-history li strong { font-size: 17px; }
   .cannon-history li span { font-size: 12px; }
+}
+@media(max-width:1100px) {
+  .cannon-exhibit:not(.is-focused) .cannon-workbench { grid-template-columns: 1fr; }
+  .cannon-exhibit:not(.is-focused) .cannon-controls { border: 0; padding: 0; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+  .cannon-exhibit:not(.is-focused) .cannon-controls label { margin: 0; }
+  .cannon-exhibit:not(.is-focused) .cannon-controls > p,
+  .cannon-exhibit:not(.is-focused) .cannon-loading,
+  .cannon-exhibit:not(.is-focused) .cannon-new { grid-column: 1/-1; }
+  .cannon-exhibit:not(.is-focused) .cannon-loading { grid-template-columns: repeat(3,minmax(0,1fr)); }
+}
+@media(max-width:650px) {
+  .atlas.cannon-focus-shell { inset: 0; width: 100vw; height: 100dvh; border: 0; border-radius: 0; }
+  .cannon-exhibit.is-focused { padding: max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left)); }
+  .cannon-readouts { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .cannon-readouts div { min-width: 0; padding-inline: 6px; }
+  .cannon-readouts span { font-size: 11px; overflow-wrap: anywhere; }
+  .cannon-readouts strong { font-size: 22px; }
+  .cannon-chart-heading { flex-direction: column; gap: 12px; }
+  .cannon-chart-heading label { width: 100%; }
+  .cannon-chart-legend { flex-wrap: wrap; gap: 8px 14px; }
+  .cannon-chart { touch-action: pan-y; }
+  .cannon-history ol { grid-template-columns: 1fr; }
+  .cannon-history li, .cannon-history li:first-child { padding: 12px 0; border: 0; }
+  .cannon-history li + li { border-top: 1px solid #d8ded0; }
+}
+@media(pointer:coarse) {
+  .cannon-exhibit button, .cannon-exhibit select, .cannon-exhibit .cannon-focus-button,
+  .cannon-exhibit .cannon-sound, .cannon-model-details summary { min-height: 44px; }
+  .cannon-exhibit select { font-size: 16px; }
 }
