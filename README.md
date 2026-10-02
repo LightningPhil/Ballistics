@@ -13,7 +13,7 @@ npm ci
 npm run dev
 ```
 
-Start with **Let it fly** or the ready-to-fly rocket. Both tabs put open flight measurements directly after their launch settings. Rocket engine estimates, workshop controls and guidance follow below. Camera framing is automatic.
+Start with **Let it fly** or the ready-to-fly rocket. Each setup has its own **Reset cannon settings** or **Reset rocket settings** button to restore all its defaults without changing the other launcher or the world. The rocket defaults take off on every planetary preset; the Sun still defeats them. **Reset** beside Launch clears the flight and keeps the current settings. Both tabs put open flight measurements directly after their launch settings. Rocket engine estimates, workshop controls and guidance follow below. Camera framing is automatic.
 
 ## Watch, inspect, compare
 

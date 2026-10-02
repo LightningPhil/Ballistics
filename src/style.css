@@ -59,6 +59,10 @@ button { touch-action: manipulation; }
 .btn-fire:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 #1c5145; }
 .btn-clear { border: 1px solid #d7ddcd; border-radius: 11px; padding: 10px 13px; background: #f3f0e5; color: #596e60; font-size: 12px; font-weight: 650; }
 .btn-clear:hover { background: #e6ebdb; }
+.settings-reset { display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; min-height:44px; padding:9px 12px; border:1px solid #bdcdb7; border-radius:9px; color:#315f4c; background:#eef2e6; font-size:12px; font-weight:650; }
+.settings-reset:hover { background:#e3ebd9; }
+.settings-reset-note { margin:6px 0 16px; color:var(--text-dim); font-size:11px; line-height:1.5; }
+.controls-scroll input[type='range'] { touch-action:pan-y; }
 .btn-launch.caution { background: #a95d3e; border-color: #854731; box-shadow: 0 3px 0 #83462f; }
 #flight-lock-note { margin-top: 10px; }
 .eyebrow { color: #9a7750; font: 9px/1.5 var(--font-mono); font-weight: 700; letter-spacing: 1.4px; }

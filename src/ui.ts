@@ -7,6 +7,8 @@ import { getPlanetFact } from './planet-facts.ts';
 import { installFactExplanations, updateFactLabels } from './fact-dialog.ts';
 import { clampGravity } from './gravity-scale.ts';
 import { getWorldArt } from './world-art.ts';
+import { applyLaunchSettings, CANNON_DEFAULTS, ROCKET_DEFAULTS, setMixtureBounds } from './launch-settings.ts';
+import { protectTouchRange } from './touch-range.ts';
 
 /**
  * ============================================================================
@@ -181,7 +183,13 @@ function init(callbacks) {
 
   // Rocket panel controls
   initRocketPanel();
-
+  applyLaunchSettings(document, 'cannon', CANNON_DEFAULTS);
+  applyLaunchSettings(document, 'rocket', ROCKET_DEFAULTS);
+  updateAllDisplays();
+  refreshPreLaunch();
+  document.querySelectorAll<HTMLInputElement>('.controls-scroll input[type="range"]').forEach(protectTouchRange);
+  document.getElementById('btn-cannon-settings-reset').addEventListener('click', () => resetSettings('cannon'));
+  document.getElementById('btn-rocket-settings-reset').addEventListener('click', () => resetSettings('rocket'));
 
   // Initial planet highlight
   highlightPlanet('earth');
@@ -224,6 +232,8 @@ function setMode(newMode) {
   // Show/hide panels (the [hidden] rule in style.css does the display work)
   cannonPanel.hidden = currentMode !== 'cannon';
   rocketPanel.hidden = currentMode !== 'rocket';
+  // A deep workshop scroll from one launcher must not hide the other's setup.
+  document.querySelector<HTMLElement>('.controls-scroll').scrollTop = 0;
   // Notify main.ts
   if (onModeChange) onModeChange(currentMode);
 }
@@ -657,14 +667,7 @@ function onPropellantChange() {
   if (!prop) return;
 
   // Update MR slider bounds
-  sliderRocketMR.min = prop.MR_bounds[0];
-  sliderRocketMR.max = prop.MR_bounds[1];
-  // If current value is out of bounds, reset to default
-  var curMR = parseFloat(sliderRocketMR.value);
-  if (curMR < prop.MR_bounds[0] || curMR > prop.MR_bounds[1]) {
-    sliderRocketMR.value = prop.MR_default;
-  }
-  sliderRocketMR.step = ((prop.MR_bounds[1] - prop.MR_bounds[0]) / 100).toFixed(3);
+  setMixtureBounds(sliderRocketMR, prop.id);
   updateRocketSliderDisplay(sliderRocketMR, valRocketMR, '');
 
   // Update info note
@@ -1000,25 +1003,9 @@ function setFlightActive(active) {
 function restoreFlightConfig(mode, config) {
   if (isFlightActive) return;
   setMode(mode);
-  var cannonFields = { angle: 'angle', mass: 'mass', force: 'force', barrelLength: 'barrel', gravity: 'gravity' };
-  var rocketFields = {
-    MR: 'rocket-mr', Pc_bar: 'rocket-pc', epsilon: 'rocket-eps', throatDia_mm: 'rocket-dt',
-    dryMass: 'rocket-drymass', propMass: 'rocket-propmass', launchAngle: 'rocket-angle',
-    etaC: 'rocket-etac', etaN: 'rocket-etan', pitchEnd: 'rocket-pitch-end',
-    pitchT1: 'rocket-pitch-t1', pitchT2: 'rocket-pitch-t2', progradeVmin: 'rocket-prograde-vmin', gravity: 'gravity'
-  };
-  if (mode === 'rocket' && config.propellantId) {
-    rocketPropSelect.value = config.propellantId;
-    onPropellantChange();
-  }
-  var fields = mode === 'rocket' ? rocketFields : cannonFields;
-  Object.keys(fields).forEach(function (key) {
-    if (!Number.isFinite(config[key])) return;
-    if (key === 'gravity') { setGravity(config[key]); return; }
-    var input = document.getElementById('slider-' + fields[key]) as HTMLInputElement;
-    if (input) input.value = String(config[key]);
-  });
-  if (mode === 'rocket' && config.guidanceMode) rocketGuidanceSelect.value = config.guidanceMode;
+  applyLaunchSettings(document, mode, config);
+  if (Number.isFinite(config.gravity)) setGravity(config.gravity);
+  if (mode === 'rocket') onPropellantChange();
   updateAllDisplays();
   updateGuidanceSubPanels();
   var gravity = currentGravity();
@@ -1026,6 +1013,17 @@ function restoreFlightConfig(mode, config) {
   if (onGravityChange) onGravityChange(gravity);
   if (mode === 'cannon' && onBarrelChange) onBarrelChange(parseFloat(sliderBarrel.value));
   refreshPreLaunch();
+}
+
+function resetSettings(mode: 'cannon' | 'rocket') {
+  // Cancel recording/playback and unlock first, just like the existing Reset.
+  // Keep the selected world and the other launcher's experiment intact.
+  if (mode === 'cannon') onClear?.(); else onRocketClear?.();
+  applyLaunchSettings(document, mode, mode === 'cannon' ? CANNON_DEFAULTS : ROCKET_DEFAULTS);
+  if (mode === 'rocket') onPropellantChange();
+  updateAllDisplays(); updateGuidanceSubPanels(); refreshPreLaunch();
+  if (mode === 'cannon') onBarrelChange?.(CANNON_DEFAULTS.barrelLength);
+  hideTooltip();
 }
 
 function updateAllDisplays() {

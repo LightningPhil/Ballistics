@@ -16,7 +16,7 @@ export const MANUAL_TOPICS = [
     intro: 'Start with the two main sliders, then open the extra controls when you want to explore further.',
     body: `<h3>Set up a flight</h3><p><b>Launch angle</b> changes the barrel’s direction. <b>Launch force</b> changes the push in this simplified experiment. Open <b>Ball & barrel</b> for the ball’s mass and the barrel’s length.</p>
     <p>Use <b>Let it fly</b> to launch. The <b>Flight measurements</b> section follows the ball as it travels. Try changing one setting at a time so the difference is easier to understand.</p>
-    <h3>Try again</h3><p>Use <b>Reset</b> to unlock the setup controls. Your last recorded flight remains available to replay or compare with the next one.</p>
+    <h3>Try again</h3><p>Use <b>Reset</b> beside the launch button to unlock the setup controls and keep your settings. Use <b>Reset cannon settings</b> at the top of the cannon setup to restore the starting angle, force, mass and barrel length. Both keep your chosen world and last recording for replay or comparison.</p>
     <aside class="manual-note"><strong>Want to understand the settings?</strong><p>The learning companion explains the history and science, with three reading levels and an interactive cutaway cannon.</p><a href="#wiki/cannons/1">Read How a cannon works <span aria-hidden="true">↗</span></a></aside>`,
   },
   {
@@ -25,6 +25,7 @@ export const MANUAL_TOPICS = [
     body: `<h3>Begin with a small hop</h3><p>Adjust the <b>Propellant load</b> and <b>Launch angle</b>, then use <b>Lift off</b>. The fuel strip in <b>Flight measurements</b> shows what remains and when the engine stops. Coasting means the rocket is still moving with the engine off.</p>
     <h3>Open the workshop</h3><p><b>Engine estimates</b> previews the starting performance. <b>Engine & vehicle workshop</b> contains the propellant choice, empty mass, chamber pressure, throat diameter, expansion ratio, mixture ratio and efficiencies. Estimates describe the model; they are not a promise about a real vehicle.</p>
     <h3>Choose how it steers</h3><p>In <b>Guidance</b>, <b>Hold launch angle</b> keeps the original direction. <b>Timed pitch</b> turns towards a chosen angle over a chosen interval. <b>Follow velocity</b> points along the direction of travel once the selected speed is reached.</p>
+    <h3>Get back to a reliable starting point</h3><p><b>Reset rocket settings</b> restores the propellant, load, angle, engine, vehicle and guidance controls together. It stops the current flight and keeps your world and cannon settings. The starting rocket can lift off from all planetary presets, including Venus and Jupiter; the Sun’s gravity still defeats it. The <b>Reset</b> beside Lift off clears the flight while keeping your own design.</p>
     <p>The <b>Nozzle Sketch</b> follows ignition, running and shutdown beside the scene on wide screens. On smaller screens, open it inside <b>Setup</b>. Pausing or moving the flight slider also pauses or moves its illustrated flow.</p>
     <aside class="manual-note"><strong>Make sense of the engine controls</strong><p>Visit the rocket lesson for the nozzle explanation and its advanced settings guide. Each topic has three levels, from a first look to a closer study.</p><a href="#wiki/rockets/1">Read How a rocket works <span aria-hidden="true">↗</span></a></aside>`,
   },

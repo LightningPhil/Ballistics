@@ -104,17 +104,19 @@
 <div id="cannon-actions" class="action-row">
 <button type="button" class="btn-fire" id="btn-fire">Let it fly <span aria-hidden="true">↗</span>
 </button>
-<button type="button" class="btn-clear" id="btn-clear">Reset</button>
+<button type="button" class="btn-clear" id="btn-clear" title="Reset flight; keep your settings">Reset</button>
 </div>
 <div id="rocket-actions" class="action-row" hidden>
 <button type="button" class="btn-fire btn-launch" id="btn-launch">Lift off <span aria-hidden="true">↑</span>
 </button>
-<button type="button" class="btn-clear" id="btn-rocket-clear">Reset</button>
+<button type="button" class="btn-clear" id="btn-rocket-clear" title="Reset flight; keep your settings">Reset</button>
 </div>
 <p id="flight-lock-note" class="field-note" hidden>Flight in progress. Pause to inspect, or reset to change the setup.</p>
 </div>
       <section class="cannon-panel" id="cannon-panel" aria-label="Cannon settings">
 <h2 class="section-header">Set your shot</h2>
+<button type="button" class="settings-reset" id="btn-cannon-settings-reset">Reset cannon settings <span aria-hidden="true">↺</span></button>
+<p class="settings-reset-note">Restore the starting shot on your chosen world.</p>
 <div class="slider-group">
 <div class="slider-row">
 <div class="slider-label-row">
@@ -200,6 +202,8 @@
 </details>
 </section>
       <section class="rocket-panel" id="rocket-panel" aria-label="Rocket settings" hidden>
+<button type="button" class="settings-reset" id="btn-rocket-settings-reset">Reset rocket settings <span aria-hidden="true">↺</span></button>
+<p class="settings-reset-note">Restore the starting rocket on your chosen world.</p>
 <div class="slider-group">
 <div class="slider-row">
 <div class="slider-label-row">
@@ -334,9 +338,9 @@
 <label for="slider-rocket-pc">Chamber pressure</label>
 <button type="button" class="tooltip-trigger" aria-label="About Chamber pressure" data-tip="&lt;b&gt;Pressure makes the push&lt;/b&gt;&lt;br&gt;Chamber pressure and throat area set the engine’s propellant flow and thrust. Hardware strength and engine mass are not calculated in this simplified model.">?</button>
 </span>
-<output class="slider-value" id="val-rocket-pc" for="slider-rocket-pc">100 bar</output>
+<output class="slider-value" id="val-rocket-pc" for="slider-rocket-pc">180 bar</output>
 </div>
-<input type="range" id="slider-rocket-pc" min="10" max="300" value="100" step="1" aria-label="Chamber pressure">
+<input type="range" id="slider-rocket-pc" min="10" max="300" value="180" step="1" aria-label="Chamber pressure">
 </div>
 <div class="slider-row">
 <div class="slider-label-row">

@@ -94,6 +94,10 @@ export function installResponsiveLayout() {
     if (open && !panel.contains(target) && !target.closest('dialog[open], #tooltip')) setOpen(false);
   });
   compact.addEventListener('change', syncLayout);
+  // Launch errors can make the dock taller. Keep the sheet's Done button and
+  // first controls on screen even in a short landscape viewport.
+  const measureDock = () => panel.style.setProperty('--launcher-height', `${panel.offsetHeight}px`);
+  new ResizeObserver(measureDock).observe(panel);
   new MutationObserver(syncWorld).observe(world, { childList: true, characterData: true, subtree: true });
-  syncWorld(); syncLayout();
+  syncWorld(); syncLayout(); measureDock();
 }

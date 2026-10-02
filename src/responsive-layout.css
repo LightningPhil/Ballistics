@@ -31,7 +31,7 @@
   #flight-lock-note { display: none; }
   .controls-scroll {
     position: absolute; bottom: calc(100% + 1px); left: 0; right: 0;
-    height: min(65dvh, 640px); overflow: auto; overscroll-behavior: contain;
+    height: min(65dvh, 640px); max-height: calc(100dvh - var(--launcher-height, 130px) - 10px - env(safe-area-inset-top)); overflow: auto; overscroll-behavior: contain;
     padding: 0 max(18px, env(safe-area-inset-right)) 24px max(18px, env(safe-area-inset-left));
     border-top: 1px solid #bdcdb7; border-radius: 18px 18px 0 0;
     background: var(--bg-panel); box-shadow: 0 -12px 32px #1b3c3226;

@@ -1192,6 +1192,7 @@ async function beginFlight(mode: 'cannon' | 'rocket', config: any, initial: any)
       createFizzleSmoke(initial.x, .2);
       const pre = RocketPhysics.computePreLaunch(config, config.gravity);
       UI.showFizzleMessage(pre.verticalTw ?? pre.tw);
+      showLaunchFailure(run, pre.verticalTw ?? pre.tw);
       playSadTrombone();
       startFizzlePresentation();
     } else if (mode === 'cannon') {
@@ -1219,6 +1220,12 @@ function fitRun(run: FlightRecord) {
   // and the camera gradually reveals altitude while keeping the launch visible.
   Renderer.setTargetZoom(run.mode === 'cannon' ? computeNeededZoom(maxRangeMetres, maxHeightMetres, margin) : Renderer.DEFAULT_PPM);
   if (run.mode === 'cannon' && run.minX < 0) Renderer.setCameraTarget(run.minX - 1);
+}
+
+function showLaunchFailure(run: FlightRecord, verticalTw: number) {
+  const world = run.config.environment.name;
+  const name = world[0].toUpperCase() + world.slice(1);
+  deck.message(`No lift-off on ${name}: upward thrust is ${verticalTw.toFixed(2)}× weight. Open Setup to adjust or reset rocket settings.`, true);
 }
 
 function restoreRun() {
@@ -1349,7 +1356,11 @@ function updateRecordedFlight(dt: number) {
         inspectLanding(activeCharacter, { x: state.x, y: 0 }, run.mode, currentPlanetRadius);
       }
       stopEngineLoop();
-      UI.setFlightActive(false); deck.showResult();
+      UI.setFlightActive(false);
+      if (run.outcome === 'no-liftoff') {
+        const pre = RocketPhysics.computePreLaunch(run.config, run.config.gravity);
+        showLaunchFailure(run, pre.verticalTw ?? pre.tw);
+      } else deck.showResult();
     }
     if (run.outcome === 'impact') { activeBall = null; activeRocket = null; }
   } else {
