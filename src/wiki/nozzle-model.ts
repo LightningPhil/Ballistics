@@ -48,7 +48,7 @@ export function optimiseNozzle(input:NozzleSettings,ambient:NozzleSettings['ambi
   return normaliseNozzle({...s,mixture:p.optimum,expansion:ambient==='vacuum'?200:areaRatio(mach,p.gamma)});
 }
 export function chamberPressureTip(pressure:number) {
-  if(pressure>=300)return 'Extreme pressure territory. 350 bar is about 350 times a 1-bar atmosphere. It exceeds many famous engines, but is not a record claim: a Raptor V3 test was reported at 350 bar in 2023. This model does not calculate cooling, pump demands or structural limits.';
+  if(pressure>=300)return 'Extreme pressure territory. 350 bar is about 350 times a 1-bar atmosphere. It is an illustrative upper limit, above the historical engines compared here. This model does not calculate cooling, pump demands or structural limits.';
   if(pressure>=207)return 'Above the Shuttle main engine’s roughly 207-bar original rated reference. Higher pressure demands more from pumps, cooling and the chamber; none of those engineering costs are modelled here.';
   if(pressure>=78)return 'At or above the Saturn V F-1’s roughly 78-bar reference. Raising pressure mainly increases flow and thrust at a fixed throat. It does not give a proportional rise in exhaust speed.';
   return 'Below the Saturn V F-1’s roughly 78-bar reference. A lower chamber pressure needs a smaller expansion ratio to match sea-level air. Different engine designs cannot be ranked by pressure alone.';
