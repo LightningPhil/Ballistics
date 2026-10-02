@@ -21,7 +21,6 @@ export function installWiki(onVisibilityChange: (open: boolean) => void) {
   let family = 'jupiter';
   let cannonSession:CannonSession|undefined, disposeExhibit:(()=>void)|undefined;
   let rocketSession:RocketSession|undefined;
-  let readingChoice = false;
   try { const saved = Number(localStorage.getItem('launch-lab-reading-level')); if ([0, 1, 2].includes(saved)) level = saved as Level; } catch { /* Storage is optional, including file:// builds. */ }
   dialog = document.createElement('dialog');
   dialog.className = 'atlas'; dialog.id = 'educational-wiki'; dialog.setAttribute('aria-label', 'Explore the Solar System, educational companion');
@@ -66,17 +65,30 @@ export function installWiki(onVisibilityChange: (open: boolean) => void) {
       ${place === 'intro' ? '<div class="atlas-reading-label"><div><p class="atlas-kicker">THE SAME TOPIC, AT YOUR PACE</p><h2>Three ways to understand</h2></div><p>Start simple or follow your curiosity further.<br> Choose a level to read its explanation.</p></div>' : '<div class="atlas-reading-label"><h2>Your explanation</h2><small>Switch levels whenever you like.</small></div>'}
       <div class="atlas-levels" role="group" aria-label="Choose an explanation level">${LEVELS.map((l, i) => `<button type="button" data-level="${i}" data-level-place="${place}" aria-pressed="${level === i}" aria-controls="atlas-reading-content"><span class="atlas-level-number" aria-hidden="true">${i + 1}</span><span><span class="atlas-level-caption">Level ${i + 1}${level === i ? ' · Selected ✓' : ''}</span><strong>${l.name}</strong><small>${l.detail}</small></span></button>`).join('')}</div></section>`;
   }
-  function showReading() {
-    const target = main.querySelector<HTMLElement>('.atlas-reading-text');
-    // Scroll only the reading pane: scrollIntoView also scrolls the outer
-    // native dialog and can push the persistent top bar off screen.
-    if (target) main.scrollTop += target.getBoundingClientRect().top - main.getBoundingClientRect().top - 24;
-    main.querySelector<HTMLButtonElement>(`[data-level-place="text"][data-level="${level}"]`)?.focus({ preventScroll: true });
-  }
-  function render(focus = true, keepScroll = false) {
-    disposeExhibit?.(); disposeExhibit=undefined;
-    const scroll = main.scrollTop;
+  function readingMarkup() {
     const reading = article.levels[level];
+    return `<section class="atlas-prose" aria-labelledby="atlas-reading-heading"><p class="atlas-kicker">${LEVELS[level].name} / ${Math.max(1, Math.ceil(reading.paragraphs.join(' ').split(/\s+/).length / 180))} MIN READ</p><h2 id="atlas-reading-heading">${reading.heading}</h2>${reading.paragraphs.map(p => `<p>${p}</p>`).join('')}${reading.equation ? `<div class="atlas-equation"><span>THE RELATIONSHIP</span><p>${reading.equation.expression}</p><small>${reading.equation.explanation}</small></div>` : ''}</section><aside class="atlas-takeaway"><span aria-hidden="true">✧</span><p class="atlas-kicker">ONE THING TO REMEMBER</p><p>${reading.takeaway}</p></aside>`;
+  }
+  function updateReading() {
+    const scroll = main.scrollTop, dialogScroll = dialog!.scrollTop;
+    // Keep the controls, illustrations and running exhibits mounted. Changing
+    // reading depth is an in-place update, not navigation to another position.
+    main.querySelector('#atlas-reading-content')!.innerHTML = readingMarkup();
+    main.querySelectorAll<HTMLButtonElement>('[data-level]').forEach(button => {
+      const selected = Number(button.dataset.level) === level;
+      button.setAttribute('aria-pressed', String(selected));
+      button.querySelector('.atlas-level-caption')!.textContent = `Level ${Number(button.dataset.level) + 1}${selected ? ' · Selected ✓' : ''}`;
+    });
+    // All atlas destinations retain the newly chosen depth, including SVG links.
+    dialog!.querySelectorAll('a[href^="#wiki/"]').forEach(link => {
+      const state = parseWikiHash(link.getAttribute('href')!);
+      if (state) link.setAttribute('href', `#wiki/${state.id}/${level + 1}`);
+    });
+    main.scrollTop = scroll;
+    dialog!.scrollTop = dialogScroll;
+  }
+  function render() {
+    disposeExhibit?.(); disposeExhibit=undefined;
     const number = String(ARTICLES.indexOf(article) + 1).padStart(2, '0');
     const illustration = article.id === 'solar-system' ? solarPlate(level) : article.id === 'kuiper-belt' ? kuiperPlate(level) : article.id === 'asteroid-belt' ? asteroidPlate()
       : article.id === 'cannons' ? cannonExhibitMarkup() : article.id === 'rockets' ? rocketExhibitMarkup() : '';
@@ -88,7 +100,7 @@ export function installWiki(onVisibilityChange: (open: boolean) => void) {
       <dl class="atlas-facts">${article.stats.map(([name, value]) => `<div><dt>${name}</dt><dd>${value}</dd></div>`).join('')}</dl>
       ${article.stats.some(([, value]) => value.includes('AU')) ? '<p class="atlas-units">An astronomical unit (AU) is about Earth’s average distance from the Sun: 150 million kilometres. Solar distances here are rounded averages.</p>' : ''}
       ${readingLevels('text')}
-      <div class="atlas-prose-layout" id="atlas-reading-content"><section class="atlas-prose" aria-labelledby="atlas-reading-heading"><p class="atlas-kicker">${LEVELS[level].name} / ${Math.max(1, Math.ceil(reading.paragraphs.join(' ').split(/\s+/).length / 180))} MIN READ</p><h2 id="atlas-reading-heading">${reading.heading}</h2>${reading.paragraphs.map(p => `<p>${p}</p>`).join('')}${reading.equation ? `<div class="atlas-equation"><span>THE RELATIONSHIP</span><p>${reading.equation.expression}</p><small>${reading.equation.explanation}</small></div>` : ''}</section><aside class="atlas-takeaway"><span aria-hidden="true">✧</span><p class="atlas-kicker">ONE THING TO REMEMBER</p><p>${reading.takeaway}</p></aside></div>
+      <div class="atlas-prose-layout" id="atlas-reading-content">${readingMarkup()}</div>
       ${['solar-system', 'moons', 'jupiter', 'saturn', 'uranus', 'neptune', 'earth', 'mars', 'pluto'].includes(article.id) ? moonExplorer(['solar-system', 'moons'].includes(article.id) ? family : article.id, level) : ''}
       ${article.id === 'solar-system' ? `<section class="atlas-world-shelf"><div class="atlas-section-top"><div><p class="atlas-kicker">EIGHT PLANETS, ENDLESS QUESTIONS</p><h3>Choose your next stop.</h3></div></div><div class="atlas-planet-shelf">${ARTICLES.filter(a => a.group === 'Our star & planets' && a.id !== 'sun').map(a => `<a href="#wiki/${a.id}/${level + 1}"><img src="${WORLD_ART[a.id].full}" alt="" width="100" height="100" loading="lazy"><strong>${a.title}</strong><small>${a.kind.split(' / ')[1]}</small></a>`).join('')}</div></section>` : ''}
       <section class="atlas-related"><p class="atlas-kicker">KEEP FOLLOWING YOUR CURIOSITY</p><h3>Everything connects.</h3><div>${article.related.map(id => relatedCard(getArticle(id)!)).join('')}</div></section>
@@ -107,8 +119,8 @@ export function installWiki(onVisibilityChange: (open: boolean) => void) {
     dialog!.querySelector<HTMLAnchorElement>('.atlas-brand')!.href = `#wiki/solar-system/${level + 1}`;
     document.title = `${article.title} · Explore the Solar System`;
     dialog!.scrollTop = 0;
-    main.scrollTop = keepScroll ? scroll : 0;
-    if (focus) main.querySelector<HTMLElement>('#atlas-title')!.focus({ preventScroll: true });
+    main.scrollTop = 0;
+    main.querySelector<HTMLElement>('#atlas-title')!.focus({ preventScroll: true });
   }
   function open() {
     if (dialog!.open) return;
@@ -132,10 +144,8 @@ export function installWiki(onVisibilityChange: (open: boolean) => void) {
     const sameArticle = dialog!.open && article.id === state.id;
     open(); article = getArticle(state.id)!; level = state.level;
     try { localStorage.setItem('launch-lab-reading-level', String(level)); } catch { /* Optional. */ }
-    render(!sameArticle, sameArticle);
-    if (sameArticle && readingChoice) showReading();
-    else if (sameArticle) main.querySelector<HTMLButtonElement>(`[data-level="${level}"]`)?.focus({ preventScroll: true });
-    readingChoice = false;
+    if (sameArticle) updateReading();
+    else render();
     menuState(false);
   }
   openButton.onclick = () => {
@@ -162,10 +172,7 @@ export function installWiki(onVisibilityChange: (open: boolean) => void) {
       return;
     }
     const button = (event.target as Element).closest<HTMLButtonElement>('[data-level]');
-    if (button) {
-      if (Number(button.dataset.level) === level) showReading();
-      else { readingChoice = true; location.hash = `wiki/${article.id}/${Number(button.dataset.level) + 1}`; }
-    }
+    if (button && Number(button.dataset.level) !== level) location.hash = `wiki/${article.id}/${Number(button.dataset.level) + 1}`;
   });
   main.addEventListener('change', event => {
     const select = event.target as HTMLSelectElement;

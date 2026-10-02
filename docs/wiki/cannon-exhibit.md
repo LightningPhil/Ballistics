@@ -24,7 +24,7 @@ No model value is calibrated to a real cannon. Pressure and speed each have a se
 
 `src/wiki/cannon-exhibit.ts` renders an inline SVG cutaway and chart. The loading state is empty → charge → ball → fuse → shot. Playback, time scrubbing, chart selection, and the “Next moment” control all sample the same recorded solution. The ball fully clears the drawn muzzle at model travel 100%. Travel-axis plots reveal only the observed pressure tail, even though venting samples occupy the same horizontal position.
 
-The expanded dialog moves the existing exhibit node, preserving playback and avoiding duplicate SVG IDs. Escape or “Return to article” restores its original position. Leaving the article or changing reading level disposes listeners, animation frames and audio, and preserves a paused session. Browser visibility changes also pause playback. Optional audio begins only from a user gesture. Reduced-motion mode starts at a paused shot and suppresses carriage movement.
+The expanded dialog moves the existing exhibit node, preserving playback and avoiding duplicate SVG IDs. Escape or “Return to article” restores its original position. Leaving the article disposes listeners, animation frames and audio, and preserves a paused session. Changing reading level updates the explanation in place, preserving the scroll position, focused control and mounted exhibit. Browser visibility changes also pause playback. Optional audio begins only from a user gesture. Reduced-motion mode starts at a paused shot and suppresses carriage movement.
 
 ## Verification
 
