@@ -1,0 +1,11 @@
+---
+description: Never create GitHub pull requests; the user handles all PRs.
+alwaysApply: true
+---
+
+# Do not create pull requests
+
+- Never create, open, or push GitHub pull requests.
+- Never run `gh pr create` or equivalent PR commands unless the user explicitly asks in that message.
+- The user will create all pull requests themselves.
+- Commits, local branches, and other git work are still allowed when requested.
