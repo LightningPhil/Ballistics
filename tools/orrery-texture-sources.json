@@ -1,0 +1,119 @@
+[
+  {
+    "id": "sun",
+    "source": "exec-bde063e6-f3e0-402f-bede-2bd3c112cfc3.png",
+    "nativeSize": [
+      1774,
+      887
+    ],
+    "prompt": "Use case: scientific-educational. Asset: sun full-sphere albedo texture for a Three.js solar-system Orrery. ONE ultra-detailed 4096 x 2048 or highest available 2:1 equirectangular cylindrical surface map. Solar photosphere: warm honey-gold cellular granulation with millions of irregular tiny convection cells, occasional dark grouped sunspots with fine radiating penumbrae and subtle brighter faculae. Detailed solar telescope-inspired visible-light texture. No coronal loops, no fiery flame patterns or exploded plasma. Rectangular map fills the entire image edge-to-edge; longitude -180 to +180, latitude +90 top to -90 bottom. Left and right edges tile seamlessly; polar features stretched for spherical UV mapping. Uniform flat albedo illumination, no directional lighting or shadow baked in. NOT a globe, NOT a planet disc, no perspective, no border, no labels, no text, no stars, no black background, no vignette. Fine photographic texture, restrained colors for a sophisticated educational atlas. Original illustration informed by planetary imagery, not a scientific measurement."
+  },
+  {
+    "id": "mercury",
+    "source": "exec-cec9c16b-dcc6-4bb6-9d4a-d3183bca851c.png",
+    "nativeSize": [
+      1774,
+      887
+    ],
+    "prompt": "Use case: scientific-educational. Asset: mercury full-sphere albedo texture for a Three.js solar-system Orrery. ONE ultra-detailed 4096 x 2048 or highest available 2:1 equirectangular cylindrical surface map. Mercury: dense overlapping impact craters from tiny pits to huge multi-ring basins, rugged grey-taupe regolith, bright fresh ejecta ray systems, faint brown volcanic plains and long scarps. Varied crater ages, fractured uplands, subtle geology, not perfectly repeated circles. Rectangular map fills the entire image edge-to-edge; longitude -180 to +180, latitude +90 top to -90 bottom. Left and right edges tile seamlessly; polar features stretched for spherical UV mapping. Uniform diffuse flat albedo illumination, no directional lighting or shadow baked in. NOT a globe, NOT a planet disc, no perspective, no border, no labels, no text, no stars, no black background, no vignette. Fine photographic texture, restrained colors for a sophisticated educational atlas. Original illustration informed by planetary imagery, not a scientific measurement."
+  },
+  {
+    "id": "venus",
+    "source": "exec-26658721-e56b-4945-9e88-a853edf9d936.png",
+    "nativeSize": [
+      1774,
+      887
+    ],
+    "prompt": "Use case: scientific-educational. Asset: venus full-sphere albedo texture for a Three.js solar-system Orrery. ONE ultra-detailed 4096 x 2048 or highest available 2:1 equirectangular cylindrical surface map. Venus in visible light: pale ivory, buttery cream and subdued golden ochre cloud cover; intricate turbulent sweeping Y-shaped cloud structure, feathery long streaks, layered wisps at multiple scales with low-to-moderate contrast. NO visible rocky surface, no craters, no Jupiter-like straight dark bands. Rectangular map fills the entire image edge-to-edge; longitude -180 to +180, latitude +90 top to -90 bottom. Left and right edges tile seamlessly; polar features stretched for spherical UV mapping. Uniform diffuse flat albedo illumination, no directional lighting or shadow baked in. NOT a globe, NOT a planet disc, no perspective, no border, no labels, no text, no stars, no black background, no vignette. Fine photographic texture, restrained colors for a sophisticated educational atlas. Original illustration informed by planetary imagery, not a scientific measurement."
+  },
+  {
+    "id": "earth",
+    "source": "exec-89bb7b7e-b50a-47f2-b003-d9ab443985a1.png",
+    "nativeSize": [
+      1774,
+      887
+    ],
+    "prompt": "Use case: scientific-educational. Asset: earth full-sphere albedo texture for a Three.js solar-system Orrery. Generate ONE ultra-detailed 4096 x 2048 or highest available 2:1 equirectangular cylindrical surface map. Earth: geographically convincing complete world map with recognizable continents, Atlantic and Pacific, finely detailed forests, Sahara and Arabian deserts, mountain ranges, polar sea ice and Antarctica, deep navy oceans with subtle turquoise continental shelves. NO clouds (a separate cloud layer is added by renderer). Rectangular map fills the entire image edge-to-edge; longitude -180 to +180, latitude +90 top to -90 bottom. Left and right edges should tile seamlessly; polar features stretched for spherical UV mapping. Uniform diffuse flat albedo illumination, no directional lighting or shadow baked in. NOT a globe, NOT a planet disc, no perspective, no border, no labels, no text, no stars, no black background, no vignette. Natural fine photographic detail, restrained colors compatible with a sophisticated educational atlas. Original illustration informed by planetary imagery, not a scientific measurement."
+  },
+  {
+    "id": "mars",
+    "source": "exec-ebf0be00-a6cc-4655-98e1-07992b258169.png",
+    "nativeSize": [
+      1774,
+      887
+    ],
+    "prompt": "Use case: scientific-educational. Asset: mars full-sphere albedo texture for a Three.js solar-system Orrery. ONE ultra-detailed 4096 x 2048 or highest available 2:1 equirectangular cylindrical surface map. Mars: rusty orange ochre deserts, dark basaltic Syrtis Major, long Valles Marineris canyon system, broad Tharsis rise and shield volcanoes, impact basins, fine channels and dusty ridges, small bright white polar ice caps at extreme poles. Natural desaturated red-brown detailed geological atlas. Rectangular map fills the entire image edge-to-edge; longitude -180 to +180, latitude +90 top to -90 bottom. Left and right edges tile seamlessly; polar features stretched for spherical UV mapping. Uniform diffuse flat albedo illumination, no directional lighting or shadow baked in. NOT a globe, NOT a planet disc, no perspective, no border, no labels, no text, no stars, no black background, no vignette. Fine photographic texture, restrained colors for a sophisticated educational atlas. Original illustration informed by planetary imagery, not a scientific measurement."
+  },
+  {
+    "id": "jupiter",
+    "source": "exec-b4a80735-1ac1-4afc-b6c4-e27f8cf24b6a.png",
+    "nativeSize": [
+      1774,
+      887
+    ],
+    "prompt": "Use case: scientific-educational. Asset: jupiter full-sphere albedo texture for a Three.js solar-system Orrery. Generate ONE ultra-detailed 4096 x 2048 or highest available 2:1 equirectangular cylindrical surface map. Jupiter: cream, ivory, ochre, muted rust zonal cloud belts. Intricately turbulent multiscale filamentary cloud structures, white ovals, vortices and wispy shear boundaries, one authentic salmon Great Red Spot south of equator. Natural observatory photography palette, richly detailed but not exaggerated contrast. Rectangular map fills the entire image edge-to-edge; longitude -180 to +180, latitude +90 top to -90 bottom. Left and right edges should tile seamlessly; polar features stretched for spherical UV mapping. Uniform diffuse flat albedo illumination, no directional lighting or shadow baked in. NOT a globe, NOT a planet disc, no perspective, no border, no labels, no text, no stars, no black background, no vignette. Natural fine photographic detail, restrained colors compatible with a sophisticated educational atlas. Original illustration informed by planetary imagery, not a scientific measurement."
+  },
+  {
+    "id": "saturn",
+    "source": "exec-281d6c99-a36e-453e-a3a9-d49360df6c50.png",
+    "nativeSize": [
+      1774,
+      887
+    ],
+    "prompt": "Use case: scientific-educational. Asset: saturn full-sphere albedo texture for a Three.js solar-system Orrery. ONE ultra-detailed 4096 x 2048 or highest available 2:1 equirectangular cylindrical surface map. Saturn's atmosphere only, NO rings: subtle buff, champagne, ochre and cream bands, delicate fine wisps, pale storms, atmospheric turbulence, subdued pale gold overall. North polar hexagonal cloud boundary hinted at the top. Far more subtle and smooth than Jupiter but richly resolved up close. Rectangular map fills the entire image edge-to-edge; longitude -180 to +180, latitude +90 top to -90 bottom. Left and right edges tile seamlessly; polar features stretched for spherical UV mapping. Uniform flat albedo illumination, no directional lighting or shadow baked in. NOT a globe, NOT a planet disc, no perspective, no border, no labels, no text, no stars, no black background, no vignette. Fine photographic texture, restrained colors for a sophisticated educational atlas. Original illustration informed by planetary imagery, not a scientific measurement."
+  },
+  {
+    "id": "uranus",
+    "source": "exec-739d1d47-1991-4e4d-b38b-f4f8b955847d.png",
+    "nativeSize": [
+      1774,
+      887
+    ],
+    "prompt": "Use case: scientific-educational. Asset: uranus full-sphere albedo texture for a Three.js solar-system Orrery. ONE ultra-detailed 4096 x 2048 or highest available 2:1 equirectangular cylindrical surface map. Uranus atmosphere: pale cyan, sea-glass blue-green, subtly mottled high-altitude haze, very faint horizontal cloud bands, soft brighter polar cap, a few thin pale cloud streaks. Realistic low contrast and atmospheric depth, NO high contrast storm stripes, NO land. Rectangular map fills the entire image edge-to-edge; longitude -180 to +180, latitude +90 top to -90 bottom. Left and right edges tile seamlessly; polar features stretched for spherical UV mapping. Uniform flat albedo illumination, no directional lighting or shadow baked in. NOT a globe, NOT a planet disc, no perspective, no border, no labels, no text, no stars, no black background, no vignette. Fine photographic texture, restrained colors for a sophisticated educational atlas. Original illustration informed by planetary imagery, not a scientific measurement."
+  },
+  {
+    "id": "neptune",
+    "source": "exec-e5deadac-8569-4115-a0d2-169934db7a9e.png",
+    "nativeSize": [
+      1774,
+      887
+    ],
+    "prompt": "Use case: scientific-educational. Asset: neptune full-sphere albedo texture for a Three.js solar-system Orrery. ONE ultra-detailed 4096 x 2048 or highest available 2:1 equirectangular cylindrical surface map. Neptune atmosphere: medium ice blue with muted cobalt belts and pale cyan clouds, delicate high-altitude white methane-cloud streaks, wispy turbulence with one subdued large darker storm oval south of the equator. Natural blue NOT saturated electric purple. Fine cloud structure. Rectangular map fills the entire image edge-to-edge; longitude -180 to +180, latitude +90 top to -90 bottom. Left and right edges tile seamlessly; polar features stretched for spherical UV mapping. Uniform flat albedo illumination, no directional lighting or shadow baked in. NOT a globe, NOT a planet disc, no perspective, no border, no labels, no text, no stars, no black background, no vignette. Fine photographic texture, restrained colors for a sophisticated educational atlas. Original illustration informed by planetary imagery, not a scientific measurement."
+  },
+  {
+    "id": "pluto",
+    "source": "exec-2dcd5f3e-4486-47ca-909e-ca8151a1489b.png",
+    "nativeSize": [
+      1774,
+      887
+    ],
+    "prompt": "Use case: scientific-educational. Asset: pluto full-sphere albedo texture for a Three.js solar-system Orrery. Generate ONE ultra-detailed 4096 x 2048 or highest available 2:1 equirectangular cylindrical surface map. Pluto: New Horizons inspired pale cream nitrogen-ice heart-shaped Tombaugh Regio / Sputnik Planitia, polygonal cellular ice plains, jagged water-ice mountains, warm tan uplands, dark russet Cthulhu region, fine impact craters, subtle geological gradients. Mostly pale beige and muted brown, not grey Moon texture. Rectangular map fills the entire image edge-to-edge; longitude -180 to +180, latitude +90 top to -90 bottom. Left and right edges should tile seamlessly; polar features stretched for spherical UV mapping. Uniform diffuse flat albedo illumination, no directional lighting or shadow baked in. NOT a globe, NOT a planet disc, no perspective, no border, no labels, no text, no stars, no black background, no vignette. Natural fine photographic detail, restrained colors compatible with a sophisticated educational atlas. Original illustration informed by planetary imagery, not a scientific measurement."
+  },
+  {
+    "id": "moon",
+    "source": "exec-fdc485ed-f914-4e95-ae4c-7ea9d962449b.png",
+    "nativeSize": [
+      1774,
+      887
+    ],
+    "prompt": "Use case: scientific-educational. Asset: moon full-sphere albedo texture for a Three.js solar-system Orrery. ONE ultra-detailed 4096 x 2048 or highest available 2:1 equirectangular cylindrical surface map. Earth's Moon: cool neutral grey anorthosite highlands with dense overlapping impact craters, broad darker basalt lunar maria arranged like the familiar near-side face, Oceanus Procellarum, Imbrium and Serenitatis, bright Tycho rays, highly cratered far-side on other half. Multiscale realistic lunar regolith detail. Rectangular map fills the entire image edge-to-edge; longitude -180 to +180, latitude +90 top to -90 bottom. Left and right edges tile seamlessly; polar features stretched for spherical UV mapping. Uniform diffuse flat albedo illumination, no directional lighting or shadow baked in. NOT a globe, NOT a planet disc, no perspective, no border, no labels, no text, no stars, no black background, no vignette. Fine photographic texture, restrained colors for a sophisticated educational atlas. Original illustration informed by planetary imagery, not a scientific measurement."
+  },
+  {
+    "id": "ganymede",
+    "source": "exec-b078ef84-9876-45ee-b415-9cd74f453aa9.png",
+    "nativeSize": [
+      1774,
+      887
+    ],
+    "prompt": "Use case: scientific-educational. Asset: ganymede full-sphere albedo texture for a Three.js solar-system Orrery. ONE ultra-detailed 4096 x 2048 or highest available 2:1 equirectangular cylindrical surface map. Jupiter's moon Ganymede: grey-brown ancient cratered dark terrain interwoven with paler grooved water-ice regions, intricate long tectonic furrows, bright fresh crater ejecta, Galileo Regio, frosty brighter high-latitude caps. Distinctive mosaics of grooved and cratered ice, subdued natural greige colors. Rectangular map fills the entire image edge-to-edge; longitude -180 to +180, latitude +90 top to -90 bottom. Left and right edges tile seamlessly; polar features stretched for spherical UV mapping. Uniform diffuse flat albedo illumination, no directional lighting or shadow baked in. NOT a globe, NOT a planet disc, no perspective, no border, no labels, no text, no stars, no black background, no vignette. Fine photographic texture, restrained colors for a sophisticated educational atlas. Original illustration informed by planetary imagery, not a scientific measurement."
+  },
+  {
+    "id": "charon",
+    "source": "exec-9196c1f1-03f1-4740-98c1-dabd3eb2f3af.png",
+    "nativeSize": [
+      1774,
+      887
+    ],
+    "prompt": "Use case: scientific-educational. Asset: charon full-sphere albedo texture for a Three.js solar-system Orrery. ONE ultra-detailed 4096 x 2048 or highest available 2:1 equirectangular cylindrical surface map. Pluto's moon Charon: muted light-grey and beige icy cratered terrain, charcoal-grey lowland plains, immense dark tectonic chasms separating rough northern terrain from smoother southern Vulcan Planitia, subtle reddish-brown Mordor Macula polar cap at NORTH TOP. New Horizons inspired fine geological detail, visually distinct from Pluto. Rectangular map fills the entire image edge-to-edge; longitude -180 to +180, latitude +90 top to -90 bottom. Left and right edges tile seamlessly; polar features stretched for spherical UV mapping. Uniform diffuse flat albedo illumination, no directional lighting or shadow baked in. NOT a globe, NOT a planet disc, no perspective, no border, no labels, no text, no stars, no black background, no vignette. Fine photographic texture, restrained colors for a sophisticated educational atlas. Original illustration informed by planetary imagery, not a scientific measurement."
+  }
+]

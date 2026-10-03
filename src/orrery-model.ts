@@ -19,6 +19,7 @@ export interface World {
   id: string; name: string; colour: string; diameterKm: number;
   displayDiameter: number; tilt: number; spinHours: number;
   elements?: Six; rates?: Six; corrections?: [number,number,number,number];
+  satellite?: {parent:string;distanceKm:number;periodDays:number;phase:number;inclination:number};
 }
 export const WORLDS: World[] = [
   { id:'sun', name:'Sun', colour:'#ffd17b', diameterKm:1392700, displayDiameter:3, tilt:7.25, spinHours:609.12 },
@@ -41,6 +42,21 @@ export const WORLDS: World[] = [
   { id:'pluto', name:'Pluto', colour:'#c7aa99', diameterKm:2376, displayDiameter:.82, tilt:119.5, spinHours:153.3,
     elements:[39.48686035,.24885238,17.14104260,238.96535011,224.09702598,110.30167986], rates:[.00449751,.00006016,.00000501,145.18042903,-.00968827,-.00809981], corrections:[-.01262724,0,0,0] },
 ];
+// Representative circular satellite orbits. Distances/periods: JPL satellite
+// mean elements (ssd.jpl.nasa.gov/sats/elem/); phases/planes are illustrative.
+// These do not claim the positional accuracy of a lunar/satellite ephemeris.
+export const MOONS:World[]=[
+  {id:'moon',name:'Moon',colour:'#c5c6c8',diameterKm:3474.8,displayDiameter:.32,tilt:5.16,spinHours:27.322*24,
+    satellite:{parent:'earth',distanceKm:384400,periodDays:27.322,phase:2.1,inclination:5.16}},
+  {id:'ganymede',name:'Ganymede',colour:'#b6aea3',diameterKm:5262.4,displayDiameter:.4,tilt:3.3,spinHours:7.155588*24,
+    satellite:{parent:'jupiter',distanceKm:1070400,periodDays:7.155588,phase:4.3,inclination:3.3}},
+  {id:'charon',name:'Charon',colour:'#a59c95',diameterKm:1212,displayDiameter:.3,tilt:119.5,spinHours:6.387*24,
+    satellite:{parent:'pluto',distanceKm:19600,periodDays:6.387,phase:.8,inclination:119.5}},
+];
+export function moonOrbitRadius(world:World,t:number):number {
+  const parent=WORLDS.find(w=>w.id===world.satellite!.parent)!;
+  return mix(world.satellite!.distanceKm/AU_KM,parent.displayDiameter/2+.26+world.displayDiameter/2,t);
+}
 export const BELTS = [
   { id:'asteroids', name:'Asteroid belt', inner:2.1, outer:3.3, halfWidth:.45, colour:'#ae9b7d', count:4200 },
   { id:'kuiper', name:'Kuiper belt', inner:30, outer:50, halfWidth:.85, colour:'#708fae', count:7600 },
@@ -86,7 +102,7 @@ export function footprint(id:string):number {
   const belt=BELTS.find(b=>b.id===id);
   if(belt)return belt.halfWidth;
   const w=WORLDS.find(w=>w.id===id)!;
-  return w.displayDiameter*.5*(id==='saturn'?2.3:1);
+  return Math.max(w.displayDiameter*.5*(id==='saturn'?2.3:1),...MOONS.filter(m=>m.satellite!.parent===id).map(m=>moonOrbitRadius(m,1)+m.displayDiameter/2));
 }
 export const NORMAL_RADII:Record<string,number>={sun:0};
 for(let i=1;i<order.length;i++)NORMAL_RADII[order[i]]=NORMAL_RADII[order[i-1]]+footprint(order[i-1])+NORMAL_GAP+footprint(order[i]);

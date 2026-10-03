@@ -1,73 +1,73 @@
 import * as THREE from 'three';
 import { seeded, type World } from './orrery-model.ts';
 
-// Seamless, original surface maps in the illustrated atlas palette. GPU mipmaps
-// supply every smaller resolution; no high-resolution downloads are needed.
-export function planetTexture(world:World, anisotropy:number):THREE.CanvasTexture {
-  const canvas=document.createElement('canvas'); canvas.width=2048;canvas.height=1024;
-  const g=canvas.getContext('2d')!; const w=canvas.width,h=canvas.height;
-  const random=seeded(world.id.split('').reduce((n,c)=>n*31+c.charCodeAt(0),17));
-  const base:Record<string,string>={sun:'#ed9325',mercury:'#96887c',venus:'#dabb80',earth:'#246e9a',mars:'#b96843',jupiter:'#d0ac87',saturn:'#d3bc84',uranus:'#83c0c9',neptune:'#345eac',pluto:'#a79382'};
-  g.fillStyle=base[world.id];g.fillRect(0,0,w,h);
-  const gas=['venus','jupiter','saturn','uranus','neptune'].includes(world.id);
-  if(gas) {
-    const palettes:Record<string,string[]>={venus:['#ebd8a6','#b59660','#f1ddb0'],jupiter:['#a76d4d','#eedcbd','#bd8868','#f2dfc2','#996451'],saturn:['#e6d6af','#b69b67','#f4e7c4'],uranus:['#c1e8e2','#85bdc7','#94d2d4'],neptune:['#6187c1','#2c4d96','#7495ce']};
-    const palette=palettes[world.id];
-    for(let band=0;band<55;band++) {
-      const y=band*h/55,thickness=8+random()*30,phase=random()*Math.PI*2;
-      g.beginPath();
-      for(let x=0;x<=w;x+=8){const p=y+Math.sin(x/w*Math.PI*8+phase)*6+Math.sin(x/w*Math.PI*18+phase)*2; if(x===0)g.moveTo(x,p);else g.lineTo(x,p);}
-      for(let x=w;x>=0;x-=8)g.lineTo(x,y+thickness+Math.sin(x/w*Math.PI*8+phase)*5);
-      g.closePath();g.fillStyle=palette[band%palette.length];g.globalAlpha=world.id==='uranus'?.12:.3+random()*.35;g.fill();
-    }
-    g.globalAlpha=1;
-    if(world.id==='jupiter'||world.id==='neptune'){
-      for(let i=9;i>0;i--){g.beginPath();g.ellipse(w*.69,h*.61,18+i*9,8+i*4,-.1,0,Math.PI*2);g.fillStyle=world.id==='jupiter'?(i%2?'#b26b47':'#d59a70'):(i%2?'#315493':'#4773b3');g.fill();}
-    }
+// Original generated equirectangular illustrations, packaged at two resolutions.
+// Full prompt set and native dimensions are documented in docs/orrery-textures.md.
+const MAPS:Record<string,{overview:string;detail:string}>={
+  'sun': { overview: new URL('./assets/orrery/sun-512.webp', import.meta.url).href, detail: new URL('./assets/orrery/sun-2048.webp', import.meta.url).href },
+  'mercury': { overview: new URL('./assets/orrery/mercury-512.webp', import.meta.url).href, detail: new URL('./assets/orrery/mercury-2048.webp', import.meta.url).href },
+  'venus': { overview: new URL('./assets/orrery/venus-512.webp', import.meta.url).href, detail: new URL('./assets/orrery/venus-2048.webp', import.meta.url).href },
+  'earth': { overview: new URL('./assets/orrery/earth-512.webp', import.meta.url).href, detail: new URL('./assets/orrery/earth-2048.webp', import.meta.url).href },
+  'mars': { overview: new URL('./assets/orrery/mars-512.webp', import.meta.url).href, detail: new URL('./assets/orrery/mars-2048.webp', import.meta.url).href },
+  'jupiter': { overview: new URL('./assets/orrery/jupiter-512.webp', import.meta.url).href, detail: new URL('./assets/orrery/jupiter-2048.webp', import.meta.url).href },
+  'saturn': { overview: new URL('./assets/orrery/saturn-512.webp', import.meta.url).href, detail: new URL('./assets/orrery/saturn-2048.webp', import.meta.url).href },
+  'uranus': { overview: new URL('./assets/orrery/uranus-512.webp', import.meta.url).href, detail: new URL('./assets/orrery/uranus-2048.webp', import.meta.url).href },
+  'neptune': { overview: new URL('./assets/orrery/neptune-512.webp', import.meta.url).href, detail: new URL('./assets/orrery/neptune-2048.webp', import.meta.url).href },
+  'pluto': { overview: new URL('./assets/orrery/pluto-512.webp', import.meta.url).href, detail: new URL('./assets/orrery/pluto-2048.webp', import.meta.url).href },
+  'moon': { overview: new URL('./assets/orrery/moon-512.webp', import.meta.url).href, detail: new URL('./assets/orrery/moon-2048.webp', import.meta.url).href },
+  'ganymede': { overview: new URL('./assets/orrery/ganymede-512.webp', import.meta.url).href, detail: new URL('./assets/orrery/ganymede-2048.webp', import.meta.url).href },
+  'charon': { overview: new URL('./assets/orrery/charon-512.webp', import.meta.url).href, detail: new URL('./assets/orrery/charon-2048.webp', import.meta.url).href },
+};
+type SurfaceMaterial = THREE.MeshStandardMaterial | THREE.MeshBasicMaterial;
+const loader=new THREE.TextureLoader();
+export class PlanetSurface {
+  readonly material:SurfaceMaterial;
+  private overview?:THREE.Texture;
+  private detail?:THREE.Texture;
+  private loading=false;
+  private failed=false;
+  private wantsDetail=false;
+  private lastDetailUse=0;
+  constructor(readonly world:World,private anisotropy:number){
+    this.material=world.id==='sun'
+      ?new THREE.MeshBasicMaterial({color:world.colour})
+      :new THREE.MeshStandardMaterial({color:world.colour,roughness:world.id==='earth'?.68:.95,metalness:0});
+    loader.load(MAPS[world.id].overview,texture=>{
+      this.configure(texture);this.overview=texture;
+      if(!this.detail||!this.wantsDetail)this.use(texture);
+    },undefined,()=>{ /* Retain a coloured sphere if an asset cannot be loaded. */ });
   }
-  // Fine mottling provides surface detail at high zoom without harsh pixel noise.
-  for(let i=0;i<18000;i++){
-    const x=random()*w,y=random()*h,r=1+random()*(gas?11:20);
-    g.globalAlpha=.015+random()*.045;g.fillStyle=i%2?'#fff1d5':'#30241f';
-    g.beginPath();g.ellipse(x,y,r,r*(gas?.22:1),0,0,Math.PI*2);g.fill();
+  private configure(texture:THREE.Texture){
+    texture.colorSpace=THREE.SRGBColorSpace;texture.wrapS=THREE.RepeatWrapping;
+    texture.anisotropy=this.anisotropy;texture.minFilter=THREE.LinearMipmapLinearFilter;
+    texture.magFilter=THREE.LinearFilter;texture.generateMipmaps=true;
   }
-  g.globalAlpha=1;
-  if(['mercury','mars','pluto'].includes(world.id)) {
-    for(let i=0;i<380;i++){
-      const x=random()*w,y=random()*h,r=3+random()**3*42;
-      for(const xx of [x-w,x,x+w]){
-        g.beginPath();g.arc(xx,y,r,0,Math.PI*2);g.fillStyle='rgba(43,31,25,.13)';g.fill();
-        g.beginPath();g.arc(xx,y,r,Math.PI*.2,Math.PI*1.2);g.strokeStyle='rgba(255,237,205,.22)';g.lineWidth=Math.max(1,r*.13);g.stroke();
+  private use(texture:THREE.Texture){
+    const needsCompile=!this.material.map;
+    this.material.map=texture;this.material.color.set(0xffffff);
+    if(needsCompile)this.material.needsUpdate=true;
+  }
+  /** Projected physical pixel diameter; off-screen objects use zero. */
+  update(pixels:number,now:number){
+    this.wantsDetail=pixels>(this.wantsDetail?64:96);
+    if(this.wantsDetail){
+      this.lastDetailUse=now;
+      if(this.detail){this.use(this.detail);return;}
+      if(!this.loading&&!this.failed){
+        this.loading=true;
+        loader.load(MAPS[this.world.id].detail,texture=>{
+          this.configure(texture);this.detail=texture;this.loading=false;
+          if(this.wantsDetail)this.use(texture);
+        },undefined,()=>{this.loading=false;this.failed=true;});
+      }
+    }else{
+      if(this.overview&&this.material.map!==this.overview)this.use(this.overview);
+      // Release large GPU maps after leaving a close-up. Overview maps stay warm.
+      if(this.detail&&now-this.lastDetailUse>15000&&this.overview){
+        this.detail.dispose();this.detail=undefined;
       }
     }
-    if(world.id==='mars'||world.id==='pluto'){
-      g.fillStyle=world.id==='mars'?'#ded9c3':'#dfceba';g.globalAlpha=.8;
-      g.beginPath();g.ellipse(w*.53,h*.12,w*.23,h*.09,0,0,Math.PI*2);g.fill();g.globalAlpha=1;
-    }
   }
-  if(world.id==='earth') {
-    // Simplified longitude/latitude coastlines; the other map details are illustrative.
-    const continents=[
-      [[-168,66],[-140,70],[-125,60],[-110,70],[-80,62],[-54,50],[-66,44],[-82,25],[-98,16],[-106,24],[-123,40],[-136,55]],
-      [[-81,12],[-62,9],[-50,0],[-35,-7],[-45,-24],[-57,-39],[-69,-55],[-76,-25]],
-      [[-17,35],[7,37],[33,30],[43,12],[51,10],[39,-13],[31,-30],[19,-35],[11,-17],[-5,5],[-17,15]],
-      [[-10,36],[-8,58],[10,70],[36,69],[60,73],[100,77],[145,65],[177,63],[163,50],[138,35],[120,20],[105,4],[79,8],[67,26],[43,13],[35,32],[18,40]],
-      [[112,-12],[132,-10],[143,-16],[153,-27],[145,-39],[126,-35],[114,-25]],
-      [[-53,59],[-25,72],[-35,82],[-60,81]], [[47,-13],[51,-16],[48,-26],[44,-22]],
-    ];
-    for(const coast of continents){g.beginPath();coast.forEach(([lon,lat],i)=>{const x=(lon+180)/360*w,y=(90-lat)/180*h;i?g.lineTo(x,y):g.moveTo(x,y);});g.closePath();g.fillStyle='#7e9b59';g.strokeStyle='#b9bc7a';g.lineWidth=5;g.fill();g.stroke();}
-    g.fillStyle='#e4ece2';g.fillRect(0,0,w,21);g.fillRect(0,h-45,w,45);
-    for(let i=0;i<95;i++){
-      const x=random()*w,y=random()*h;g.beginPath();g.moveTo(x,y);g.bezierCurveTo(x+25,y-14,x+45,y+12,x+80,y-9);
-      g.strokeStyle='rgba(244,244,228,.6)';g.lineWidth=3+random()*10;g.lineCap='round';g.stroke();
-    }
-  }
-  if(world.id==='sun'){
-    for(let i=0;i<4500;i++){g.beginPath();g.arc(random()*w,random()*h,1+random()*9,0,Math.PI*2);g.fillStyle=i%3?'rgba(255,218,104,.25)':'rgba(171,75,12,.22)';g.fill();}
-  }
-  const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;texture.wrapS=THREE.RepeatWrapping;
-  texture.anisotropy=anisotropy;texture.minFilter=THREE.LinearMipmapLinearFilter;texture.generateMipmaps=true;
-  return texture;
 }
 
 export function haloTexture():THREE.CanvasTexture {
@@ -76,7 +76,13 @@ export function haloTexture():THREE.CanvasTexture {
   g.fillStyle=grad;g.fillRect(0,0,128,128);return new THREE.CanvasTexture(c);
 }
 export function ringTexture():THREE.CanvasTexture {
-  const c=document.createElement('canvas');c.width=512;c.height=4;const g=c.getContext('2d')!;const r=seeded(34);
-  for(let x=0;x<512;x++){g.fillStyle=x>296&&x<322?'rgba(0,0,0,.03)':`rgba(212,192,146,${.25+r()*.55})`;g.fillRect(x,0,1,4);}
-  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;
+  const c=document.createElement('canvas');c.width=2048;c.height=4;const g=c.getContext('2d')!;const r=seeded(34);
+  for(let x=0;x<c.width;x++){
+    const u=x/c.width,cassini=u>.57&&u<.635,encke=u>.905&&u<.915;
+    const fine=.035*Math.sin(u*1800)+.05*Math.sin(u*490)+r()*.08;
+    const alpha=cassini||encke?.015:u<.19?.19+fine:u<.57?.7+fine:.42+fine;
+    const shade=Math.round(185+24*Math.sin(u*28)+r()*12);
+    g.fillStyle=`rgba(${shade+20},${shade+9},${shade-16},${alpha})`;g.fillRect(x,0,1,4);
+  }
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.minFilter=THREE.LinearMipmapLinearFilter;return t;
 }

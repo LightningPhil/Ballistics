@@ -18,6 +18,7 @@ body.orrery-open { overflow:hidden; }
 .orrery-render { position:absolute; inset:0; }
 .orrery-render canvas { display:block; width:100%;height:100%;cursor:grab; }
 .orrery-render canvas:active { cursor:grabbing; }
+.orrery-stage.orrery-panning,.orrery-panning * { cursor:grabbing!important; }
 .orrery-leaders,.orrery-labels { position:absolute;inset:0;width:100%;height:100%;pointer-events:none; }
 .orrery-labels { z-index:2; }
 .orrery-dialog .orrery-world-label { position:absolute;top:0;left:0;min-height:23px;padding:3px 7px;border:0;border-radius:3px;background:#0009;color:#aebccc;font:11px/17px 'Segoe UI',system-ui,sans-serif;white-space:nowrap;pointer-events:auto;text-shadow:0 1px 3px #000; }
@@ -40,6 +41,7 @@ body.orrery-open { overflow:hidden; }
 .orrery-info dt { color:#8a9bb0; }
 .orrery-info dd { margin:0;color:#d4dfe9;font-variant-numeric:tabular-nums; }
 .orrery-info-note { margin-top:13px;padding-top:11px;border-top:1px solid #283546;color:#8c9db2;font-size:11px;line-height:1.55; }
+.orrery-info .orrery-focus { margin-top:12px;width:100%;color:var(--space-gold);font-size:11px; }
 .orrery-controls { flex:0 0 auto;padding:15px 28px 9px;border-top:1px solid #27303d;background:#0d131c; }
 .orrery-transport { display:flex;align-items:center;gap:24px; }
 .orrery-time { min-width:248px; }
