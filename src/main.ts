@@ -21,7 +21,7 @@ import { installWiki, isWikiOpen } from './wiki/wiki.ts';
 import { installManual, isManualOpen } from './manual.ts';
 import { installResponsiveLayout, drawSetupNozzle, isSetupNozzleVisible } from './responsive-layout.ts';
 
-const isReadingOpen = () => isWikiOpen() || isManualOpen();
+const isReadingOpen = () => isWikiOpen() || isManualOpen() || document.body.classList.contains('orrery-open');
 
 /**
  * ============================================================================
@@ -1736,6 +1736,20 @@ function boot() {
   };
   installWiki(pauseForReading);
   installManual(pauseForReading);
+  const orreryButton = document.querySelector<HTMLButtonElement>('#open-orrery')!;
+  orreryButton.addEventListener('click', async function loadOrrery() {
+    orreryButton.disabled = true;
+    try {
+      const { installOrrery } = await import('./orrery.ts');
+      installOrrery(pauseForReading);
+      orreryButton.removeEventListener('click', loadOrrery);
+      orreryButton.disabled = false;
+      orreryButton.click();
+    } catch {
+      orreryButton.disabled = false;
+      deck.message('The orrery could not start. Check that WebGL is available, then try again.', true);
+    }
+  });
   installResponsiveLayout();
   requestAnimationFrame(loop);
 }

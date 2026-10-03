@@ -25,12 +25,16 @@
 .flight-deck button:disabled { opacity:.42; cursor:default; }
 .flight-deck button[aria-pressed=true] { background:#315c50; color:#fff7e6; }
 .flight-deck :focus-visible { outline:3px solid #c76e3a; outline-offset:3px; }
-.flight-deck .open-wiki { justify-self:center; display:flex; align-items:center; justify-content:center; gap:9px; padding:6px 14px; min-height:42px; background:#e9efe1; border-color:#bdcdb7; color:#2d5e4b; border-radius:12px; font-size:13px; box-shadow:0 2px 0 #dce4d2; }
+.flight-exploration { justify-self:center; display:flex; align-items:center; gap:8px; }
+.flight-deck .open-wiki { display:flex; align-items:center; justify-content:center; gap:9px; padding:6px 14px; min-height:42px; background:#e9efe1; border-color:#bdcdb7; color:#2d5e4b; border-radius:12px; font-size:13px; box-shadow:0 2px 0 #dce4d2; }
 .open-wiki svg { width:28px; height:28px; flex:0 0 28px; fill:none; stroke:#648574; stroke-width:1.2; }
 .open-wiki svg circle:first-child { fill:#cfa667; stroke:#b88c51; }
 .open-wiki svg circle:last-child { fill:#648574; stroke:#f6f7ea; }
 .open-wiki .wiki-arrow { color:#6e8b70; font-size:17px; }
 .flight-deck .open-wiki:hover { background:#dde9d6; border-color:#8ba987; box-shadow:0 2px 0 #c7d6bf; }
+.flight-deck .open-orrery { display:flex; align-items:center; gap:7px; min-height:42px; padding:6px 13px; background:#f8f0dc; border-color:#d8c49a; color:#685437; border-radius:12px; font-size:13px; box-shadow:0 2px 0 #e8ddc4; }
+.flight-deck .open-orrery:hover { background:#f3e7c9; border-color:#bda574; }
+.orrery-button-icon { font-size:22px; line-height:1; }
 .flight-utilities { display:flex; justify-content:flex-end; align-items:center; gap:8px; }
 .rate-choice { display:inline-flex; align-items:center; gap:6px; color:#64765e; font-size:11px; white-space:nowrap; }
 .flight-deck .rate-choice select { padding-inline:8px; font-size:12px; cursor:pointer; }
@@ -73,7 +77,9 @@
   .flight-deck { padding:10px 12px 8px; }
   .flight-topline { grid-template-columns:minmax(65px,1fr) minmax(0,190px) auto; gap:9px; }
   .chronograph { display:none; }
-  .flight-deck .open-wiki { max-width:190px; padding:7px 10px; gap:7px; font-size:12px; line-height:1.3; }
+  .flight-exploration { max-width:240px; }
+  .flight-deck .open-wiki { padding:7px 10px; gap:7px; font-size:12px; line-height:1.3; }
+  .flight-deck .open-orrery { padding:6px 9px; }
   .open-wiki .wiki-arrow { display:none; }
   .flight-utilities { gap:6px; }
   .rate-choice { font-size:0; gap:0; }
@@ -84,7 +90,9 @@
 @container (max-width:430px) {
   .flight-topline { grid-template-columns:minmax(0,1fr) auto; gap:8px; }
   .flight-utilities { grid-column:2; grid-row:1; }
-  .flight-deck .open-wiki { grid-column:1/-1; grid-row:2; max-width:none; width:100%; min-height:44px; font-size:13px; padding:7px 10px; }
+  .flight-exploration { grid-column:1/-1; grid-row:2; width:100%; max-width:none; }
+  .flight-deck .open-wiki { flex:1; min-height:44px; font-size:13px; padding:7px 10px; }
+  .flight-deck .open-orrery { min-height:44px; }
   .open-wiki svg { display:block; width:24px; height:24px; flex-basis:24px; }
   .flight-deck .eyebrow { font-size:7px; }
   #flight-time { font-size:20px; }
