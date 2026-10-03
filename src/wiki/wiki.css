@@ -135,7 +135,6 @@ body.atlas-open { overflow: hidden; }
 .atlas-reading-intro .atlas-levels button[aria-pressed=true] { border:1px solid #3f745b; background:#e1ebd8; box-shadow:0 3px 0 #b7c9a7; }
 .atlas-level-caption { display:block; font:10px/1.4 var(--font-mono); text-transform:uppercase; letter-spacing:.3px; margin-bottom:4px; color:#61735b; }
 .atlas-reading-text .atlas-reading-label h2 { font-size:20px; }
-.atlas-reading-text .atlas-levels small { display:none; }
 .atlas-reading-label { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 11px; }
 .atlas-reading-label > span { font: 800 11px/1.5 var(--font-mono); letter-spacing: 1.35px; color: #56634e; }
 .atlas-reading-label small { font-size: 12.5px; color: #6f7a69; }

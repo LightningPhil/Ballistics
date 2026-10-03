@@ -60,10 +60,10 @@ export function installWiki(onVisibilityChange: (open: boolean) => void) {
     const page = (a: Article, rel: 'prev' | 'next', label: string) => `<a class="atlas-pager-${rel}" href="#wiki/${a.id}/${level + 1}" rel="${rel}">${rel === 'prev' ? `<span class="atlas-pager-arrow" aria-hidden="true">←</span>${art(a)}` : ''}<span><small>${label}</small><strong>${a.title}</strong></span>${rel === 'next' ? `${art(a)}<span class="atlas-pager-arrow" aria-hidden="true">→</span>` : ''}</a>`;
     return `<nav class="atlas-pager" aria-label="Turn the page">${previous ? page(previous, 'prev', 'Previous entry') : ''}${page(next, 'next', wraps ? 'Back to the start' : 'Next entry')}</nav>`;
   }
-  function readingLevels(place: 'intro' | 'text') {
-    return `<section class="atlas-reading atlas-reading-${place}" aria-label="Three explanation levels">
-      ${place === 'intro' ? '<div class="atlas-reading-label"><div><p class="atlas-kicker">THE SAME TOPIC, AT YOUR PACE</p><h2>Three ways to understand</h2></div><p>Start simple or follow your curiosity further.<br> Choose a level to read its explanation.</p></div>' : '<div class="atlas-reading-label"><h2>Your explanation</h2><small>Switch levels whenever you like.</small></div>'}
-      <div class="atlas-levels" role="group" aria-label="Choose an explanation level">${LEVELS.map((l, i) => `<button type="button" data-level="${i}" data-level-place="${place}" aria-pressed="${level === i}" aria-controls="atlas-reading-content"><span class="atlas-level-number" aria-hidden="true">${i + 1}</span><span><span class="atlas-level-caption">Level ${i + 1}${level === i ? ' · Selected ✓' : ''}</span><strong>${l.name}</strong><small>${l.detail}</small></span></button>`).join('')}</div></section>`;
+  function readingLevels() {
+    return `<section class="atlas-reading atlas-reading-intro" aria-label="Three explanation levels">
+      <div class="atlas-reading-label"><div><p class="atlas-kicker">THE SAME TOPIC, AT YOUR PACE</p><h2>Three ways to understand</h2></div><p>Start simple or follow your curiosity further.<br> Choose a level to read its explanation.</p></div>
+      <div class="atlas-levels" role="group" aria-label="Choose an explanation level">${LEVELS.map((l, i) => `<button type="button" data-level="${i}" aria-pressed="${level === i}" aria-controls="atlas-reading-content"><span class="atlas-level-number" aria-hidden="true">${i + 1}</span><span><span class="atlas-level-caption">Level ${i + 1}${level === i ? ' · Selected ✓' : ''}</span><strong>${l.name}</strong><small>${l.detail}</small></span></button>`).join('')}</div></section>`;
   }
   function readingMarkup() {
     const reading = article.levels[level];
@@ -95,11 +95,11 @@ export function installWiki(onVisibilityChange: (open: boolean) => void) {
     main.innerHTML = `<article class="atlas-article" data-topic="${article.id}">
       <div class="atlas-breadcrumb"><a href="#wiki/solar-system/${level + 1}">Atlas</a><span aria-hidden="true">/</span><span>${article.group}</span><span class="atlas-index">ENTRY ${number} / ${ARTICLES.length}</span></div>
       <header class="atlas-hero ${article.art ? 'atlas-world-hero' : ''}"><div class="atlas-hero-copy"><p class="atlas-kicker">${article.kind}</p><h1 id="atlas-title" tabindex="-1">${article.title}</h1><p class="atlas-deck">${article.description}</p>${article.say ? `<p class="atlas-say"><span>Say it</span><strong>${article.say}</strong></p>` : ''}</div>${article.art ? `<div class="atlas-world-art"><span class="atlas-world-orbit" aria-hidden="true"></span><img src="${WORLD_ART[article.art].full}" alt="Illustration of ${article.title.replace(' & the outer frontier', '')}" width="320" height="320"><span class="atlas-world-caption">A WORLD WORTH KNOWING</span></div>` : ''}</header>
-      ${readingLevels('intro')}
+      ${readingLevels()}
       ${illustration}
       <dl class="atlas-facts">${article.stats.map(([name, value]) => `<div><dt>${name}</dt><dd>${value}</dd></div>`).join('')}</dl>
       ${article.stats.some(([, value]) => value.includes('AU')) ? '<p class="atlas-units">An astronomical unit (AU) is about Earth’s average distance from the Sun: 150 million kilometres. Solar distances here are rounded averages.</p>' : ''}
-      ${readingLevels('text')}
+      <div class="atlas-reading atlas-reading-text"><div class="atlas-reading-label"><h2>Your explanation</h2></div></div>
       <div class="atlas-prose-layout" id="atlas-reading-content">${readingMarkup()}</div>
       ${['solar-system', 'moons', 'jupiter', 'saturn', 'uranus', 'neptune', 'earth', 'mars', 'pluto'].includes(article.id) ? moonExplorer(['solar-system', 'moons'].includes(article.id) ? family : article.id, level) : ''}
       ${article.id === 'solar-system' ? `<section class="atlas-world-shelf"><div class="atlas-section-top"><div><p class="atlas-kicker">EIGHT PLANETS, ENDLESS QUESTIONS</p><h3>Choose your next stop.</h3></div></div><div class="atlas-planet-shelf">${ARTICLES.filter(a => a.group === 'Our star & planets' && a.id !== 'sun').map(a => `<a href="#wiki/${a.id}/${level + 1}"><img src="${WORLD_ART[a.id].full}" alt="" width="100" height="100" loading="lazy"><strong>${a.title}</strong><small>${a.kind.split(' / ')[1]}</small></a>`).join('')}</div></section>` : ''}
