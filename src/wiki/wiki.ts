@@ -67,7 +67,7 @@ export function installWiki(onVisibilityChange: (open: boolean) => void) {
   }
   function readingMarkup() {
     const reading = article.levels[level];
-    return `<section class="atlas-prose" aria-labelledby="atlas-reading-heading"><p class="atlas-kicker">${LEVELS[level].name} / ${Math.max(1, Math.ceil(reading.paragraphs.join(' ').split(/\s+/).length / 180))} MIN READ</p><h2 id="atlas-reading-heading">${reading.heading}</h2>${reading.paragraphs.map(p => `<p>${p}</p>`).join('')}${reading.equation ? `<div class="atlas-equation"><span>THE RELATIONSHIP</span><p>${reading.equation.expression}</p><small>${reading.equation.explanation}</small></div>` : ''}</section><aside class="atlas-takeaway"><span aria-hidden="true">✧</span><p class="atlas-kicker">ONE THING TO REMEMBER</p><p>${reading.takeaway}</p></aside>`;
+    return `<section class="atlas-prose" aria-labelledby="atlas-reading-heading"><h2 id="atlas-reading-heading">${reading.heading}</h2>${reading.paragraphs.map(p => `<p>${p}</p>`).join('')}${reading.equation ? `<div class="atlas-equation"><span>THE RELATIONSHIP</span><p>${reading.equation.expression}</p><small>${reading.equation.explanation}</small></div>` : ''}</section><aside class="atlas-takeaway"><span aria-hidden="true">✧</span><p class="atlas-kicker">ONE THING TO REMEMBER</p><p>${reading.takeaway}</p></aside>`;
   }
   function updateReading() {
     const scroll = main.scrollTop, dialogScroll = dialog!.scrollTop;
@@ -99,7 +99,6 @@ export function installWiki(onVisibilityChange: (open: boolean) => void) {
       ${illustration}
       <dl class="atlas-facts">${article.stats.map(([name, value]) => `<div><dt>${name}</dt><dd>${value}</dd></div>`).join('')}</dl>
       ${article.stats.some(([, value]) => value.includes('AU')) ? '<p class="atlas-units">An astronomical unit (AU) is about Earth’s average distance from the Sun: 150 million kilometres. Solar distances here are rounded averages.</p>' : ''}
-      <div class="atlas-reading atlas-reading-text"><div class="atlas-reading-label"><h2>Your explanation</h2></div></div>
       <div class="atlas-prose-layout" id="atlas-reading-content">${readingMarkup()}</div>
       ${['solar-system', 'moons', 'jupiter', 'saturn', 'uranus', 'neptune', 'earth', 'mars', 'pluto'].includes(article.id) ? moonExplorer(['solar-system', 'moons'].includes(article.id) ? family : article.id, level) : ''}
       ${article.id === 'solar-system' ? `<section class="atlas-world-shelf"><div class="atlas-section-top"><div><p class="atlas-kicker">EIGHT PLANETS, ENDLESS QUESTIONS</p><h3>Choose your next stop.</h3></div></div><div class="atlas-planet-shelf">${ARTICLES.filter(a => a.group === 'Our star & planets' && a.id !== 'sun').map(a => `<a href="#wiki/${a.id}/${level + 1}"><img src="${WORLD_ART[a.id].full}" alt="" width="100" height="100" loading="lazy"><strong>${a.title}</strong><small>${a.kind.split(' / ')[1]}</small></a>`).join('')}</div></section>` : ''}
