@@ -78,3 +78,20 @@ All retained original source URLs were retrievable in the browsing review; the e
 - Full suite: 172 tests passed; TypeScript check passed.
 - Production and portable builds passed and were regenerated with the corrected content.
 - Browser checks confirmed the revised Moon, Pluto and advanced nozzle readings at 390 × 844, and the Ganymede statistics at 1280 × 900. The checked article, reading and source containers had no horizontal overflow; temporary viewport overrides were reset.
+
+## Reading expansion review — 3 October 2026
+
+The Explore and Go deeper readings were expanded across all 18 articles and all five advanced nozzle topics. Explore develops mechanisms and concrete comparisons; the third level adds evidence, calculations and model assumptions. Every upper reading grew, with a larger addition at the third level. All 23 First look readings, including their headings and takeaways where present, remain exactly unchanged, verified by comparing their combined SHA-256 before and after editing.
+
+New supporting references are linked in the relevant articles:
+
+- [NASA solar interior](https://solarscience.msfc.nasa.gov/interior.shtml) and [OpenStax fusion feedback](https://openstax.org/books/physics/pages/22-4-nuclear-fission-and-fusion) support energy transport and the Sun’s stabilising response.
+- [NASA seasons](https://spaceplace.nasa.gov/seasons/en/) and [Earth’s energy budget](https://science.nasa.gov/earth/earth-observatory/climate-and-earths-energy-budget/) support the illumination and energy-flow explanations. No dated energy-budget percentages were imported.
+- [Gale Crater evidence](https://science.nasa.gov/resource/a-guide-to-gale-crater/) and [MAVEN atmospheric loss](https://www.nasa.gov/news-release/nasas-maven-reveals-most-of-mars-atmosphere-was-lost-to-space/) support the expanded Mars readings. Present escape rates are not extrapolated unchanged through planetary history.
+- [NASA barycentres](https://spaceplace.nasa.gov/barycenter/en/) and [Hubble’s Ganymede observations](https://science.nasa.gov/missions/hubble/nasas-hubble-observations-suggest-underground-ocean-on-jupiters-largest-moon/) support shared motion and the auroral evidence for a conducting ocean. An ocean model remains distinct from a uniquely established interior or evidence of life.
+- [Agnor and Hamilton’s capture research](https://www.nature.com/articles/nature04792) supports the proposed binary route for Triton; it is explicitly described as a modelled scenario. [NASA’s ice-giant energy review](https://science.nasa.gov/missions/hubble/nasa-oxford-discover-warmer-uranus-than-once-thought/) supports Neptune’s internal energy contribution. Older claims that Uranus has no internal heat were not adopted.
+- [NASA’s Vesta account](https://science.nasa.gov/solar-system/asteroids/4-vesta/) supports early melting and differentiation. The asteroid reading does not assume all metal-rich objects have one uniquely known origin.
+
+Worked examples were checked against the stated equations: 4 AU gives an approximately eight-year solar orbit; doubling a circular orbital radius gives approximately 2.8 times the period; Neptune’s solar illumination scales approximately as 1/30²; doubling throat diameter quadruples area; O/F = 3 gives oxidiser/fuel mass fractions of 3/4 and 1/4; ideal rocket mass ratios of two and four give ln(2) and ln(4) velocity factors. The nozzle descriptions were also checked against the actual fixed-γ/c* implementation, including the cancellation between mass flow and exhaust velocity when only c* changes.
+
+Validation: all 172 existing tests passed, and TypeScript plus production and portable builds passed. Browser review covered Ganymede and rocket readings at 390 × 844, the Solar System reading at 768 × 1024, and the Moon at 1280 × 900. All ten expanded advanced readings displayed their full three- or four-paragraph bodies on the phone viewport without horizontal overflow. The main explanation controls remain one group of three; ordinary desktop clicks between levels preserved the measured scroll position. Temporary viewport overrides were reset.
